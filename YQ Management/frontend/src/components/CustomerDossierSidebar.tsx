@@ -139,7 +139,6 @@ export function CustomerDossierSidebar({
   };
 
   // ── Helpers ─────────────────────────────────────────────────────────────
-  const customer = dossier?.customer;
   const stats = dossier?.stats;
   const activeTicket = dossier?.activeTicket;
   const upcomingAppointments = dossier?.upcomingAppointments || [];
