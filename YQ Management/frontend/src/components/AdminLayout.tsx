@@ -204,7 +204,7 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
   const navItems = [
     { label: industry.navLabel, href: '/dashboard/service-desk', icon: industry.industryIcon, pageId: 'service-desk' },
     { label: 'Scanner', href: '/dashboard/scan', icon: 'qr_code_scanner', pageId: 'service-desk' },
-    { label: 'Inbox', href: '/dashboard/inbox', icon: 'chat', pageId: 'inbox' },
+    { label: 'Customer Care Portal', href: '/dashboard/inbox', icon: 'support_agent', pageId: 'inbox' },
     { label: 'Schedule', href: '/dashboard/appointments', icon: 'calendar_today', pageId: 'appointments' },
     { label: 'Journeys', href: '/dashboard/journeys', icon: 'route', pageId: 'journeys', id: 'tour-journeys-nav' },
     { label: 'Queues', href: '/dashboard/queues', icon: 'list_alt', pageId: 'queues', id: 'tour-queues-nav' },

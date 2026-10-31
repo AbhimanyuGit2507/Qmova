@@ -364,8 +364,8 @@ export function VisitDrawer({ isOpen, onClose, visit }: VisitDrawerProps) {
                         router.push(`/dashboard/inbox?phone=${encodeURIComponent(ph)}`);
                       }
                     }}
-                    className="text-emerald-600 hover:text-emerald-500 dark:text-emerald-400 dark:hover:text-emerald-300 p-0.5 hover:bg-emerald-500/10 rounded transition-colors inline-flex items-center"
-                    title="Open conversation in Inbox"
+                    className="text-primary hover:text-sky-500 dark:text-sky-400 dark:hover:text-sky-300 p-0.5 hover:bg-primary/10 rounded transition-colors inline-flex items-center"
+                    title="Open conversation in Customer Care Portal"
                   >
                     <MessageSquare className="w-3.5 h-3.5" />
                   </button>
