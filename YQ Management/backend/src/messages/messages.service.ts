@@ -498,4 +498,403 @@ export class MessagesService {
   async deleteMessage(tenantId: string, messageId: string) {
     return this.whatsappService.deleteMessage(tenantId, messageId);
   }
+
+  async getInboxDossier(tenantId: string, phone: string) {
+    const cleanDigits = phone ? phone.replace(/\D/g, '') : '';
+    const last9 = cleanDigits.length >= 7 ? cleanDigits.slice(-9) : cleanDigits;
+
+    // 1. Find Customer (match exact, cleanDigits, or last9)
+    const customer = await this.prisma.customer.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { phone },
+          ...(cleanDigits
+            ? [{ phone: cleanDigits }, { phone: `+${cleanDigits}` }]
+            : []),
+          ...(last9 ? [{ phone: { contains: last9 } }] : []),
+        ],
+      },
+      include: {
+        medicalProfile: true,
+      },
+    });
+
+    const customerId = customer?.id;
+
+    // 2. Query Visits
+    const visitOrConditions: any[] = [];
+    if (customerId) visitOrConditions.push({ customerId });
+    if (last9) {
+      visitOrConditions.push({ customer: { phone: { contains: last9 } } });
+    }
+
+    const visits =
+      visitOrConditions.length > 0
+        ? await this.prisma.visit.findMany({
+            where: {
+              tenantId,
+              OR: visitOrConditions,
+            },
+            include: {
+              service: true,
+              location: true,
+              queue: true,
+              staff: true,
+              bookingPayments: true,
+              visitInvoice: true,
+              reviewRequests: true,
+            },
+            orderBy: { createdAt: 'desc' },
+            take: 50,
+          })
+        : [];
+
+    // 3. Query Appointments
+    const aptOrConditions: any[] = [];
+    if (customerId) aptOrConditions.push({ customerId });
+    if (last9) {
+      aptOrConditions.push({ customer: { phone: { contains: last9 } } });
+    }
+
+    const appointments =
+      aptOrConditions.length > 0
+        ? await this.prisma.appointment.findMany({
+            where: {
+              tenantId,
+              OR: aptOrConditions,
+            },
+            include: {
+              service: true,
+              location: true,
+              staff: true,
+              bookingPayments: true,
+            },
+            orderBy: { scheduledStart: 'desc' },
+            take: 50,
+          })
+        : [];
+
+    // 4. Query ReviewRequests
+    const reviewOrConditions: any[] = [];
+    if (customerId) reviewOrConditions.push({ customerId });
+    if (visits.length > 0) {
+      reviewOrConditions.push({ visitId: { in: visits.map((v) => v.id) } });
+    }
+
+    const reviewRequests =
+      reviewOrConditions.length > 0
+        ? await this.prisma.reviewRequest.findMany({
+            where: {
+              tenantId,
+              OR: reviewOrConditions,
+            },
+            include: {
+              visit: {
+                include: { service: true, location: true },
+              },
+            },
+            orderBy: { sentAt: 'desc' },
+            take: 20,
+          })
+        : [];
+
+    // 5. Query CustomerConversation & Message count
+    const conversation = await this.prisma.customerConversation.findFirst({
+      where: { tenantId, customerPhone: phone },
+    });
+
+    const messageCount = await this.prisma.message.count({
+      where: {
+        tenantId,
+        OR: [
+          { customerPhone: phone },
+          ...(cleanDigits
+            ? [
+                { customerPhone: cleanDigits },
+                { customerPhone: `+${cleanDigits}` },
+              ]
+            : []),
+          ...(last9 ? [{ customerPhone: { contains: last9 } }] : []),
+        ],
+      },
+    });
+
+    // 6. Active Ticket Today
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const activeTicket = visits.find(
+      (v) =>
+        new Date(v.createdAt) >= todayStart &&
+        ['CREATED', 'WAITING', 'CALLED', 'IN_SERVICE'].includes(v.currentState),
+    );
+
+    // 7. Upcoming Appointments
+    const now = new Date();
+    const upcomingAppointments = appointments
+      .filter(
+        (a) =>
+          new Date(a.scheduledStart) >= now && a.status !== 'CANCELLED',
+      )
+      .map((a) => ({
+        id: a.id,
+        scheduledStart: a.scheduledStart,
+        scheduledEnd: a.scheduledEnd,
+        status: a.status,
+        serviceName: a.service?.name || 'General Service',
+        locationName: a.location?.name || 'Main Location',
+        staffName: a.staff?.name || null,
+        paymentStatus: a.paymentStatus,
+      }));
+
+    // 8. Consolidated Past Bookings (Visits + Completed/Past Appointments)
+    const pastBookings: any[] = [];
+
+    visits.forEach((v) => {
+      const payments = v.bookingPayments || [];
+      const successfulPayment = payments.find((p) => p.status === 'SUCCEEDED');
+      const totalPaid = payments
+        .filter((p) => p.status === 'SUCCEEDED')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      const reviewReq = v.reviewRequests?.find((r) => r.rating || r.feedback);
+      const rating = v.rating || reviewReq?.rating || null;
+      const feedback = v.feedbackText || reviewReq?.feedback || null;
+
+      pastBookings.push({
+        id: v.id,
+        bookingType: 'VISIT',
+        ticketNumber: v.displayId || v.id.slice(0, 6),
+        date: v.actualArrival || v.checkInTime || v.createdAt,
+        currentState: v.currentState,
+        serviceName: v.service?.name || 'General Service',
+        locationName: v.location?.name || v.queue?.name || 'Main Location',
+        staffName: v.staff?.name || null,
+        amount: totalPaid,
+        currency: successfulPayment?.currency || 'INR',
+        rating,
+        feedback,
+        notes: v.notes,
+        rawVisit: v,
+      });
+    });
+
+    appointments.forEach((a) => {
+      // If appointment already materialized into a visit, avoid duplicate row
+      if (visits.some((v) => v.appointmentId === a.id)) return;
+      if (new Date(a.scheduledStart) >= now && a.status !== 'CANCELLED') return;
+
+      const payments = a.bookingPayments || [];
+      const totalPaid = payments
+        .filter((p) => p.status === 'SUCCEEDED')
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+
+      pastBookings.push({
+        id: a.id,
+        bookingType: 'APPOINTMENT',
+        ticketNumber: null,
+        date: a.scheduledStart,
+        currentState: a.status,
+        serviceName: a.service?.name || 'General Service',
+        locationName: a.location?.name || 'Main Location',
+        staffName: a.staff?.name || null,
+        amount: totalPaid,
+        currency: payments[0]?.currency || 'INR',
+        rating: null,
+        feedback: null,
+        notes: a.customerNotes,
+        rawVisit: null,
+      });
+    });
+
+    pastBookings.sort(
+      (a, b) => new Date(b.date).getTime() - new Date(a.date).getTime(),
+    );
+
+    // 9. Reviews & Feedback collection
+    const reviews: any[] = [];
+    pastBookings.forEach((b) => {
+      if (b.rating || b.feedback) {
+        reviews.push({
+          id: b.id,
+          rating: b.rating,
+          feedback: b.feedback,
+          date: b.date,
+          serviceName: b.serviceName,
+          locationName: b.locationName,
+          staffName: b.staffName,
+        });
+      }
+    });
+
+    reviewRequests.forEach((r) => {
+      if (
+        (r.rating || r.feedback) &&
+        !reviews.some((rv) => rv.id === r.visitId)
+      ) {
+        reviews.push({
+          id: r.id,
+          rating: r.rating,
+          feedback: r.feedback,
+          date: r.completedAt || r.sentAt,
+          serviceName: r.visit?.service?.name || 'Service',
+          locationName: r.visit?.location?.name || 'Main Location',
+          staffName: null,
+        });
+      }
+    });
+
+    // 10. Summary Metrics & Stats
+    const totalVisitsCount = visits.length;
+    const completedVisits = visits.filter(
+      (v) => v.currentState === 'COMPLETED',
+    ).length;
+    const cancelledVisits = visits.filter(
+      (v) => v.currentState === 'CANCELLED',
+    ).length;
+    const noShowVisits = visits.filter(
+      (v) => v.currentState === 'NO_SHOW',
+    ).length;
+
+    const totalSpent = pastBookings.reduce(
+      (sum, b) => sum + (b.amount || 0),
+      0,
+    );
+    const currency =
+      pastBookings.find((b) => b.currency)?.currency || 'INR';
+
+    const ratedItems = pastBookings.filter(
+      (b) => typeof b.rating === 'number' && b.rating > 0,
+    );
+    const avgRating =
+      ratedItems.length > 0
+        ? Number(
+            (
+              ratedItems.reduce((acc, curr) => acc + curr.rating, 0) /
+              ratedItems.length
+            ).toFixed(1),
+          )
+        : null;
+
+    // Preferred location
+    const locationCounts: Record<string, number> = {};
+    pastBookings.forEach((b) => {
+      if (b.locationName) {
+        locationCounts[b.locationName] =
+          (locationCounts[b.locationName] || 0) + 1;
+      }
+    });
+    const preferredLocation =
+      Object.entries(locationCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '—';
+
+    const totalAttempts = completedVisits + cancelledVisits + noShowVisits;
+    const reliabilityRate =
+      totalAttempts > 0
+        ? Math.round((completedVisits / totalAttempts) * 100)
+        : null;
+
+    return {
+      customer: customer
+        ? {
+            id: customer.id,
+            name: customer.name,
+            phone: customer.phone || phone,
+            email: customer.email,
+            isVip: customer.isVip,
+            isBlocked: customer.isBlocked,
+            notes: customer.notes,
+            createdAt: customer.createdAt,
+          }
+        : null,
+      stats: {
+        totalVisits: totalVisitsCount,
+        totalAppointments: appointments.length,
+        totalBookings: pastBookings.length,
+        totalSpent,
+        currency,
+        avgRating,
+        totalReviews: reviews.length,
+        preferredLocation,
+        reliabilityRate,
+        noShowCount: noShowVisits,
+        cancelledCount: cancelledVisits,
+      },
+      activeTicket: activeTicket
+        ? {
+            id: activeTicket.id,
+            displayId: activeTicket.displayId || activeTicket.id.slice(0, 6),
+            currentState: activeTicket.currentState,
+            serviceName: activeTicket.service?.name || 'General Service',
+            queueName: activeTicket.queue?.name || 'Queue',
+            locationName: activeTicket.location?.name || 'Main Location',
+            createdAt: activeTicket.createdAt,
+            rawVisit: activeTicket,
+          }
+        : null,
+      upcomingAppointments,
+      pastBookings,
+      reviews,
+      conversationMeta: {
+        channel: 'WhatsApp Cloud',
+        firstContactAt: conversation?.createdAt || null,
+        lastMessageAt: conversation?.lastMessageAt || null,
+        totalMessages: messageCount,
+      },
+    };
+  }
+
+  async updateInboxCustomer(
+    tenantId: string,
+    phone: string,
+    body: {
+      name?: string;
+      email?: string;
+      notes?: string;
+      isVip?: boolean;
+      isBlocked?: boolean;
+    },
+  ) {
+    const cleanDigits = phone ? phone.replace(/\D/g, '') : '';
+    const last9 = cleanDigits.length >= 7 ? cleanDigits.slice(-9) : cleanDigits;
+
+    let customer = await this.prisma.customer.findFirst({
+      where: {
+        tenantId,
+        OR: [
+          { phone },
+          ...(cleanDigits
+            ? [{ phone: cleanDigits }, { phone: `+${cleanDigits}` }]
+            : []),
+          ...(last9 ? [{ phone: { contains: last9 } }] : []),
+        ],
+      },
+    });
+
+    if (customer) {
+      customer = await this.prisma.customer.update({
+        where: { id: customer.id },
+        data: {
+          ...(body.name !== undefined ? { name: body.name } : {}),
+          ...(body.email !== undefined ? { email: body.email } : {}),
+          ...(body.notes !== undefined ? { notes: body.notes } : {}),
+          ...(body.isVip !== undefined ? { isVip: body.isVip } : {}),
+          ...(body.isBlocked !== undefined ? { isBlocked: body.isBlocked } : {}),
+        },
+      });
+    } else {
+      customer = await this.prisma.customer.create({
+        data: {
+          tenantId,
+          name: body.name || 'WhatsApp Contact',
+          phone,
+          email: body.email || null,
+          notes: body.notes || null,
+          isVip: body.isVip || false,
+          isBlocked: body.isBlocked || false,
+        },
+      });
+    }
+
+    return customer;
+  }
 }

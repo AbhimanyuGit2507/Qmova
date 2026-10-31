@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Delete,
   Param,
   Body,
@@ -19,7 +20,7 @@ import { SendMessageDto } from './dto/message.dto';
 
 @Controller('messages')
 @UseGuards(AuthGuard('jwt'), RolesGuard)
-@Roles(Role.OWNER, Role.MANAGER)
+@Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
 export class MessagesController {
   constructor(private readonly messagesService: MessagesService) {}
 
@@ -43,12 +44,41 @@ export class MessagesController {
       req.user.tenantId,
     );
   }
+
   @Get('inbox')
   async getInbox(
     @Req() req: AuthenticatedRequest,
     @Query('locationId') locationId?: string,
   ) {
     return this.messagesService.getInbox(req.user.tenantId, locationId);
+  }
+
+  @Get('inbox/:phone/dossier')
+  async getInboxDossier(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+  ) {
+    return this.messagesService.getInboxDossier(req.user.tenantId, phone);
+  }
+
+  @Patch('inbox/:phone/customer')
+  async updateInboxCustomer(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+    @Body()
+    body: {
+      name?: string;
+      email?: string;
+      notes?: string;
+      isVip?: boolean;
+      isBlocked?: boolean;
+    },
+  ) {
+    return this.messagesService.updateInboxCustomer(
+      req.user.tenantId,
+      phone,
+      body,
+    );
   }
 
   @Get('inbox/:phone')

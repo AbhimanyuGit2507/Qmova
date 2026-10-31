@@ -25,7 +25,6 @@ import {
   PanelRightClose,
   PanelRightOpen,
   PhoneCall,
-  ExternalLink,
   Key,
   Ticket,
   Bell,
@@ -43,6 +42,8 @@ import { useSocket } from '../../components/SocketProvider';
 import { useLocation } from '../../components/LocationContext';
 import { ConfirmModal } from '../../components/modals/ConfirmModal';
 import { CustomerDrawer } from '../../components/CustomerDrawer';
+import { CustomerDossierSidebar } from '../../components/CustomerDossierSidebar';
+import { VisitDrawer } from '../../components/VisitDrawer';
 
 // ── Canned Quick Responses ───────────────────────────────────────────────────
 const QUICK_RESPONSES = [
@@ -218,6 +219,7 @@ export default function InboxPage() {
   const [isDeleting, setIsDeleting] = useState(false);
   const [isNewChatModalOpen, setIsNewChatModalOpen] = useState(false);
   const [selectedCustomerIdForDrawer, setSelectedCustomerIdForDrawer] = useState<string | null>(null);
+  const [selectedVisitForDrawer, setSelectedVisitForDrawer] = useState<AnyFixMe | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
@@ -278,26 +280,9 @@ export default function InboxPage() {
     refetchInterval: 3000,
   });
 
-  // ── Query Active Visits for Context ────────────────────────────────────────
-  const { data: todayVisits = [] } = useQuery({
-    queryKey: ['visits', 'today-inbox'],
-    queryFn: () => fetchApi<AnyFixMe>('/visits?scope=today').then((res) => res?.data || res || []).catch(() => []),
-    staleTime: 30000,
-  });
-
   // Ensure non-null arrays for conversations and messages
   const safeConversations: AnyFixMe[] = useMemo(() => (Array.isArray(conversations) ? conversations : []), [conversations]);
   const safeMessages: AnyFixMe[] = useMemo(() => (Array.isArray(messages) ? messages : []), [messages]);
-
-  // Find active visit for currently selected conversation
-  const activeVisitForCustomer = useMemo(() => {
-    if (!selectedPhone || !todayVisits.length) return null;
-    const cleanSelected = selectedPhone.replace(/\D/g, '').slice(-9);
-    return todayVisits.find((v: AnyFixMe) => {
-      const custPhone = (v.customer?.phone || '').replace(/\D/g, '').slice(-9);
-      return custPhone && cleanSelected && custPhone === cleanSelected;
-    });
-  }, [selectedPhone, todayVisits]);
 
   // Selected conversation meta
   const currentConversation = useMemo(() => {
@@ -1084,118 +1069,13 @@ export default function InboxPage() {
 
         {/* ── Column 3: Customer Dossier / Inspector Panel ───────────────────── */}
         {selectedPhone && isInspectorOpen && (
-          <div className="w-72 lg:w-80 border-l border-border dark:border-dark-border bg-surface dark:bg-dark-card p-4 flex flex-col gap-4 overflow-y-auto hidden lg:flex shrink-0 min-h-0 h-full">
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <h4 className="text-xs font-bold uppercase tracking-wider text-outline">
-                  Contact Details
-                </h4>
-                <button
-                  onClick={() => setIsInspectorOpen(false)}
-                  className="text-outline hover:text-on-surface dark:hover:text-white cursor-pointer"
-                  title="Collapse panel"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-
-              <div className="text-center p-4 rounded-2xl bg-surface-container-low dark:bg-white/5 border border-border dark:border-dark-border">
-                <div
-                  className={`w-14 h-14 rounded-full mx-auto flex items-center justify-center text-white font-bold text-base shadow-xs mb-2.5 ${getAvatarColor(
-                    currentConversation?.customerName || selectedPhone
-                  )}`}
-                >
-                  {getInitials(currentConversation?.customerName || selectedPhone)}
-                </div>
-                <h5 className="font-bold text-sm text-on-surface dark:text-white truncate">
-                  {currentConversation?.customerName || 'Anonymous Visitor'}
-                </h5>
-                <p className="text-xs font-mono text-outline mt-0.5">
-                  {selectedPhone}
-                </p>
-                {currentConversation?.customerEmail && (
-                  <p className="text-[11px] text-outline truncate mt-0.5">
-                    {currentConversation.customerEmail}
-                  </p>
-                )}
-              </div>
-            </div>
-
-            {/* Active Ticket Status Card */}
-            {activeVisitForCustomer ? (
-              <div className="p-3.5 rounded-2xl bg-primary/10 dark:bg-primary/15 border border-primary/20 dark:border-primary/30 space-y-1.5">
-                <div className="flex items-center justify-between">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-primary dark:text-sky-400">
-                    Active Queue Ticket
-                  </span>
-                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-primary text-white">
-                    {activeVisitForCustomer.currentState}
-                  </span>
-                </div>
-                <div className="flex items-baseline justify-between">
-                  <span className="text-xl font-black font-mono text-on-surface dark:text-white">
-                    #{activeVisitForCustomer.ticketNumber || activeVisitForCustomer.id.slice(0, 6)}
-                  </span>
-                  <span className="text-xs text-on-surface-variant dark:text-zinc-300 font-medium">
-                    {activeVisitForCustomer.service?.name || 'General Service'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-outline truncate">
-                  Queue: <span className="font-semibold text-on-surface dark:text-white">{activeVisitForCustomer.queue?.name}</span>
-                </p>
-              </div>
-            ) : (
-              <div className="p-3.5 rounded-2xl bg-surface-container-low dark:bg-white/5 border border-border dark:border-dark-border text-center">
-                <Ticket className="w-5 h-5 mx-auto text-outline mb-1 opacity-50" />
-                <p className="text-xs font-semibold text-on-surface-variant dark:text-zinc-300">No Active Ticket Today</p>
-                <p className="text-[10px] text-outline mt-0.5">Customer is not currently queued.</p>
-              </div>
-            )}
-
-            {/* Quick Actions */}
-            <div className="space-y-2 pt-2 border-t border-border dark:border-dark-border">
-              {currentConversation?.customerId && (
-                <button
-                  onClick={() => setSelectedCustomerIdForDrawer(currentConversation.customerId)}
-                  className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-primary hover:bg-primary/90 text-white transition-all shadow-xs cursor-pointer active:scale-95"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open Customer Records
-                </button>
-              )}
-
-              <a
-                href={`tel:${selectedPhone}`}
-                className="w-full flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl text-xs font-semibold bg-surface-container-low dark:bg-white/5 hover:bg-surface-container dark:hover:bg-white/10 text-on-surface dark:text-zinc-200 border border-border dark:border-dark-border transition-all cursor-pointer"
-              >
-                <Phone className="w-3.5 h-3.5" />
-                Call Customer
-              </a>
-            </div>
-
-            {/* Channel Meta */}
-            <div className="text-[11px] text-outline space-y-1.5 pt-2 border-t border-border dark:border-dark-border mt-auto">
-              <div className="flex justify-between">
-                <span>Channel</span>
-                <span className="font-semibold text-on-surface-variant dark:text-zinc-300">WhatsApp Cloud</span>
-              </div>
-              <div className="flex justify-between">
-                <span>First Contact</span>
-                <span className="font-mono text-on-surface-variant dark:text-zinc-300">
-                  {currentConversation?.createdAt
-                    ? new Date(currentConversation.createdAt).toLocaleDateString()
-                    : '—'}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span>Last Message</span>
-                <span className="font-mono text-on-surface-variant dark:text-zinc-300">
-                  {currentConversation?.lastMessageAt
-                    ? formatRelativeTime(currentConversation.lastMessageAt)
-                    : '—'}
-                </span>
-              </div>
-            </div>
+          <div className="hidden lg:flex shrink-0 min-h-0 h-full">
+            <CustomerDossierSidebar
+              phone={selectedPhone}
+              onClose={() => setIsInspectorOpen(false)}
+              onOpenCustomerDrawer={(cId) => setSelectedCustomerIdForDrawer(cId)}
+              onInspectVisit={(v) => setSelectedVisitForDrawer(v)}
+            />
           </div>
         )}
       </div>
@@ -1346,6 +1226,13 @@ export default function InboxPage() {
         isOpen={!!selectedCustomerIdForDrawer}
         onClose={() => setSelectedCustomerIdForDrawer(null)}
         customerId={selectedCustomerIdForDrawer}
+      />
+
+      {/* ── Visit Details Drawer ──────────────────────────────────────────────── */}
+      <VisitDrawer
+        isOpen={!!selectedVisitForDrawer}
+        onClose={() => setSelectedVisitForDrawer(null)}
+        visit={selectedVisitForDrawer}
       />
     </AdminLayout>
   );
