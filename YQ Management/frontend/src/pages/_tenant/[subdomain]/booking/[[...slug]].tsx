@@ -329,6 +329,28 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     }
   }, [tenant, router.query, router.isReady, hasAutoSelected, urlSlug]);
 
+  // Find the queue for a given service (always use the first ACTIVE one linked)
+  const getQueueForService = (serviceId: string) => {
+    const s = services.find(x => x.id === serviceId);
+    return s?.queues.find(q => q.status === 'ACTIVE') || null;
+  };
+
+  const currentServiceId = selectedServiceIds[currentServiceIndex];
+  const currentService = services.find(s => s.id === currentServiceId);
+  const currentQueue = currentService ? getQueueForService(currentService.id) : null;
+  
+  const hasQueues = currentService && currentService.queues && currentService.queues.filter(q => q.status === 'ACTIVE').length > 0;
+  const currentDetails = serviceDetails[currentServiceId] || {
+    joinMode: (!currentService?.allowAppointments || (hasQueues && (currentService as any).isOpenNow !== false)) ? 'immediate' : 'appointment', selectedDate: '', selectedSlot: '', responses: {}
+  };
+
+  const updateCurrentDetails = (updates: Partial<typeof currentDetails>) => {
+    setServiceDetails(prev => ({
+      ...prev,
+      [currentServiceId]: { ...currentDetails, ...updates }
+    }));
+  };
+
   const goToStep = (newStep: number, serviceIdx?: number) => {
     if (typeof window !== 'undefined') {
       try {
@@ -412,12 +434,6 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   const logoUrl = isBrandingEnabled ? tenant?.branding?.logoUrl : null;
   const baseUrl = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000') : 'http://localhost:3000';
 
-  // Find the queue for a given service (always use the first ACTIVE one linked)
-  const getQueueForService = (serviceId: string) => {
-    const s = services.find(x => x.id === serviceId);
-    return s?.queues.find(q => q.status === 'ACTIVE') || null;
-  };
-
   // Helper for contact details
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
 
@@ -475,22 +491,6 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     setErrorMsg('');
     setCurrentServiceIndex(0);
     goToStep(3, 0); // Proceed to dynamic flow
-  };
-
-  const currentServiceId = selectedServiceIds[currentServiceIndex];
-  const currentService = services.find(s => s.id === currentServiceId);
-  const currentQueue = currentService ? getQueueForService(currentService.id) : null;
-  
-  const hasQueues = currentService && currentService.queues && currentService.queues.filter(q => q.status === 'ACTIVE').length > 0;
-  const currentDetails = serviceDetails[currentServiceId] || {
-    joinMode: (!currentService?.allowAppointments || (hasQueues && (currentService as any).isOpenNow !== false)) ? 'immediate' : 'appointment', selectedDate: '', selectedSlot: '', responses: {}
-  };
-
-  const updateCurrentDetails = (updates: Partial<typeof currentDetails>) => {
-    setServiceDetails(prev => ({
-      ...prev,
-      [currentServiceId]: { ...currentDetails, ...updates }
-    }));
   };
 
   // Fetch providers for current service if enabled
