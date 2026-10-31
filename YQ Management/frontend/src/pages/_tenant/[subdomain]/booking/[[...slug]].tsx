@@ -149,162 +149,29 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     );
   };
 
-  // Load persisted state
-  useEffect(() => {
-    try {
-      const saved = sessionStorage.getItem(`booking_state_${tenant?.id}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed.step) setStep(parsed.step);
-        if (parsed.selectedLocationId) setSelectedLocationId(parsed.selectedLocationId);
-        if (parsed.name) setName(parsed.name);
-        if (parsed.phone) setPhone(parsed.phone);
-        if (parsed.accompanyingGuests !== undefined) setAccompanyingGuests(parsed.accompanyingGuests);
-        if (parsed.selectedServiceIds) setSelectedServiceIds(parsed.selectedServiceIds);
-      }
-    } catch (e) {
-      console.error('Failed to load booking state', e);
-    }
-  }, [tenant?.id]);
-
-  // Save state on change
-  useEffect(() => {
-    if (!tenant?.id) return;
-    try {
-      sessionStorage.setItem(`booking_state_${tenant.id}`, JSON.stringify({
-        step,
-        selectedLocationId,
-        name,
-        phone,
-        accompanyingGuests,
-        selectedServiceIds
-      }));
-    } catch (e) {
-      console.error('Failed to save booking state', e);
-    }
-  }, [step, selectedLocationId, name, phone, accompanyingGuests, selectedServiceIds, tenant?.id]);
-
-  useEffect(() => {
-    detectCountryCode().then((country) => {
-      if (country) {
-        const detected = ipCountry || country.country;
-        setDefaultCountry(detected);
-        
-        // Check operating countries
-        if (tenant?.operatingCountries && tenant.operatingCountries.length > 0) {
-          if (!tenant.operatingCountries.includes(detected)) {
-            setRegionBlocked(true);
-          }
-        }
-      }
-    });
-  }, [ipCountry, tenant]);
-
+  const [isRestored, setIsRestored] = useState(false);
   const [hasAutoSelected, setHasAutoSelected] = useState(false);
 
-  // Auto-select location/service/queue based on URL query params & Session Restore
-  useEffect(() => {
-    if (!tenant || !router.isReady || hasAutoSelected) return;
-
-    // Immediately mark as executed to guard against concurrent re-renders or router events
-    setHasAutoSelected(true);
-    setIsRestored(true);
-
-    let restored = false;
-    try {
-      const saved = sessionStorage.getItem('bookingState');
-      if (saved) {
-        const s = JSON.parse(saved);
-        if (s.step) setStep(s.step);
-        if (s.selectedLocationId) setSelectedLocationId(s.selectedLocationId);
-        if (s.name) setName(s.name);
-        if (s.phone) setPhone(s.phone);
-        if (s.selectedServiceIds) setSelectedServiceIds(s.selectedServiceIds);
-        if (s.currentServiceIndex !== undefined) setCurrentServiceIndex(s.currentServiceIndex);
-        if (s.serviceDetails) setServiceDetails(s.serviceDetails);
-        restored = true;
-      }
-    } catch (e) {}
-
-    const { locationId, serviceId, queueId, slug } = router.query;
-
-    // Safely extract slug parameter (can be array, string, or derived from pathname)
-    let urlSlug: string | null = null;
+  // Safely extract slug parameter (can be array, string, or derived from pathname)
+  const urlSlug: string | null = React.useMemo(() => {
+    const { slug } = router.query;
     if (Array.isArray(slug) && slug.length > 0 && typeof slug[0] === 'string') {
-      urlSlug = slug[0];
+      return slug[0];
     } else if (typeof slug === 'string' && slug.length > 0) {
-      urlSlug = slug;
+      return slug;
     } else if (typeof window !== 'undefined') {
       const pathParts = window.location.pathname.split('?')[0].split('/').filter(Boolean);
       const bookingIdx = pathParts.indexOf('booking');
       if (bookingIdx !== -1 && pathParts[bookingIdx + 1]) {
-        urlSlug = decodeURIComponent(pathParts[bookingIdx + 1]);
+        return decodeURIComponent(pathParts[bookingIdx + 1]);
       }
     }
-    
-    // Explicit URL params override restored state
-    if (locationId || serviceId || urlSlug) {
-      // Auto-select location
-      if (urlSlug) {
-        const matchedLocation = tenant?.locations?.find((l: AnyFixMe) => slugify(l.name) === urlSlug);
-        if (matchedLocation) {
-          setSelectedLocationId(matchedLocation.id);
-          setStep(2); // Skip location step
-        } else {
-          setStep(1); // Location not found, show picker
-        }
-      } else if (locationId && typeof locationId === 'string' && tenant?.locations?.some((l: AnyFixMe) => l.id === locationId)) {
-        setSelectedLocationId(locationId);
-        setStep(2); // Skip location step
-      }
-      
-      // Auto-select service & queue
-      if (serviceId && typeof serviceId === 'string') {
-        const s = services.find((x: AnyFixMe) => x.id === serviceId);
-        if (s) {
-          if (s.locationId) setSelectedLocationId(s.locationId);
-          setSelectedServiceIds([serviceId]);
-          if (queueId && typeof queueId === 'string') {
-            const hasQueues = s && s.queues && s.queues.filter(q => q.status === 'ACTIVE').length > 0;
-            const canJoinNow = hasQueues && (s as any).isOpenNow !== false;
-            const defaultJoinMode = (!s.allowAppointments || canJoinNow) ? 'immediate' : 'appointment';
-            setServiceDetails(prev => ({
-              ...prev,
-              [serviceId]: { 
-                ...(prev[serviceId] || {}), 
-                joinMode: defaultJoinMode,
-                selectedDate: '',
-                selectedSlot: '',
-                responses: {},
-                queueId 
-              }
-            }));
-          }
-          setStep(3); // Jump straight to service details
-        }
-      }
-    } else if (!restored) {
-      // Apply defaults only if no state was restored
-      if (tenant?.locations && tenant.locations.length === 1) {
-        const singleLoc = tenant.locations[0];
-        setSelectedLocationId(singleLoc.id);
-        setStep(2);
+    return null;
+  }, [router.query]);
 
-        // Cosmetically update browser address bar without triggering shallow routing reload loops
-        const targetSlug = slugify(singleLoc.name);
-        if (typeof window !== 'undefined' && !window.location.pathname.includes(targetSlug)) {
-          const isPathBased = window.location.pathname.startsWith('/t/');
-          const slugPath = `/booking/${targetSlug}`;
-          const fullPath = isPathBased ? `/t/${router.query.subdomain || tenant.subdomain}${slugPath}` : slugPath;
-          window.history.replaceState(window.history.state, '', fullPath);
-        }
-      } else if (!tenant?.locations || tenant.locations.length === 0) {
-        setStep(2); // Skip location step if none exist
-      }
-    }
-  }, [tenant, router.query, router.isReady, hasAutoSelected]);
+  const isDirectLocation = Boolean(urlSlug) || Boolean(tenant?.locations && tenant.locations.length <= 1);
+  const isFirstStep = (step === 1) || (step === 2 && isDirectLocation);
 
-  
   // State for the per-service dynamic flow
   const [currentServiceIndex, setCurrentServiceIndex] = useState(0);
   const [enlargedQrTokenId, setEnlargedQrTokenId] = useState<string | null>(null);
@@ -331,19 +198,212 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   const [tokens, setTokens] = useState<AnyFixMe[]>([]);
   const [statusDataMap, setStatusDataMap] = useState<Record<string, AnyFixMe>>({});
 
-
-  const [isRestored, setIsRestored] = useState(false);
-
-  // Session Restore handled in the auto-select effect above
-
-  // Session Save
+  // Unified session persistence - Save
   useEffect(() => {
-    if (isRestored && typeof window !== 'undefined' && step < 5) {
-      sessionStorage.setItem('bookingState', JSON.stringify({
-        step, selectedLocationId, name, phone, selectedServiceIds, currentServiceIndex, serviceDetails
-      }));
+    if (isRestored && typeof window !== 'undefined' && step < 5 && tenant?.id) {
+      try {
+        sessionStorage.setItem(`booking_state_${tenant.id}`, JSON.stringify({
+          step,
+          selectedLocationId,
+          name,
+          phone,
+          accompanyingGuests,
+          selectedServiceIds,
+          currentServiceIndex,
+          serviceDetails,
+        }));
+      } catch (e) {
+        console.error('Failed to save booking state', e);
+      }
     }
-  }, [isRestored, step, selectedLocationId, name, phone, selectedServiceIds, currentServiceIndex, serviceDetails]);
+  }, [isRestored, step, selectedLocationId, name, phone, accompanyingGuests, selectedServiceIds, currentServiceIndex, serviceDetails, tenant?.id]);
+
+  useEffect(() => {
+    detectCountryCode().then((country) => {
+      if (country) {
+        const detected = ipCountry || country.country;
+        setDefaultCountry(detected);
+        
+        // Check operating countries
+        if (tenant?.operatingCountries && tenant.operatingCountries.length > 0) {
+          if (!tenant.operatingCountries.includes(detected)) {
+            setRegionBlocked(true);
+          }
+        }
+      }
+    });
+  }, [ipCountry, tenant]);
+
+  // Auto-select location/service/queue based on URL query params & Session Restore
+  useEffect(() => {
+    if (!tenant || !router.isReady || hasAutoSelected) return;
+
+    setHasAutoSelected(true);
+
+    let restored = false;
+    let savedStep = 1;
+    try {
+      const saved = sessionStorage.getItem(`booking_state_${tenant.id}`) || sessionStorage.getItem('bookingState');
+      if (saved) {
+        const s = JSON.parse(saved);
+        if (s.step && [1, 2, 3, 3.5, 4, 4.5].includes(s.step)) {
+          savedStep = s.step;
+          setStep(s.step);
+        }
+        if (s.selectedLocationId) setSelectedLocationId(s.selectedLocationId);
+        if (s.name) setName(s.name);
+        if (s.phone) setPhone(s.phone);
+        if (s.accompanyingGuests !== undefined) setAccompanyingGuests(s.accompanyingGuests);
+        if (s.selectedServiceIds) setSelectedServiceIds(s.selectedServiceIds);
+        if (s.currentServiceIndex !== undefined) setCurrentServiceIndex(s.currentServiceIndex);
+        if (s.serviceDetails) setServiceDetails(s.serviceDetails);
+        restored = true;
+      }
+    } catch (e) {
+      console.error('Failed to restore booking state', e);
+    }
+    setIsRestored(true);
+
+    const { locationId, serviceId, queueId } = router.query;
+
+    if (locationId || serviceId || urlSlug) {
+      if (urlSlug) {
+        const matchedLocation = tenant?.locations?.find((l: AnyFixMe) => slugify(l.name) === urlSlug);
+        if (matchedLocation) {
+          setSelectedLocationId(matchedLocation.id);
+          if (!restored || savedStep < 2) {
+            setStep(2);
+          }
+        } else if (!restored) {
+          setStep(1);
+        }
+      } else if (locationId && typeof locationId === 'string' && tenant?.locations?.some((l: AnyFixMe) => l.id === locationId)) {
+        setSelectedLocationId(locationId);
+        if (!restored || savedStep < 2) {
+          setStep(2);
+        }
+      }
+
+      if (serviceId && typeof serviceId === 'string') {
+        const s = services.find((x: AnyFixMe) => x.id === serviceId);
+        if (s) {
+          if (s.locationId) setSelectedLocationId(s.locationId);
+          setSelectedServiceIds([serviceId]);
+          if (queueId && typeof queueId === 'string') {
+            const hasQueues = s && s.queues && s.queues.filter(q => q.status === 'ACTIVE').length > 0;
+            const canJoinNow = hasQueues && (s as any).isOpenNow !== false;
+            const defaultJoinMode = (!s.allowAppointments || canJoinNow) ? 'immediate' : 'appointment';
+            setServiceDetails(prev => ({
+              ...prev,
+              [serviceId]: { 
+                ...(prev[serviceId] || {}), 
+                joinMode: defaultJoinMode,
+                selectedDate: '',
+                selectedSlot: '',
+                responses: {},
+                queueId 
+              }
+            }));
+          }
+          if (!restored || savedStep < 3) {
+            setStep(3);
+          }
+        }
+      }
+    } else if (!restored) {
+      if (tenant?.locations && tenant.locations.length === 1) {
+        const singleLoc = tenant.locations[0];
+        setSelectedLocationId(singleLoc.id);
+        setStep(2);
+
+        const targetSlug = slugify(singleLoc.name);
+        if (typeof window !== 'undefined' && !window.location.pathname.includes(targetSlug)) {
+          const isPathBased = window.location.pathname.startsWith('/t/');
+          const slugPath = `/booking/${targetSlug}`;
+          const fullPath = isPathBased ? `/t/${router.query.subdomain || tenant.subdomain}${slugPath}` : slugPath;
+          window.history.replaceState(window.history.state, '', fullPath);
+        }
+      } else if (!tenant?.locations || tenant.locations.length === 0) {
+        setStep(2);
+      }
+    }
+  }, [tenant, router.query, router.isReady, hasAutoSelected, urlSlug]);
+
+  const goToStep = (newStep: number, serviceIdx?: number) => {
+    if (typeof window !== 'undefined') {
+      try {
+        window.history.pushState({ step: newStep, serviceIdx: serviceIdx ?? currentServiceIndex }, '');
+      } catch {}
+    }
+    if (serviceIdx !== undefined) {
+      setCurrentServiceIndex(serviceIdx);
+    }
+    setStep(newStep);
+  };
+
+  const handleBack = () => {
+    if (step >= 5 || isFirstStep) return;
+
+    if (step === 4.5) {
+      setStep(4);
+    } else if (step === 4) {
+      setStep(3.5);
+    } else if (step === 3.5) {
+      if (selectedServiceIds.length > 0) {
+        setCurrentServiceIndex(Math.max(0, selectedServiceIds.length - 1));
+        setStep(3);
+      } else {
+        setStep(2);
+      }
+    } else if (step === 3) {
+      if (currentServiceIndex > 0) {
+        setCurrentServiceIndex(i => i - 1);
+      } else {
+        setStep(2);
+      }
+    } else if (step === 2) {
+      if (!isDirectLocation) {
+        setStep(1);
+      }
+    } else {
+      setStep(isDirectLocation ? 2 : 1);
+    }
+  };
+
+  // Sync with browser history popstate so hardware/browser back button works smoothly
+  useEffect(() => {
+    const handlePopState = (e: PopStateEvent) => {
+      if (e.state && typeof e.state.step === 'number') {
+        const validSteps = [1, 2, 3, 3.5, 4, 4.5, 5];
+        if (validSteps.includes(e.state.step)) {
+          setStep(e.state.step);
+          if (typeof e.state.serviceIdx === 'number') {
+            setCurrentServiceIndex(e.state.serviceIdx);
+          }
+          return;
+        }
+      }
+      setStep(isDirectLocation ? 2 : 1);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, [isDirectLocation]);
+
+  // Safety guard against missing service in Step 3
+  useEffect(() => {
+    if (step === 3 && (selectedServiceIds.length === 0 || !currentService)) {
+      setStep(2);
+    }
+  }, [step, selectedServiceIds.length, currentService]);
+
+  // Safety guard against any invalid/corrupted step value
+  useEffect(() => {
+    const validSteps = [1, 2, 3, 3.5, 4, 4.5, 5];
+    if (!validSteps.includes(step)) {
+      setStep(isDirectLocation ? 2 : 1);
+    }
+  }, [step, isDirectLocation]);
 
 
 
@@ -402,9 +462,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
         ? `/t/${router.query.subdomain}${slugPath}`
         : slugPath;
       router.push(fullPath, undefined, { shallow: true });
-      setStep(2);
+      goToStep(2);
     } else {
-      setStep(2);
+      goToStep(2);
     }
   };
 
@@ -414,7 +474,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     
     setErrorMsg('');
     setCurrentServiceIndex(0);
-    setStep(3); // Proceed to dynamic flow
+    goToStep(3, 0); // Proceed to dynamic flow
   };
 
   const currentServiceId = selectedServiceIds[currentServiceIndex];
@@ -539,14 +599,19 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     
     // Proceed to next service or Contact Details
     if (currentServiceIndex < selectedServiceIds.length - 1) {
+      if (typeof window !== 'undefined') {
+        try {
+          window.history.pushState({ step: 3, serviceIdx: currentServiceIndex + 1 }, '');
+        } catch {}
+      }
       setCurrentServiceIndex(idx => idx + 1);
     } else {
-      setStep(3.5); // Show Contact Details
+      goToStep(3.5); // Show Contact Details
     }
   };
 
   const handleConfirm = () => {
-    setStep(5);
+    goToStep(5);
   };
 
   const triggerJoinSequence = async () => {
@@ -776,12 +841,13 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
       {/* Header */}
       <header className="w-full max-w-md sticky top-0 z-50 bg-white/85 dark:bg-zinc-950/85 backdrop-blur-md border-b border-gray-200/80 dark:border-zinc-800/80 px-4 py-3 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all">
         <div className="flex items-center gap-2.5 min-w-0">
-          {step > 1 && step < 5 && (
-            <button onClick={() => {
-              if (step === 3 && currentServiceIndex > 0) setCurrentServiceIndex(i => i - 1);
-              else if (step === 3 && currentServiceIndex === 0) setStep(2);
-              else setStep(step - 1);
-            }} className="p-1.5 -ml-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800/80 transition-colors shrink-0 text-gray-600 dark:text-gray-300 active:scale-95">
+          {!isFirstStep && step < 5 && (
+            <button 
+              type="button"
+              onClick={handleBack} 
+              className="p-1.5 -ml-1 rounded-lg hover:bg-gray-100 dark:hover:bg-zinc-800/80 transition-colors shrink-0 text-gray-600 dark:text-gray-300 active:scale-95"
+              aria-label="Go back"
+            >
               <span className="text-base font-medium leading-none">←</span>
             </button>
           )}
@@ -823,7 +889,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
       </header>
 
       <main className="w-full max-w-md p-6 flex-1 flex flex-col">
-        <AnimatePresence mode="wait">
+        <AnimatePresence mode="wait" initial={false}>
           
           {/* STEP 1: Location Selection */}
           {step === 1 && (
@@ -869,8 +935,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
           )}
 
           {/* STEP 3: Service-specific Details Loop */}
-          {step === 3 && currentService && (
-            <motion.div key={`step2-${currentService.id}`} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 flex-1">
+          {step === 3 && currentService ? (
+            <motion.div key={`step3-${currentService.id}-${currentServiceIndex}`} initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 flex-1">
               <div className="mb-4">
                 <span className="text-xs font-bold uppercase tracking-widest text-gray-400">Step {currentServiceIndex + 1} of {selectedServiceIds.length}</span>
                 <div className="flex items-center justify-between mt-1 gap-2">
@@ -1320,7 +1386,11 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                 </button>
               </form>
             </motion.div>
-          )}
+          ) : step === 3 ? (
+            <div className="flex-1 flex items-center justify-center py-12">
+              <div className="w-8 h-8 border-4 border-gray-200 border-t-current rounded-full animate-spin" style={{ color: primaryColor }} />
+            </div>
+          ) : null}
 
           {/* STEP 3.5: Contact Details */}
           {step === 3.5 && (
@@ -1338,9 +1408,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
               onNext={(e) => { 
                 e.preventDefault(); 
                 if(!name.trim()) setErrorMsg('Please enter your name.'); 
-                else { setErrorMsg(''); setStep(4); } 
+                else { setErrorMsg(''); goToStep(4); } 
               }}
-              onBack={() => setStep(3)}
+              onBack={handleBack}
             />
           )}
 
@@ -1502,7 +1572,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
               </div>
 
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={() => setStep(3)} className="px-6 py-4 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+                <button type="button" onClick={handleBack} className="px-6 py-4 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
                   Back
                 </button>
                 {(() => {
