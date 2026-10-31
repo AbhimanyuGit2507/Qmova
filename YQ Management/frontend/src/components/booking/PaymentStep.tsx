@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
 import { fetchApi } from '../../lib/api';
@@ -45,6 +45,7 @@ interface PaymentStepProps {
   visitId?: string;
   visitStepId?: string;
   onSkip?: () => void;
+  isDark?: boolean;
 }
 
 const CheckoutForm = ({
@@ -55,6 +56,7 @@ const CheckoutForm = ({
   paymentId,
   amount,
   currency,
+  isDark: _isDark,
 }: {
   onSuccess: (paymentId: string) => void;
   onBack?: () => void;
@@ -63,6 +65,7 @@ const CheckoutForm = ({
   paymentId: string;
   amount: number;
   currency: string;
+  isDark?: boolean;
 }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -114,8 +117,9 @@ const CheckoutForm = ({
           body: JSON.stringify({ method: 'CARD' }),
         });
         onSuccess(paymentId);
-      } catch (err: any) {
-        setError(err.message || 'Payment confirmed by Stripe, but status sync took longer than expected.');
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : 'Payment confirmed by Stripe, but status sync took longer than expected.';
+        setError(msg);
         setProcessing(false);
       }
     }
@@ -124,11 +128,11 @@ const CheckoutForm = ({
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6 flex-1 w-full max-w-lg mx-auto bg-white dark:bg-zinc-900 border border-gray-200/90 dark:border-zinc-800 rounded-3xl p-6 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/30"
+      className="space-y-5 sm:space-y-6 flex-1 w-full max-w-2xl mx-auto bg-white dark:bg-zinc-900 border border-gray-200/90 dark:border-zinc-800 rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/30"
     >
       {/* Header */}
       <div className="text-center space-y-2">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide mb-1">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
           <ShieldCheck className="w-3.5 h-3.5" />
           <span>256-Bit SSL Encrypted Checkout</span>
         </div>
@@ -141,33 +145,49 @@ const CheckoutForm = ({
       </div>
 
       {/* Amount Due Card */}
-      <div className="bg-gray-50 dark:bg-zinc-950 p-4 sm:p-5 rounded-2xl border border-gray-100 dark:border-zinc-800/90 flex items-center justify-between">
-        <div className="space-y-0.5">
-          <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wider">Total Amount Due</p>
-          <p className="text-xs text-gray-600 dark:text-zinc-400 flex items-center gap-1">
-            <CreditCard className="w-3.5 h-3.5 text-gray-400" />
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-gray-50 via-gray-50 to-gray-100/80 dark:from-zinc-950 dark:via-zinc-950/90 dark:to-zinc-900 border border-gray-200/80 dark:border-zinc-800 p-4 sm:p-5 flex items-center justify-between shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-gray-500 dark:text-zinc-400">
+              Total Amount Due
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              Instant Confirm
+            </span>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-zinc-400 flex items-center gap-1.5 font-medium">
+            <CreditCard className="w-3.5 h-3.5 text-gray-400 dark:text-zinc-500" />
             Credit / Debit / Digital Wallets
           </p>
         </div>
         <div className="text-right">
-          <span className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white font-mono tracking-tight">
+          <div className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
             {formattedAmount}
+          </div>
+          <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 dark:text-zinc-500">
+            Taxes & fees included
           </span>
         </div>
       </div>
 
       {/* Payment Element Container with Skeleton Overlay */}
       <div className="space-y-3">
-        <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-300">
-          Card or Payment Method
-        </label>
+        <div className="flex items-center justify-between">
+          <label className="block text-xs font-bold uppercase tracking-wider text-gray-600 dark:text-zinc-300">
+            Card or Payment Method
+          </label>
+          <div className="flex items-center gap-1 text-[11px] text-gray-400 dark:text-zinc-500 font-medium">
+            <Lock className="w-3 h-3 text-emerald-500" />
+            <span>End-to-End Encrypted</span>
+          </div>
+        </div>
 
         <div className="relative min-h-[160px]">
           {!isElementReady && !elementLoadError && (
             <div className="absolute inset-0 z-10 bg-white dark:bg-zinc-900 space-y-3 py-1 pointer-events-none">
-              <div className="h-11 bg-gray-100 dark:bg-zinc-800 rounded-xl w-full flex items-center justify-center text-xs font-medium text-gray-400 gap-2 animate-pulse">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Initializing secure card inputs...
+              <div className="h-11 bg-gray-100 dark:bg-zinc-800 rounded-xl w-full flex items-center justify-center text-xs font-medium text-gray-400 dark:text-zinc-500 gap-2 animate-pulse">
+                <Loader2 className="w-4 h-4 animate-spin text-[#635BFF]" />
+                Initializing secure Stripe checkout...
               </div>
               <div className="h-12 bg-gray-100 dark:bg-zinc-800 rounded-xl w-full animate-pulse" />
               <div className="grid grid-cols-2 gap-3 animate-pulse">
@@ -258,38 +278,82 @@ const CheckoutForm = ({
         )}
       </div>
 
-      {/* Trust & Compliance Footer */}
-      <div className="pt-4 border-t border-gray-100 dark:border-zinc-800/80 text-center space-y-2">
-        <div className="flex items-center justify-center gap-3 text-gray-400 dark:text-zinc-500 text-[11px] font-medium">
-          <span className="flex items-center gap-1">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" /> PCI-DSS Level 1
+      {/* Trust & Accepted Cards & Powered by Stripe Footer */}
+      <div className="pt-4 border-t border-gray-100 dark:border-zinc-800/80 space-y-3.5">
+        {/* Accepted Payment Methods Chips */}
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-black tracking-tight text-[#1A1F71] dark:text-[#6979F8]">
+            VISA
           </span>
-          <span>•</span>
-          <span>Stripe Direct Connect</span>
-          <span>•</span>
-          <span>Refundable Terms</span>
+          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-bold text-gray-800 dark:text-zinc-200 flex items-center gap-1">
+            <span className="flex -space-x-1 items-center">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#EB001B] inline-block" />
+              <span className="w-2.5 h-2.5 rounded-full bg-[#F79E1B] inline-block opacity-85" />
+            </span>
+            <span>Mastercard</span>
+          </span>
+          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-extrabold text-[#006FCF] dark:text-[#2E9BFF]">
+            AMEX
+          </span>
+          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-bold text-gray-700 dark:text-zinc-300">
+            Apple Pay
+          </span>
+          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-bold text-gray-700 dark:text-zinc-300">
+            Google Pay
+          </span>
+        </div>
+
+        {/* Powered by Stripe & PCI Compliance */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 px-1 text-[11px] text-gray-500 dark:text-zinc-400">
+          <div className="flex items-center gap-1.5 font-medium">
+            <span>Powered by</span>
+            <span className="inline-flex items-center gap-1 font-bold text-[#635BFF] dark:text-[#7A73FF]">
+              <svg className="h-3.5 w-auto" viewBox="0 0 60 25" fill="currentColor">
+                <path fillRule="evenodd" clipRule="evenodd" d="M59.64 14.28c0-4.3-2.1-7.7-6.26-7.7-4.18 0-6.72 3.4-6.72 7.68 0 5.09 3.06 7.74 7.27 7.74 2.05 0 3.61-.46 4.79-1.19v-3.32c-1.18.66-2.5 1.05-4.15 1.05-1.64 0-3.08-.63-3.29-2.48h8.31c0-.23.05-1.15.05-1.78zm-8.35-1.52c.07-1.72 1.05-2.41 2.12-2.41 1.05 0 2.01.69 2.08 2.41h-4.2zm-9.35-6.18h-4.32v15.17h4.32V6.58zm-2.17-5.06c1.47 0 2.47-.98 2.47-2.22C42.24.98 41.25 0 39.77 0c-1.48 0-2.48.98-2.48 2.22 0 1.24 1 2.22 2.48 2.22zm-7.9 5.06h-4.25v2.32c-.89-1.54-2.44-2.5-4.52-2.5-3.66 0-6.75 3.12-6.75 7.64 0 4.54 3.09 7.66 6.75 7.66 2.08 0 3.63-.96 4.52-2.5v2.38h4.25V6.58zm-4.32 7.46c0 2.5-1.73 4.2-3.8 4.2-2.06 0-3.79-1.7-3.79-4.2 0-2.49 1.73-4.19 3.79-4.19 2.07 0 3.8 1.7 3.8 4.19zm-13.6-7.46l-2.4 8.21-2.46-8.21h-4.63l4.63 12.39-4.21 2.78h4.63l8.77-15.17h-4.33zm-13.7 0c-1.07 0-2.02.44-2.73 1.15V6.58H0v20.48h4.32v-7.85c.71.71 1.66 1.15 2.73 1.15 3.32 0 6.07-2.82 6.07-6.89 0-4.08-2.75-6.89-6.07-6.89zm-.74 10.3c-2.07 0-3.64-1.56-3.64-3.41s1.57-3.41 3.64-3.41c2.08 0 3.65 1.56 3.65 3.41s-1.57 3.41-3.65 3.41z"/>
+              </svg>
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
+              <ShieldCheck className="w-3.5 h-3.5" /> PCI-DSS Level 1
+            </span>
+            <span className="text-gray-300 dark:text-zinc-700">•</span>
+            <span className="font-medium text-gray-500 dark:text-zinc-400">
+              Money-Back Terms
+            </span>
+          </div>
         </div>
       </div>
     </form>
   );
 };
 
-export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuccess, onBack, onSkip, primaryColor, visitId, visitStepId }: PaymentStepProps) {
+export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuccess, onBack, onSkip, primaryColor, visitId, visitStepId, isDark }: PaymentStepProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
-  const [stripePromise, setStripePromise] = useState<any>(null);
   const [intentError, setIntentError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [confirmingCounter, setConfirmingCounter] = useState(false);
 
+  const stripePromise = useMemo(() => {
+    if (!stripeAccountId) return null;
+    const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || FALLBACK_STRIPE_PK;
+    return loadStripe(pk, { stripeAccount: stripeAccountId });
+  }, [stripeAccountId]);
+
+  const activeIntentError = !stripeAccountId
+    ? 'Online card payment is currently unavailable. Please complete your booking and pay in person at the counter.'
+    : intentError;
+
   const minRequiredCents = getCurrencyMinStripeCents(currency);
   const currSymbol = getCurrencySymbol(currency);
   const isUnderLimit = amount < minRequiredCents || Boolean(
-    intentError && (
-      intentError.toLowerCase().includes('below') ||
-      intentError.toLowerCase().includes('minimum') ||
-      intentError.toLowerCase().includes('threshold') ||
-      intentError.toLowerCase().includes('limit')
+    activeIntentError && (
+      activeIntentError.toLowerCase().includes('below') ||
+      activeIntentError.toLowerCase().includes('minimum') ||
+      activeIntentError.toLowerCase().includes('threshold') ||
+      activeIntentError.toLowerCase().includes('limit')
     )
   );
 
@@ -319,19 +383,7 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
     }
   };
 
-  useEffect(() => {
-    // Only load if we have an account ID
-    if (!stripeAccountId) {
-      setIntentError('Online card payment is currently unavailable. Please complete your booking and pay in person at the counter.');
-      return;
-    }
-    
-    // Platform publishable key with live fallback
-    const pk = process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY || FALLBACK_STRIPE_PK;
-    setStripePromise(loadStripe(pk, { stripeAccount: stripeAccountId }));
-  }, [stripeAccountId]);
-
-  const getSecret = async () => {
+  const getSecret = useCallback(async () => {
     setIntentError(null);
     setIsRetrying(true);
     try {
@@ -341,30 +393,27 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
       });
       setClientSecret(res.clientSecret);
       setPaymentId(res.paymentId);
-      if (res.publishableKey) {
-        setStripePromise(loadStripe(res.publishableKey, { stripeAccount: stripeAccountId }));
-      }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Failed to create payment intent", err);
-      setIntentError(err.message || 'Unable to initialize secure payment session.');
+      const msg = err instanceof Error ? err.message : 'Unable to initialize secure payment session.';
+      setIntentError(msg);
     } finally {
       setIsRetrying(false);
     }
-  };
+  }, [tenantId, amount, visitId, visitStepId]);
 
   useEffect(() => {
-    if (tenantId && amount > 0 && stripeAccountId) {
-      if (amount < minRequiredCents) {
-        return;
-      }
+    if (tenantId && amount > 0 && stripeAccountId && amount >= minRequiredCents) {
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       getSecret();
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tenantId, amount, stripeAccountId, visitId, visitStepId, minRequiredCents]);
 
   // Seamless fallback to Pay at Counter if amount is below minimum processing limit
   if (isUnderLimit) {
     return (
-      <div className="w-full max-w-lg mx-auto bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-6 sm:p-8 text-center space-y-6 shadow-sm">
+      <div className="w-full max-w-2xl mx-auto bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl sm:rounded-3xl p-6 sm:p-8 text-center space-y-6 shadow-sm">
         <div className="w-16 h-16 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
           <CreditCard className="w-8 h-8" />
         </div>
@@ -429,16 +478,16 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
     );
   }
 
-  if (intentError) {
+  if (activeIntentError) {
     return (
-      <div className="w-full max-w-lg mx-auto bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl p-6 text-center space-y-5">
+      <div className="w-full max-w-2xl mx-auto bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl sm:rounded-3xl p-6 text-center space-y-5">
         <div className="w-14 h-14 bg-amber-100 dark:bg-amber-950/50 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto">
           <AlertCircle className="w-8 h-8" />
         </div>
         <div>
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Payment Notice</h2>
           <p className="text-sm text-gray-600 dark:text-zinc-400 mt-2 bg-gray-50 dark:bg-zinc-800 p-3 rounded-xl border border-gray-200 dark:border-zinc-700">
-            {intentError}
+            {activeIntentError}
           </p>
         </div>
         <div className="flex flex-col gap-2.5 pt-2">
@@ -498,10 +547,31 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
       options={{
         clientSecret,
         appearance: {
-          theme: 'stripe',
+          theme: isDark ? 'night' : 'stripe',
           variables: {
             colorPrimary: primaryColor || '#4f46e5',
+            colorBackground: isDark ? '#18181b' : '#ffffff',
+            colorText: isDark ? '#f4f4f5' : '#18181b',
+            colorDanger: '#f43f5e',
             borderRadius: '12px',
+            fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+          },
+          rules: {
+            '.Input': {
+              backgroundColor: isDark ? '#09090b' : '#ffffff',
+              borderColor: isDark ? '#27272a' : '#e4e4e7',
+            },
+            '.Input:focus': {
+              borderColor: primaryColor || '#6366f1',
+            },
+            '.Tab': {
+              backgroundColor: isDark ? '#18181b' : '#ffffff',
+              borderColor: isDark ? '#27272a' : '#e4e4e7',
+            },
+            '.Tab--selected': {
+              borderColor: primaryColor || '#6366f1',
+              backgroundColor: isDark ? '#27272a' : '#f4f4f5',
+            },
           },
         },
       }}
@@ -514,6 +584,7 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
         paymentId={paymentId || ''}
         amount={amount}
         currency={currency}
+        isDark={isDark}
       />
     </Elements>
   );

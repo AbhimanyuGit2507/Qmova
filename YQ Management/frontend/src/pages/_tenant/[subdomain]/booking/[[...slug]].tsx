@@ -839,7 +839,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
       </Head>
 
       {/* Header */}
-      <header className="w-full max-w-md sticky top-0 z-50 bg-white/85 dark:bg-zinc-950/85 backdrop-blur-md border-b border-gray-200/80 dark:border-zinc-800/80 px-4 py-3 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all">
+      <header className="w-full max-w-2xl sticky top-0 z-50 bg-white/85 dark:bg-zinc-950/85 backdrop-blur-md border-b border-gray-200/80 dark:border-zinc-800/80 px-3 sm:px-6 py-3 flex items-center justify-between shadow-[0_1px_3px_rgba(0,0,0,0.02)] transition-all">
         <div className="flex items-center gap-2.5 min-w-0">
           {!isFirstStep && step < 5 && (
             <button 
@@ -888,7 +888,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
         </button>
       </header>
 
-      <main className="w-full max-w-md p-6 flex-1 flex flex-col">
+      <main className="w-full max-w-2xl px-2 sm:px-6 py-4 sm:py-6 flex-1 flex flex-col">
         <AnimatePresence mode="wait" initial={false}>
           
           {/* STEP 1: Location Selection */}
@@ -1653,6 +1653,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                 currency={services.find(x => x.id === selectedServiceIds[0]) ? (services.find(x => x.id === selectedServiceIds[0]) as any).priceCurrency || (services.find(x => x.id === selectedServiceIds[0]) as any).currency || 'usd' : 'usd'}
                 stripeAccountId={tenant?.paymentAccount?.connectedAccountId}
                 visitId={createdVisits.find(v => v.currentState === 'PENDING_PAYMENT')?.id}
+                isDark={theme === 'dark'}
                 onSuccess={(paymentId) => {
                   setCompletedPaymentId(paymentId);
                   redirectToStatus(createdVisits);
