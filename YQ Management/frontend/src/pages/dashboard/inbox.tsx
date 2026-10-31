@@ -178,7 +178,7 @@ function getInitials(nameOrPhone: string): string {
 
 export default function InboxPage() {
   const router = useRouter();
-  const { allowedLocations: locations, activeLocationId } = useLocation();
+  const { allowedLocations: locations, activeLocationId: _activeLocationId } = useLocation();
   const queryClient = useQueryClient();
   const { socket } = useSocket();
 
@@ -249,8 +249,9 @@ export default function InboxPage() {
     };
   }, []);
 
-  // Sync location selection with query params
-  const effectiveLocationId = selectedLocationId !== 'all' ? selectedLocationId : (activeLocationId && activeLocationId !== 'all' ? activeLocationId : undefined);
+  // Sync location selection with query params: only filter if tenant has multiple locations and user selected a specific one
+  const isMultiLocation = (locations || []).length > 1;
+  const effectiveLocationId = isMultiLocation && selectedLocationId !== 'all' ? selectedLocationId : undefined;
   const locParam = effectiveLocationId ? `?locationId=${effectiveLocationId}` : '';
 
   // ── Query Conversations ────────────────────────────────────────────────────

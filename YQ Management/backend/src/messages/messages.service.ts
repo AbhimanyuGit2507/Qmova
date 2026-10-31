@@ -116,37 +116,49 @@ export class MessagesService {
   }
 
   async getInbox(tenantId: string, locationId?: string) {
-    if (locationId) {
-      // Filter to conversations where the customer had at least one visit at this location
-      const visits = await this.prisma.visit.findMany({
-        where: {
-          tenantId,
-          queue: { locationId },
-        },
-        include: { customer: true },
-        distinct: ['customerId'],
-      });
-      const phones = visits
-        .map((v) => v.customer.phone)
-        .filter((p): p is string => !!p);
-
-      return this.prisma.customerConversation
-        .findMany({
-          where: { tenantId, customerPhone: { in: phones } },
-          include: {
-            messages: {
-              where: { isDeleted: false },
-              orderBy: { createdAt: 'desc' },
-              take: 1,
-            },
+    // If locationId is 'all' or not specified, return all conversations for tenant
+    if (!locationId || locationId === 'all') {
+      const convos = await this.prisma.customerConversation.findMany({
+        where: { tenantId },
+        include: {
+          messages: {
+            where: { isDeleted: false },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
           },
-          orderBy: { lastMessageAt: 'desc' },
-          take: 100,
-        })
-        .then((convos) => this.attachCustomerDetails(tenantId, convos));
+        },
+        orderBy: { lastMessageAt: 'desc' },
+        take: 100,
+      });
+      return this.attachCustomerDetails(tenantId, convos);
     }
 
-    const convos = await this.prisma.customerConversation.findMany({
+    // Check how many locations this tenant has
+    const totalLocations = await this.prisma.location.count({
+      where: { tenantId },
+    });
+
+    // If tenant only has 1 location (or 0), all conversations belong to this location!
+    // Do not filter out any incoming or general chats.
+    if (totalLocations <= 1) {
+      const convos = await this.prisma.customerConversation.findMany({
+        where: { tenantId },
+        include: {
+          messages: {
+            where: { isDeleted: false },
+            orderBy: { createdAt: 'desc' },
+            take: 1,
+          },
+        },
+        orderBy: { lastMessageAt: 'desc' },
+        take: 100,
+      });
+      return this.attachCustomerDetails(tenantId, convos);
+    }
+
+    // For multi-location tenants: fetch all conversations and filter out only those
+    // that belong exclusively to another location.
+    const allConvos = await this.prisma.customerConversation.findMany({
       where: { tenantId },
       include: {
         messages: {
@@ -158,7 +170,88 @@ export class MessagesService {
       orderBy: { lastMessageAt: 'desc' },
       take: 100,
     });
-    return this.attachCustomerDetails(tenantId, convos);
+
+    if (allConvos.length === 0) return [];
+
+    const normalize = (p?: string | null) =>
+      p ? p.replace(/\D/g, '').slice(-9) : null;
+
+    // 1. Customers with visits or appointments at THIS location
+    const thisLocationVisits = await this.prisma.visit.findMany({
+      where: {
+        tenantId,
+        OR: [{ locationId }, { queue: { locationId } }],
+      },
+      select: {
+        customer: { select: { phone: true } },
+      },
+    });
+
+    const thisLocationApts = await this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        locationId,
+      },
+      select: {
+        customer: { select: { phone: true } },
+      },
+    });
+
+    const thisLocationPhones = new Set<string>();
+    thisLocationVisits.forEach((v) => {
+      const n = normalize(v.customer?.phone);
+      if (n) thisLocationPhones.add(n);
+    });
+    thisLocationApts.forEach((a) => {
+      const n = normalize(a.customer?.phone);
+      if (n) thisLocationPhones.add(n);
+    });
+
+    // 2. Customers with visits or appointments at OTHER locations
+    const otherLocationVisits = await this.prisma.visit.findMany({
+      where: {
+        tenantId,
+        locationId: { not: locationId },
+      },
+      select: {
+        customer: { select: { phone: true } },
+      },
+    });
+
+    const otherLocationApts = await this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        locationId: { not: locationId },
+      },
+      select: {
+        customer: { select: { phone: true } },
+      },
+    });
+
+    const otherLocationPhones = new Set<string>();
+    otherLocationVisits.forEach((v) => {
+      const n = normalize(v.customer?.phone);
+      if (n) otherLocationPhones.add(n);
+    });
+    otherLocationApts.forEach((a) => {
+      const n = normalize(a.customer?.phone);
+      if (n) otherLocationPhones.add(n);
+    });
+
+    // A conversation matches this location if:
+    // a) The customer has visits/appointments at this location, OR
+    // b) The customer has NO visits/appointments at any other location (general inquiry/prospect)
+    const filteredConvos = allConvos.filter((c) => {
+      const clean = normalize(c.customerPhone);
+      if (!clean) return true;
+      if (thisLocationPhones.has(clean)) return true;
+      // If customer is tied exclusively to another branch, exclude
+      if (otherLocationPhones.has(clean)) return false;
+      // General inquiry / new lead belongs to all locations
+      return true;
+    });
+
+    return this.attachCustomerDetails(tenantId, filteredConvos);
   }
 
   private async attachCustomerDetails(tenantId: string, convos: any[]) {
