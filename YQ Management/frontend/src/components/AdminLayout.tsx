@@ -53,6 +53,7 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const previewDropdownRef = useRef<HTMLDivElement>(null);
+  const profileDropdownRef = useRef<HTMLDivElement>(null);
 
   // Listen for admin-toast custom events (dispatched from inline components without Sonner access)
   useEffect(() => {
@@ -305,9 +306,23 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
       if (previewDropdownRef.current && !previewDropdownRef.current.contains(e.target as Node)) {
         setPreviewOpen(false);
       }
+      if (profileDropdownRef.current && !profileDropdownRef.current.contains(e.target as Node)) {
+        setProfileOpen(false);
+      }
+    }
+    function handleKeyDown(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        setLocationOpen(false);
+        setPreviewOpen(false);
+        setProfileOpen(false);
+      }
     }
     document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
   }, []);
 
   // Plan enforcement: redirect to billing if expired/cancelled is now handled inline via PlanGateModal
@@ -566,12 +581,147 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                   </div>
                 )}
               </div>
-              <div
-                className="w-8 h-8 rounded-full overflow-hidden border border-border cursor-pointer flex items-center justify-center bg-primary/10 dark:bg-primary/20 text-primary font-bold text-xs relative select-none hover:ring-2 hover:ring-primary/40 transition-all"
-                onClick={() => setProfileOpen(true)}
-                title="Profile & Settings"
-              >
-                {user?.email ? user.email.substring(0, 2).toUpperCase() : '??'}
+              <div className="relative" ref={profileDropdownRef}>
+                <button
+                  type="button"
+                  className="w-8.5 h-8.5 rounded-full overflow-hidden border border-border/80 dark:border-dark-border cursor-pointer flex items-center justify-center bg-linear-to-tr from-indigo-600 to-purple-600 text-white font-bold text-xs relative select-none hover:ring-2 hover:ring-primary/40 focus:outline-hidden transition-all shadow-xs active:scale-95"
+                  onClick={() => setProfileOpen((prev) => !prev)}
+                  title="Account & Settings"
+                  aria-expanded={profileOpen}
+                >
+                  {user?.email ? user.email.substring(0, 2).toUpperCase() : '??'}
+                </button>
+
+                {profileOpen && (
+                  <div
+                    className="absolute top-full right-0 mt-2.5 w-76 sm:w-80 bg-white dark:bg-zinc-900 border border-zinc-200/90 dark:border-zinc-800 rounded-2xl shadow-2xl shadow-black/20 dark:shadow-black/60 z-[100] overflow-hidden animate-in fade-in zoom-in-95 duration-150 cursor-default divide-y divide-zinc-100 dark:divide-zinc-800/80"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {/* Header Info */}
+                    <div className="p-4 bg-linear-to-b from-primary/10 via-primary/[0.02] to-transparent">
+                      <div className="flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-full bg-linear-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white font-bold text-sm shadow-md flex items-center justify-center shrink-0 border border-white/20">
+                          {user?.email ? user.email.substring(0, 2).toUpperCase() : '??'}
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <p className="font-bold text-zinc-900 dark:text-white text-sm truncate">
+                            {user?.name || user?.email?.split('@')[0] || 'Operator'}
+                          </p>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate mt-0.5">
+                            {user?.email || ''}
+                          </p>
+                          <div className="flex items-center gap-1.5 mt-1.5 flex-wrap">
+                            <span className="inline-flex items-center px-2 py-0.5 rounded-full bg-primary/15 text-primary text-[10px] font-bold uppercase tracking-wider border border-primary/25">
+                              {user?.role || 'User'}
+                            </span>
+                            {tenant?.name && (
+                              <span className="text-[10px] font-medium text-zinc-500 dark:text-zinc-400 truncate max-w-[120px]">
+                                {tenant.name}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Actions Menu */}
+                    <div className="p-2 space-y-1">
+                      {/* Theme Toggle */}
+                      <button
+                        onClick={() => toggleTheme()}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 rounded-xl transition-all cursor-pointer group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                            <span className="material-symbols-outlined text-[17px]">
+                              {theme === 'dark' ? 'light_mode' : 'dark_mode'}
+                            </span>
+                          </div>
+                          <span>{theme === 'dark' ? 'Light Appearance' : 'Dark Appearance'}</span>
+                        </div>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-zinc-100 dark:bg-zinc-800 text-zinc-500 dark:text-zinc-400 capitalize">
+                          {theme}
+                        </span>
+                      </button>
+
+                      {/* Profile Settings */}
+                      <Link
+                        href="/dashboard/settings/personal"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 rounded-xl transition-all group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                            <span className="material-symbols-outlined text-[17px]">person</span>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-zinc-900 dark:text-white">Profile Settings</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Personal details & preferences</p>
+                          </div>
+                        </div>
+                        <span className="material-symbols-outlined text-[16px] text-zinc-400 group-hover:translate-x-0.5 transition-transform">
+                          chevron_right
+                        </span>
+                      </Link>
+
+                      {/* Workspace Settings */}
+                      <Link
+                        href="/dashboard/settings/workspace"
+                        onClick={() => setProfileOpen(false)}
+                        className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-zinc-700 dark:text-zinc-200 hover:bg-zinc-100 dark:hover:bg-zinc-800/60 rounded-xl transition-all group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-zinc-100 dark:bg-zinc-800 flex items-center justify-center text-zinc-700 dark:text-zinc-300 group-hover:bg-primary/10 group-hover:text-primary transition-colors">
+                            <span className="material-symbols-outlined text-[17px]">settings</span>
+                          </div>
+                          <div>
+                            <p className="font-semibold text-zinc-900 dark:text-white">Workspace Settings</p>
+                            <p className="text-[10px] text-zinc-500 dark:text-zinc-400">Team, billing & operations</p>
+                          </div>
+                        </div>
+                        <span className="material-symbols-outlined text-[16px] text-zinc-400 group-hover:translate-x-0.5 transition-transform">
+                          chevron_right
+                        </span>
+                      </Link>
+
+                      {/* Super Admin Link (if Super Admin) */}
+                      {user?.role === 'SUPER_ADMIN' && (
+                        <Link
+                          href="/super-admin"
+                          onClick={() => setProfileOpen(false)}
+                          className="w-full flex items-center justify-between px-3 py-2 text-xs font-medium text-amber-600 dark:text-amber-400 hover:bg-amber-500/10 rounded-xl transition-all group"
+                        >
+                          <div className="flex items-center gap-2.5">
+                            <div className="w-7 h-7 rounded-lg bg-amber-500/15 flex items-center justify-center text-amber-600 dark:text-amber-400">
+                              <span className="material-symbols-outlined text-[17px]">shield_person</span>
+                            </div>
+                            <div>
+                              <p className="font-bold">Super Admin Portal</p>
+                              <p className="text-[10px] text-amber-600/70 dark:text-amber-400/70">System controls & logs</p>
+                            </div>
+                          </div>
+                          <span className="material-symbols-outlined text-[16px] text-amber-500 group-hover:translate-x-0.5 transition-transform">
+                            chevron_right
+                          </span>
+                        </Link>
+                      )}
+                    </div>
+
+                    {/* Sign Out Footer */}
+                    <div className="p-2 bg-zinc-50/70 dark:bg-zinc-900/70">
+                      <button
+                        onClick={() => {
+                          setProfileOpen(false);
+                          logout();
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">logout</span>
+                        Sign out
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -815,85 +965,7 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
         </div>
       </main>
 
-      {/* Profile Panel overlay */}
-      {profileOpen && (
-        <>
-          <div
-            className="fixed inset-0 bg-black/30 backdrop-blur-sm z-[200]"
-            onClick={() => setProfileOpen(false)}
-          />
-          <div className="fixed top-0 right-0 h-full w-80 bg-surface dark:bg-dark-card border-l border-border dark:border-dark-border z-[201] flex flex-col shadow-2xl">
-            {/* Header */}
-            <div className="flex items-center justify-between px-6 py-4 border-b border-border dark:border-dark-border">
-              <p className="text-sm font-semibold text-on-surface dark:text-white">Account</p>
-              <button
-                onClick={() => setProfileOpen(false)}
-                className="w-8 h-8 flex items-center justify-center rounded-full hover:bg-surface-container-low dark:hover:bg-white/10 transition-colors text-on-surface-variant"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
 
-            {/* Avatar + info */}
-            <div className="px-6 py-6 border-b border-border dark:border-dark-border">
-              <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-full bg-primary/10 dark:bg-primary/20 border-2 border-primary/30 flex items-center justify-center text-primary font-bold text-xl shrink-0">
-                  {user?.email ? user.email.substring(0, 2).toUpperCase() : '??'}
-                </div>
-                <div className="min-w-0">
-                  <p className="font-semibold text-on-surface dark:text-white text-base truncate">
-                    {user?.email?.split('@')[0] || 'Operator'}
-                  </p>
-                  <p className="text-xs text-on-surface-variant dark:text-zinc-400 truncate mt-0.5">{user?.email || ''}</p>
-                  <span className="inline-flex items-center mt-1.5 px-2 py-0.5 rounded-full bg-primary/10 dark:bg-primary/20 text-primary text-[10px] font-bold uppercase tracking-wider">
-                    {user?.role || 'User'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Actions */}
-            <div className="flex-1 py-3 overflow-y-auto">
-              <button
-                onClick={() => { toggleTheme(); }}
-                className="flex w-full items-center gap-3 px-6 py-3 text-sm text-on-surface-variant hover:bg-surface-container-low dark:hover:bg-white/5 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[20px]">{theme === 'dark' ? 'light_mode' : 'dark_mode'}</span>
-                <span>{theme === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}</span>
-              </button>
-
-              <Link
-                href="/dashboard/settings/workspace"
-                onClick={() => setProfileOpen(false)}
-                className="flex w-full items-center gap-3 px-6 py-3 text-sm text-on-surface-variant hover:bg-surface-container-low dark:hover:bg-white/5 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[20px]">manage_accounts</span>
-                <span>Profile Settings</span>
-              </Link>
-
-              <Link
-                href="/dashboard/settings/workspace"
-                onClick={() => setProfileOpen(false)}
-                className="flex w-full items-center gap-3 px-6 py-3 text-sm text-on-surface-variant hover:bg-surface-container-low dark:hover:bg-white/5 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[20px]">settings</span>
-                <span>Settings</span>
-              </Link>
-            </div>
-
-            {/* Sign out */}
-            <div className="px-6 py-4 border-t border-border dark:border-dark-border">
-              <button
-                onClick={() => { setProfileOpen(false); logout(); }}
-                className="flex w-full items-center justify-center gap-2 px-4 py-2.5 rounded-xl border border-border dark:border-dark-border text-sm font-medium text-alert hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
-              >
-                <span className="material-symbols-outlined text-[18px]">logout</span>
-                Sign out
-              </button>
-            </div>
-          </div>
-        </>
-      )}
 
       {showQueueMigration && hasQueuePermissions && unlinkedQueues.length > 0 && (
         <QueueMigrationModal
