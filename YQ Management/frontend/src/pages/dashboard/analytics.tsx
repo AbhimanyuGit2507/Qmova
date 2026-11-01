@@ -98,7 +98,7 @@ const SLA_THRESHOLD_MINS = 15;
 export default function Analytics() {
   const { activeLocationId } = useLocation();
   const { user } = useAuth();
-  const [timeRange, setTimeRange] = useState<'Today' | 'Week' | 'Month' | 'Year' | 'All' | 'Custom'>('Week');
+  const [timeRange, setTimeRange] = useState<'Today' | 'Week' | 'Month' | 'Year' | 'All' | 'Custom'>('Today');
   const [dateRange, setDateRange] = useState<[Date | null, Date | null]>([null, null]);
   const [startDate, endDate] = dateRange;
 
@@ -154,7 +154,7 @@ export default function Analytics() {
   });
 
   const { kpis, chartData: rawChartData, servicePerformance, heatmapData, staffPerformance, customerReviews = [] } = (analytics as any) || {
-    kpis: { totalVisits: 0, averageWaitTimeMins: 0, slaViolations: 0, dropOffRate: 0, csatScore: 0, totalCancelled: 0, totalNoShow: 0 },
+    kpis: { totalVisits: 0, totalScheduled: 0, averageWaitTimeMins: 0, slaViolations: 0, dropOffRate: 0, csatScore: 0, totalCancelled: 0, totalNoShow: 0 },
     chartData: [],
     servicePerformance: [],
     heatmapData: null,
@@ -229,7 +229,12 @@ export default function Analytics() {
       : 'Since account creation';
 
   const chartData = useMemo(() => {
-    return (rawChartData || []).map((d: any) => ({ time: d.timeLabel, visits: d.volume }));
+    return (rawChartData || []).map((d: any) => ({
+      time: d.timeLabel,
+      visits: d.actualVisits !== undefined ? d.actualVisits : d.volume,
+      actualVisits: d.actualVisits !== undefined ? d.actualVisits : d.volume,
+      scheduled: d.scheduledBookings || 0,
+    }));
   }, [rawChartData]);
 
   const kpiVariants = {
@@ -310,9 +315,20 @@ export default function Analytics() {
             className="grid grid-cols-2 lg:grid-cols-4 gap-4"
           >
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
-              <p className="text-on-surface-variant text-xs mb-1 uppercase tracking-wider font-semibold">Total Visits</p>
+              <div className="flex items-center justify-between mb-1">
+                <p className="text-on-surface-variant text-xs uppercase tracking-wider font-semibold">Total Visits</p>
+                {Number(kpis.totalScheduled ?? 0) > 0 && (
+                  <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50">
+                    {kpis.totalScheduled} Scheduled
+                  </span>
+                )}
+              </div>
               <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">{kpis.totalVisits}</p>
-              <p className="text-xs text-outline mt-1">{timeframeLabel}</p>
+              <p className="text-xs text-outline mt-1">
+                {timeRange === 'Today'
+                  ? `${kpis.totalVisits} arrived · ${kpis.totalScheduled || 0} scheduled bookings today`
+                  : `${timeframeLabel}${kpis.totalScheduled ? ` · ${kpis.totalScheduled} scheduled bookings` : ''}`}
+              </p>
             </motion.div>
 
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
@@ -361,7 +377,7 @@ export default function Analytics() {
                 <h3 className="font-semibold text-on-surface dark:text-white">Visit Volume</h3>
                 <p className="text-xs text-outline mt-0.5">
                   {timeRange === 'Today' 
-                    ? 'Hourly visits today' 
+                    ? 'Hourly customer footfall & scheduled appointments today' 
                     : timeRange === 'Week' 
                     ? 'Daily visits over past 7 days' 
                     : timeRange === 'Month' 
@@ -380,7 +396,7 @@ export default function Analytics() {
                 </div>
               )}
             </div>
-            <div className="w-full h-[280px]">
+            <div className="w-full h-[300px]">
               <VisitsAreaChart data={chartData} />
             </div>
           </motion.div>

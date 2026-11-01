@@ -15,10 +15,30 @@ export class AnalyticsService {
     endDateInput?: string,
     locationId?: string,
   ) {
-    // 1. Calculate Date Range using timezone
-    const zonedNow = toZonedTime(new Date(), tz);
-    zonedNow.setHours(0, 0, 0, 0);
+    // 0. Resolve Timezone: client tz -> location tz -> primary location tz -> 'UTC'
+    let resolvedTz = tz && tz !== 'UTC' ? tz : null;
+    if (!resolvedTz && locationId && locationId !== 'all') {
+      try {
+        const loc = await this.prisma.location?.findUnique({
+          where: { id: locationId },
+          select: { timezone: true },
+        });
+        if (loc?.timezone) resolvedTz = loc.timezone;
+      } catch {}
+    }
+    if (!resolvedTz) {
+      try {
+        const firstLoc = await this.prisma.location?.findFirst({
+          where: { tenantId },
+          select: { timezone: true },
+        });
+        if (firstLoc?.timezone) resolvedTz = firstLoc.timezone;
+      } catch {}
+    }
+    resolvedTz = resolvedTz || tz || 'UTC';
 
+    // 1. Calculate Date Range deterministically using target timezone
+    const todayStr = formatInTimeZone(new Date(), resolvedTz, 'yyyy-MM-dd');
     let startDate: Date;
     let endDate: Date | undefined = undefined;
 
@@ -26,25 +46,33 @@ export class AnalyticsService {
       const startParsed = new Date(startDateInput);
       const endParsed = new Date(endDateInput || startDateInput);
 
-      const zonedStart = toZonedTime(startParsed, tz);
-      zonedStart.setHours(0, 0, 0, 0);
-      startDate = fromZonedTime(zonedStart, tz);
+      const startDayStr = formatInTimeZone(startParsed, resolvedTz, 'yyyy-MM-dd');
+      const endDayStr = formatInTimeZone(endParsed, resolvedTz, 'yyyy-MM-dd');
 
-      const zonedEnd = toZonedTime(endParsed, tz);
-      zonedEnd.setHours(23, 59, 59, 999);
-      endDate = fromZonedTime(zonedEnd, tz);
+      startDate = fromZonedTime(`${startDayStr}T00:00:00.000`, resolvedTz);
+      endDate = fromZonedTime(`${endDayStr}T23:59:59.999`, resolvedTz);
     } else {
-      if (timeframe === '7d' || timeframe === 'week') {
-        zonedNow.setDate(zonedNow.getDate() - 6);
-        startDate = fromZonedTime(zonedNow, tz);
+      if (timeframe === 'today') {
+        startDate = fromZonedTime(`${todayStr}T00:00:00.000`, resolvedTz);
+        endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
+      } else if (timeframe === '7d' || timeframe === 'week') {
+        const d = toZonedTime(new Date(), resolvedTz);
+        d.setDate(d.getDate() - 6);
+        const pastStr = formatInTimeZone(d, resolvedTz, 'yyyy-MM-dd');
+        startDate = fromZonedTime(`${pastStr}T00:00:00.000`, resolvedTz);
+        endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else if (timeframe === '30d' || timeframe === 'month') {
-        zonedNow.setDate(zonedNow.getDate() - 29);
-        startDate = fromZonedTime(zonedNow, tz);
+        const d = toZonedTime(new Date(), resolvedTz);
+        d.setDate(d.getDate() - 29);
+        const pastStr = formatInTimeZone(d, resolvedTz, 'yyyy-MM-dd');
+        startDate = fromZonedTime(`${pastStr}T00:00:00.000`, resolvedTz);
+        endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else if (timeframe === 'year' || timeframe === '1y') {
-        const zonedStartOfYear = toZonedTime(new Date(), tz);
-        zonedStartOfYear.setMonth(zonedStartOfYear.getMonth() - 11, 1);
-        zonedStartOfYear.setHours(0, 0, 0, 0);
-        startDate = fromZonedTime(zonedStartOfYear, tz);
+        const d = toZonedTime(new Date(), resolvedTz);
+        d.setMonth(d.getMonth() - 11, 1);
+        const pastStr = formatInTimeZone(d, resolvedTz, 'yyyy-MM-01');
+        startDate = fromZonedTime(`${pastStr}T00:00:00.000`, resolvedTz);
+        endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else if (timeframe === 'all') {
         const [tenant, earliestVisit] = await Promise.all([
           this.prisma.tenant.findUnique({
@@ -66,20 +94,16 @@ export class AnalyticsService {
           accountCreated = earliestVisit.createdAt;
         }
 
-        const zonedAccountCreated = toZonedTime(accountCreated, tz);
-        zonedAccountCreated.setHours(0, 0, 0, 0);
-        startDate = fromZonedTime(zonedAccountCreated, tz);
+        const startDayStr = formatInTimeZone(accountCreated, resolvedTz, 'yyyy-MM-dd');
+        startDate = fromZonedTime(`${startDayStr}T00:00:00.000`, resolvedTz);
+        endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else {
-        startDate = fromZonedTime(zonedNow, tz);
-      }
-
-      if (timeframe === 'today') {
-        const zonedEnd = toZonedTime(new Date(), tz);
-        zonedEnd.setHours(23, 59, 59, 999);
-        endDate = fromZonedTime(zonedEnd, tz);
+        startDate = fromZonedTime(`${todayStr}T00:00:00.000`, resolvedTz);
+        endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       }
     }
 
+    // 2. Fetch visits within the time window
     const tokens = await this.prisma.visit.findMany({
       where: {
         tenantId,
@@ -107,17 +131,12 @@ export class AnalyticsService {
               : { gte: startDate },
           },
         ],
-        NOT: {
-          AND: [
-            { currentState: { in: ['SCHEDULED', 'CREATED'] } },
-            { scheduledTime: { gt: endDate || new Date() } },
-          ],
-        },
       },
       select: {
         id: true,
         displayId: true,
         currentState: true,
+        source: true,
         createdAt: true,
         scheduledTime: true,
         checkInTime: true,
@@ -136,9 +155,68 @@ export class AnalyticsService {
       },
     });
 
+    // Helper functions to differentiate actual visits vs scheduled bookings
+    const isActualVisit = (t: any): boolean => {
+      if (
+        t.checkInTime ||
+        t.actualArrival ||
+        t.serviceStart ||
+        t.waitingStart ||
+        t.completedAt
+      ) {
+        return true;
+      }
+      const activeStates = [
+        'CHECKED_IN',
+        'WAITING',
+        'CALLED',
+        'ASSIGNED',
+        'IN_SERVICE',
+        'COMPLETED',
+        'ON_HOLD',
+        'PENDING_PAYMENT',
+        'TRANSFERRED',
+      ];
+      if (activeStates.includes(t.currentState)) {
+        return true;
+      }
+      if (
+        t.source === 'WALK_IN' ||
+        (!t.scheduledTime && t.currentState !== 'CANCELLED')
+      ) {
+        return true;
+      }
+      return false;
+    };
+
+    const isScheduledBooking = (t: any): boolean => {
+      return (
+        (t.currentState === 'SCHEDULED' || t.currentState === 'CREATED') &&
+        !t.checkInTime &&
+        !t.actualArrival &&
+        !t.serviceStart
+      );
+    };
+
+    const getActualVisitTime = (t: any): Date => {
+      return (
+        t.actualArrival ||
+        t.checkInTime ||
+        t.serviceStart ||
+        t.waitingStart ||
+        t.completedAt ||
+        t.createdAt
+      );
+    };
+
+    const getScheduledBookingTime = (t: any): Date => {
+      return t.scheduledTime || t.createdAt;
+    };
+
     const kpiRaw = await this.prisma.$queryRaw<any[]>`
       SELECT 
-        COUNT(id)::int as total_visits,
+        COUNT(CASE WHEN NOT ("currentState" IN ('SCHEDULED', 'CREATED') AND "checkInTime" IS NULL AND "actualArrival" IS NULL AND "serviceStart" IS NULL) THEN 1 END)::int as total_visits,
+        COUNT(CASE WHEN ("currentState" IN ('SCHEDULED', 'CREATED') AND "checkInTime" IS NULL AND "actualArrival" IS NULL AND "serviceStart" IS NULL) THEN 1 END)::int as total_scheduled,
         COUNT(CASE WHEN "currentState" = 'COMPLETED' THEN 1 END)::int as total_completed,
         COUNT(CASE WHEN "currentState" IN ('NO_SHOW', 'CANCELLED', 'MISSED') THEN 1 END)::int as total_missed,
         COUNT(CASE WHEN "currentState" = 'CANCELLED' THEN 1 END)::int as total_cancelled,
@@ -153,13 +231,20 @@ export class AnalyticsService {
       FROM "Visit"
       WHERE "tenantId" = ${tenantId}
         ${locationId && locationId !== 'all' ? Prisma.sql`AND "locationId" = ${locationId}` : Prisma.empty}
-        AND COALESCE("checkInTime", "actualArrival", "serviceStart", "scheduledTime", "createdAt") >= ${startDate}
-        ${endDate ? Prisma.sql`AND COALESCE("checkInTime", "actualArrival", "serviceStart", "scheduledTime", "createdAt") <= ${endDate}` : Prisma.empty}
-        AND NOT ("currentState" IN ('SCHEDULED', 'CREATED') AND "scheduledTime" > ${endDate || new Date()})
+        AND (
+          ("scheduledTime" IS NOT NULL AND "scheduledTime" >= ${startDate} ${endDate ? Prisma.sql`AND "scheduledTime" <= ${endDate}` : Prisma.empty})
+          OR
+          ("scheduledTime" IS NULL AND "createdAt" >= ${startDate} ${endDate ? Prisma.sql`AND "createdAt" <= ${endDate}` : Prisma.empty})
+          OR
+          ("checkInTime" >= ${startDate} ${endDate ? Prisma.sql`AND "checkInTime" <= ${endDate}` : Prisma.empty})
+          OR
+          ("actualArrival" >= ${startDate} ${endDate ? Prisma.sql`AND "actualArrival" <= ${endDate}` : Prisma.empty})
+        )
     `;
 
     const rawStats = kpiRaw[0] || {};
     const totalVisitsCount = Number(rawStats.total_visits ?? 0);
+    const totalScheduledCount = Number(rawStats.total_scheduled ?? 0);
     const totalCompleted = Number(rawStats.total_completed ?? 0);
     const totalMissed = Number(rawStats.total_missed ?? 0);
     const totalCancelled = Number(rawStats.total_cancelled ?? 0);
@@ -379,8 +464,10 @@ export class AnalyticsService {
       .fill(0)
       .map(() => Array(24).fill(0));
     tokens.forEach((t: any) => {
-      const opTime = getVisitOperationalTime(t);
-      const d = toZonedTime(opTime, tz);
+      const opTime = isActualVisit(t)
+        ? getActualVisitTime(t)
+        : getScheduledBookingTime(t);
+      const d = toZonedTime(opTime, resolvedTz);
       const day = d.getDay();
       const hour = d.getHours();
       heatmapMatrix[day][hour]++;
@@ -392,7 +479,7 @@ export class AnalyticsService {
     };
 
     // 2. Chart Data - dynamically format based on timeframe:
-    // - Today / 1-day custom: Hourly (8:00 - 20:00)
+    // - Today / 1-day custom: Hourly (0:00 - 23:00 full 24h)
     // - Year / large ranges (> 90 days): Monthly (e.g. "Nov 2025")
     // - Week / Month / <= 90 days: Daily (e.g. "Mon 19" or "Oct 19")
     let chartData = [];
@@ -413,6 +500,8 @@ export class AnalyticsService {
         number,
         {
           timeLabel: string;
+          actualVisits: number;
+          scheduledBookings: number;
           volume: number;
           waitTimeSum: number;
           waitCount: number;
@@ -421,6 +510,8 @@ export class AnalyticsService {
       for (let i = 0; i < 24; i++) {
         hourlyDataMap.set(i, {
           timeLabel: `${i}:00`,
+          actualVisits: 0,
+          scheduledBookings: 0,
           volume: 0,
           waitTimeSum: 0,
           waitCount: 0,
@@ -428,17 +519,27 @@ export class AnalyticsService {
       }
 
       tokens.forEach((t: any) => {
-        const opTime = getVisitOperationalTime(t);
-        const h = parseInt(formatInTimeZone(opTime, tz, 'H'), 10);
-        if (hourlyDataMap.has(h)) {
-          const entry = hourlyDataMap.get(h)!;
-          entry.volume++;
-          if (t.serviceStart) {
-            entry.waitTimeSum +=
-              (t.serviceStart.getTime() -
-                (t.waitingStart?.getTime() || opTime.getTime())) /
-              60000;
-            entry.waitCount++;
+        if (isActualVisit(t)) {
+          const opTime = getActualVisitTime(t);
+          const h = parseInt(formatInTimeZone(opTime, resolvedTz, 'H'), 10);
+          if (hourlyDataMap.has(h)) {
+            const entry = hourlyDataMap.get(h)!;
+            entry.actualVisits++;
+            entry.volume++;
+            if (t.serviceStart) {
+              entry.waitTimeSum +=
+                (t.serviceStart.getTime() -
+                  (t.waitingStart?.getTime() || opTime.getTime())) /
+                60000;
+              entry.waitCount++;
+            }
+          }
+        } else if (isScheduledBooking(t)) {
+          const bookTime = getScheduledBookingTime(t);
+          const h = parseInt(formatInTimeZone(bookTime, resolvedTz, 'H'), 10);
+          if (hourlyDataMap.has(h)) {
+            const entry = hourlyDataMap.get(h)!;
+            entry.scheduledBookings++;
           }
         }
       });
@@ -446,6 +547,8 @@ export class AnalyticsService {
       chartData = Array.from(hourlyDataMap.values()).map((d) => ({
         timeLabel: d.timeLabel,
         volume: d.volume,
+        actualVisits: d.actualVisits,
+        scheduledBookings: d.scheduledBookings,
         avgWaitTime:
           d.waitCount > 0 ? Math.floor(d.waitTimeSum / d.waitCount) : 0,
       }));
@@ -455,26 +558,30 @@ export class AnalyticsService {
         string,
         {
           timeLabel: string;
+          actualVisits: number;
+          scheduledBookings: number;
           volume: number;
           waitTimeSum: number;
           waitCount: number;
         }
       >();
 
-      const curMonth = toZonedTime(startDate, tz);
+      const curMonth = toZonedTime(startDate, resolvedTz);
       curMonth.setDate(1);
       curMonth.setHours(0, 0, 0, 0);
 
-      const endMonth = toZonedTime(endCalcDate, tz);
+      const endMonth = toZonedTime(endCalcDate, resolvedTz);
       endMonth.setDate(1);
       endMonth.setHours(0, 0, 0, 0);
 
       while (curMonth <= endMonth) {
-        const utcDate = fromZonedTime(curMonth, tz);
-        const key = formatInTimeZone(utcDate, tz, 'yyyy-MM');
-        const label = formatInTimeZone(utcDate, tz, 'MMM yyyy');
+        const utcDate = fromZonedTime(curMonth, resolvedTz);
+        const key = formatInTimeZone(utcDate, resolvedTz, 'yyyy-MM');
+        const label = formatInTimeZone(utcDate, resolvedTz, 'MMM yyyy');
         monthlyDataMap.set(key, {
           timeLabel: label,
+          actualVisits: 0,
+          scheduledBookings: 0,
           volume: 0,
           waitTimeSum: 0,
           waitCount: 0,
@@ -483,17 +590,26 @@ export class AnalyticsService {
       }
 
       tokens.forEach((t: any) => {
-        const opTime = getVisitOperationalTime(t);
-        const key = formatInTimeZone(opTime, tz, 'yyyy-MM');
+        const isActual = isActualVisit(t);
+        const isSched = isScheduledBooking(t);
+        const opTime = isActual
+          ? getActualVisitTime(t)
+          : getScheduledBookingTime(t);
+        const key = formatInTimeZone(opTime, resolvedTz, 'yyyy-MM');
         if (monthlyDataMap.has(key)) {
           const entry = monthlyDataMap.get(key)!;
-          entry.volume++;
-          if (t.serviceStart) {
-            entry.waitTimeSum +=
-              (t.serviceStart.getTime() -
-                (t.waitingStart?.getTime() || opTime.getTime())) /
-              60000;
-            entry.waitCount++;
+          if (isActual) {
+            entry.actualVisits++;
+            entry.volume++;
+            if (t.serviceStart) {
+              entry.waitTimeSum +=
+                (t.serviceStart.getTime() -
+                  (t.waitingStart?.getTime() || opTime.getTime())) /
+                60000;
+              entry.waitCount++;
+            }
+          } else if (isSched) {
+            entry.scheduledBookings++;
           }
         }
       });
@@ -501,6 +617,8 @@ export class AnalyticsService {
       chartData = Array.from(monthlyDataMap.values()).map((d) => ({
         timeLabel: d.timeLabel,
         volume: d.volume,
+        actualVisits: d.actualVisits,
+        scheduledBookings: d.scheduledBookings,
         avgWaitTime:
           d.waitCount > 0 ? Math.floor(d.waitTimeSum / d.waitCount) : 0,
       }));
@@ -510,27 +628,31 @@ export class AnalyticsService {
         string,
         {
           timeLabel: string;
+          actualVisits: number;
+          scheduledBookings: number;
           volume: number;
           waitTimeSum: number;
           waitCount: number;
         }
       >();
 
-      const cur = toZonedTime(startDate, tz);
+      const cur = toZonedTime(startDate, resolvedTz);
       cur.setHours(0, 0, 0, 0);
-      const endZoned = toZonedTime(endCalcDate, tz);
+      const endZoned = toZonedTime(endCalcDate, resolvedTz);
       endZoned.setHours(0, 0, 0, 0);
 
       const showDayOfWeek = timeframe === '7d' || timeframe === 'week';
 
       while (cur <= endZoned) {
-        const utcDate = fromZonedTime(cur, tz);
-        const key = formatInTimeZone(utcDate, tz, 'yyyy-MM-dd');
+        const utcDate = fromZonedTime(cur, resolvedTz);
+        const key = formatInTimeZone(utcDate, resolvedTz, 'yyyy-MM-dd');
         const label = showDayOfWeek
-          ? formatInTimeZone(utcDate, tz, 'EEE d')
-          : formatInTimeZone(utcDate, tz, 'MMM d');
+          ? formatInTimeZone(utcDate, resolvedTz, 'EEE d')
+          : formatInTimeZone(utcDate, resolvedTz, 'MMM d');
         dailyDataMap.set(key, {
           timeLabel: label,
+          actualVisits: 0,
+          scheduledBookings: 0,
           volume: 0,
           waitTimeSum: 0,
           waitCount: 0,
@@ -539,17 +661,26 @@ export class AnalyticsService {
       }
 
       tokens.forEach((t: any) => {
-        const opTime = getVisitOperationalTime(t);
-        const key = formatInTimeZone(opTime, tz, 'yyyy-MM-dd');
+        const isActual = isActualVisit(t);
+        const isSched = isScheduledBooking(t);
+        const opTime = isActual
+          ? getActualVisitTime(t)
+          : getScheduledBookingTime(t);
+        const key = formatInTimeZone(opTime, resolvedTz, 'yyyy-MM-dd');
         if (dailyDataMap.has(key)) {
           const entry = dailyDataMap.get(key)!;
-          entry.volume++;
-          if (t.serviceStart) {
-            entry.waitTimeSum +=
-              (t.serviceStart.getTime() -
-                (t.waitingStart?.getTime() || opTime.getTime())) /
-              60000;
-            entry.waitCount++;
+          if (isActual) {
+            entry.actualVisits++;
+            entry.volume++;
+            if (t.serviceStart) {
+              entry.waitTimeSum +=
+                (t.serviceStart.getTime() -
+                  (t.waitingStart?.getTime() || opTime.getTime())) /
+                60000;
+              entry.waitCount++;
+            }
+          } else if (isSched) {
+            entry.scheduledBookings++;
           }
         }
       });
@@ -557,6 +688,8 @@ export class AnalyticsService {
       chartData = Array.from(dailyDataMap.values()).map((d) => ({
         timeLabel: d.timeLabel,
         volume: d.volume,
+        actualVisits: d.actualVisits,
+        scheduledBookings: d.scheduledBookings,
         avgWaitTime:
           d.waitCount > 0 ? Math.floor(d.waitTimeSum / d.waitCount) : 0,
       }));
@@ -613,6 +746,7 @@ export class AnalyticsService {
     return {
       kpis: {
         totalVisits: totalVisitsCount,
+        totalScheduled: totalScheduledCount,
         totalServed,
         totalCompleted,
         totalCancelled,
@@ -660,6 +794,7 @@ export class AnalyticsService {
     lines.push('--- Key Performance Indicators ---');
     lines.push('Metric,Value');
     lines.push(`Total Visits,${data.kpis.totalVisits}`);
+    lines.push(`Total Scheduled Bookings,${data.kpis.totalScheduled || 0}`);
     lines.push(`Total Served,${data.kpis.totalServed}`);
     lines.push(`Total Completed,${data.kpis.totalCompleted}`);
     lines.push(`Total Cancelled,${data.kpis.totalCancelled}`);

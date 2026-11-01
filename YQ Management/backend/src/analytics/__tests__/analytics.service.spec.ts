@@ -64,6 +64,7 @@ describe('AnalyticsService', () => {
     expect(result).toBeDefined();
     expect(result.kpis).toEqual({
       totalVisits: 12,
+      totalScheduled: 0,
       totalServed: 6,
       totalCompleted: 7,
       totalCancelled: 1,
@@ -88,6 +89,7 @@ describe('AnalyticsService', () => {
     expect(result).toBeDefined();
     expect(result.kpis).toEqual({
       totalVisits: 0,
+      totalScheduled: 0,
       totalServed: 0,
       totalCompleted: 0,
       totalCancelled: 0,
@@ -240,5 +242,64 @@ describe('AnalyticsService', () => {
     expect(result.customerReviews[1].id).toBe('visit-1');
     expect(result.customerReviews[1].feedbackText).toBe('Loved the service!');
     expect(result.customerReviews[1].operatorName).toBe('Sarah');
+  });
+
+  it('should not count unarrived future scheduled bookings as actual visits in volume or KPIs', async () => {
+    mockPrisma.$queryRaw.mockResolvedValue([
+      {
+        total_visits: 0,
+        total_scheduled: 1,
+        total_completed: 0,
+        total_missed: 0,
+        total_cancelled: 0,
+        total_no_show: 0,
+        total_wait_time_secs: 0,
+        wait_time_count: 0,
+        sla_violations: 0,
+        total_service_time_secs: 0,
+        service_time_count: 0,
+        total_rating: 0,
+        rating_count: 0,
+      },
+    ]);
+
+    const scheduledDateAt14 = new Date();
+    scheduledDateAt14.setUTCHours(14, 0, 0, 0);
+
+    mockPrisma.visit.findMany.mockResolvedValue([
+      {
+        id: 'scheduled-visit-1',
+        displayId: 'Q001',
+        currentState: 'SCHEDULED',
+        scheduledTime: scheduledDateAt14,
+        checkInTime: null,
+        actualArrival: null,
+        serviceStart: null,
+        completedAt: null,
+        createdAt: new Date(),
+        rating: null,
+        feedbackText: null,
+        customer: { name: 'Future Customer' },
+        service: { name: 'Consultation' },
+        queue: { name: 'Main' },
+        operatorUser: null,
+      },
+    ]);
+
+    const result = await service.getDashboardAnalytics(
+      'tenant-123',
+      'today',
+      'UTC',
+    );
+
+    expect(result.kpis.totalVisits).toBe(0);
+    expect(result.kpis.totalScheduled).toBe(1);
+
+    // In hourly chart, hour 14:00 should have volume = 0, actualVisits = 0, but scheduledBookings = 1
+    const hour14 = result.chartData.find((d: any) => d.timeLabel === '14:00');
+    expect(hour14).toBeDefined();
+    expect(hour14.volume).toBe(0);
+    expect(hour14.actualVisits).toBe(0);
+    expect(hour14.scheduledBookings).toBe(1);
   });
 });
