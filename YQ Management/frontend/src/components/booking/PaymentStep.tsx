@@ -132,9 +132,17 @@ const CheckoutForm = ({
     >
       {/* Header */}
       <div className="text-center space-y-2">
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          <span>256-Bit SSL Encrypted Checkout</span>
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
+            <ShieldCheck className="w-3.5 h-3.5" />
+            <span>256-Bit SSL Encrypted</span>
+          </div>
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#635BFF]/10 border border-[#635BFF]/25 text-[#635BFF] dark:text-[#7A73FF] text-xs font-bold tracking-wide">
+            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
+            </svg>
+            <span>Powered by Stripe</span>
+          </div>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
           Secure Payment
@@ -307,10 +315,11 @@ const CheckoutForm = ({
         <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 px-1 text-[11px] text-gray-500 dark:text-zinc-400">
           <div className="flex items-center gap-1.5 font-medium">
             <span>Powered by</span>
-            <span className="inline-flex items-center gap-1 font-bold text-[#635BFF] dark:text-[#7A73FF]">
-              <svg className="h-3.5 w-auto" viewBox="0 0 60 25" fill="currentColor">
-                <path fillRule="evenodd" clipRule="evenodd" d="M59.64 14.28c0-4.3-2.1-7.7-6.26-7.7-4.18 0-6.72 3.4-6.72 7.68 0 5.09 3.06 7.74 7.27 7.74 2.05 0 3.61-.46 4.79-1.19v-3.32c-1.18.66-2.5 1.05-4.15 1.05-1.64 0-3.08-.63-3.29-2.48h8.31c0-.23.05-1.15.05-1.78zm-8.35-1.52c.07-1.72 1.05-2.41 2.12-2.41 1.05 0 2.01.69 2.08 2.41h-4.2zm-9.35-6.18h-4.32v15.17h4.32V6.58zm-2.17-5.06c1.47 0 2.47-.98 2.47-2.22C42.24.98 41.25 0 39.77 0c-1.48 0-2.48.98-2.48 2.22 0 1.24 1 2.22 2.48 2.22zm-7.9 5.06h-4.25v2.32c-.89-1.54-2.44-2.5-4.52-2.5-3.66 0-6.75 3.12-6.75 7.64 0 4.54 3.09 7.66 6.75 7.66 2.08 0 3.63-.96 4.52-2.5v2.38h4.25V6.58zm-4.32 7.46c0 2.5-1.73 4.2-3.8 4.2-2.06 0-3.79-1.7-3.79-4.2 0-2.49 1.73-4.19 3.79-4.19 2.07 0 3.8 1.7 3.8 4.19zm-13.6-7.46l-2.4 8.21-2.46-8.21h-4.63l4.63 12.39-4.21 2.78h4.63l8.77-15.17h-4.33zm-13.7 0c-1.07 0-2.02.44-2.73 1.15V6.58H0v20.48h4.32v-7.85c.71.71 1.66 1.15 2.73 1.15 3.32 0 6.07-2.82 6.07-6.89 0-4.08-2.75-6.89-6.07-6.89zm-.74 10.3c-2.07 0-3.64-1.56-3.64-3.41s1.57-3.41 3.64-3.41c2.08 0 3.65 1.56 3.65 3.41s-1.57 3.41-3.65 3.41z"/>
+            <span className="inline-flex items-center gap-1 font-bold text-sm text-[#635BFF] dark:text-[#7A73FF]">
+              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
               </svg>
+              <span>stripe</span>
             </span>
           </div>
 
