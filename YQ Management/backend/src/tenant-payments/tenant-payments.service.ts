@@ -331,6 +331,7 @@ export class TenantPaymentsService {
         {
           amount: finalAmount,
           currency,
+          automatic_payment_methods: { enabled: true },
           application_fee_amount: applicationFeeAmount,
           metadata: {
             ...metadata,
