@@ -1109,7 +1109,7 @@ export class VisitService {
 
       const stripeActive = Boolean(
         tenant?.paymentAccount?.chargesEnabled &&
-          tenant?.paymentAccount?.connectedAccountId,
+        tenant?.paymentAccount?.connectedAccountId,
       );
 
       // Check if online Stripe payment is applicable for this booking

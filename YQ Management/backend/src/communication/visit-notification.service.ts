@@ -500,14 +500,13 @@ export class VisitNotificationService {
     const isCustomerCancelled =
       payload.cancelledBy === 'CUSTOMER' ||
       (visit as any).cancelledBy === 'CUSTOMER' ||
-      ((visit.metadata as any)?.cancellation?.cancelledBy === 'CUSTOMER');
+      (visit.metadata as any)?.cancellation?.cancelledBy === 'CUSTOMER';
 
     const defaultReason = isCustomerCancelled
       ? 'Cancelled by customer'
       : 'Cancelled by staff';
 
-    let reason =
-      payload.cancelReason || visit.cancelReason || defaultReason;
+    let reason = payload.cancelReason || visit.cancelReason || defaultReason;
 
     if (isCustomerCancelled && reason === 'Cancelled by staff') {
       reason = 'Cancelled by customer';

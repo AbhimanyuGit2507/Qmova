@@ -633,8 +633,7 @@ export class MessagesService {
     const now = new Date();
     const upcomingAppointments = appointments
       .filter(
-        (a) =>
-          new Date(a.scheduledStart) >= now && a.status !== 'CANCELLED',
+        (a) => new Date(a.scheduledStart) >= now && a.status !== 'CANCELLED',
       )
       .map((a) => ({
         id: a.id,
@@ -760,8 +759,7 @@ export class MessagesService {
       (sum, b) => sum + (b.amount || 0),
       0,
     );
-    const currency =
-      pastBookings.find((b) => b.currency)?.currency || 'INR';
+    const currency = pastBookings.find((b) => b.currency)?.currency || 'INR';
 
     const ratedItems = pastBookings.filter(
       (b) => typeof b.rating === 'number' && b.rating > 0,
@@ -878,7 +876,9 @@ export class MessagesService {
           ...(body.email !== undefined ? { email: body.email } : {}),
           ...(body.notes !== undefined ? { notes: body.notes } : {}),
           ...(body.isVip !== undefined ? { isVip: body.isVip } : {}),
-          ...(body.isBlocked !== undefined ? { isBlocked: body.isBlocked } : {}),
+          ...(body.isBlocked !== undefined
+            ? { isBlocked: body.isBlocked }
+            : {}),
         },
       });
     } else {

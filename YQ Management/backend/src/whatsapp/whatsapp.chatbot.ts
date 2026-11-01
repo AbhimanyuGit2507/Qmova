@@ -573,10 +573,12 @@ export class WhatsappChatbot {
     });
 
     if (visit.appointmentId) {
-      await this.prisma.appointment.update({
-        where: { id: visit.appointmentId },
-        data: { status: 'CANCELLED' },
-      }).catch(() => null);
+      await this.prisma.appointment
+        .update({
+          where: { id: visit.appointmentId },
+          data: { status: 'CANCELLED' },
+        })
+        .catch(() => null);
     }
 
     await this.prisma.outboxEvent.create({

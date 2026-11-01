@@ -310,9 +310,9 @@ export class TenantPaymentsService {
     // Stripe requires non-settlement currencies to convert to at least 30 GBP pence (~R8.00 / $0.50 / €0.50)
     const minAmountsInCents: Record<string, number> = {
       zar: 800, // R8.00 (~35p) safely meets Stripe 30 pence requirement
-      gbp: 30,  // 30p
-      usd: 50,  // $0.50
-      eur: 50,  // €0.50
+      gbp: 30, // 30p
+      usd: 50, // $0.50
+      eur: 50, // €0.50
     };
     const minRequired = minAmountsInCents[currency] || 50;
     if (finalAmount < minRequired) {
@@ -554,7 +554,9 @@ export class TenantPaymentsService {
         this.redisService.client
           .publish('outbox_events', 'WAKE_UP')
           .catch((err: any) =>
-            this.logger.warn(`Failed to wake up outbox via Redis: ${err.message}`),
+            this.logger.warn(
+              `Failed to wake up outbox via Redis: ${err.message}`,
+            ),
           );
       }
 
@@ -604,7 +606,9 @@ export class TenantPaymentsService {
       ? (method.toUpperCase() as any)
       : 'OTHER';
     if (typeof amount !== 'number' || isNaN(amount) || amount < 0) {
-      throw new BadRequestException('Amount must be a valid non-negative number');
+      throw new BadRequestException(
+        'Amount must be a valid non-negative number',
+      );
     }
     const visit = await this.prisma.visit.findUnique({
       where: { id: visitId },
@@ -646,7 +650,11 @@ export class TenantPaymentsService {
           (visit.currentState === 'PENDING_PAYMENT' ? 'CHECKIN' : 'CHECKOUT'),
         recordedByStaffId: extra.staffId,
         proofUrl: extra.proofUrl,
-        description: description || (amount === 0 ? 'Complimentary / Free Service' : 'Manual Payment at Counter'),
+        description:
+          description ||
+          (amount === 0
+            ? 'Complimentary / Free Service'
+            : 'Manual Payment at Counter'),
       },
     });
 
@@ -1060,7 +1068,11 @@ export class TenantPaymentsService {
     } else if (query.timeframe && query.timeframe !== 'all') {
       const now = new Date();
       if (query.timeframe === 'today') {
-        const start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+        const start = new Date(
+          now.getFullYear(),
+          now.getMonth(),
+          now.getDate(),
+        );
         where.createdAt = { gte: start };
       } else if (query.timeframe === '7d' || query.timeframe === 'week') {
         const past = new Date(now.getTime() - 7 * 86400000);
@@ -1081,12 +1093,30 @@ export class TenantPaymentsService {
         { description: { contains: s, mode: 'insensitive' } },
         { stripePaymentIntentId: { contains: s, mode: 'insensitive' } },
         { visit: { customer: { name: { contains: s, mode: 'insensitive' } } } },
-        { visit: { customer: { phone: { contains: s, mode: 'insensitive' } } } },
-        { visit: { customer: { email: { contains: s, mode: 'insensitive' } } } },
+        {
+          visit: { customer: { phone: { contains: s, mode: 'insensitive' } } },
+        },
+        {
+          visit: { customer: { email: { contains: s, mode: 'insensitive' } } },
+        },
         { visit: { displayId: { contains: s, mode: 'insensitive' } } },
-        { visit: { visitInvoice: { invoiceNumber: { contains: s, mode: 'insensitive' } } } },
-        { appointment: { customer: { name: { contains: s, mode: 'insensitive' } } } },
-        { appointment: { customer: { phone: { contains: s, mode: 'insensitive' } } } },
+        {
+          visit: {
+            visitInvoice: {
+              invoiceNumber: { contains: s, mode: 'insensitive' },
+            },
+          },
+        },
+        {
+          appointment: {
+            customer: { name: { contains: s, mode: 'insensitive' } },
+          },
+        },
+        {
+          appointment: {
+            customer: { phone: { contains: s, mode: 'insensitive' } },
+          },
+        },
       ];
 
       if (where.AND) {
@@ -1171,9 +1201,18 @@ export class TenantPaymentsService {
     let refundedAmount = 0;
     let pendingCount = 0;
 
-    const locationBreakdownMap = new Map<string, { id: string; name: string; revenue: number; count: number }>();
-    const serviceBreakdownMap = new Map<string, { id: string; name: string; revenue: number; count: number }>();
-    const methodBreakdownMap = new Map<string, { method: string; revenue: number; count: number }>();
+    const locationBreakdownMap = new Map<
+      string,
+      { id: string; name: string; revenue: number; count: number }
+    >();
+    const serviceBreakdownMap = new Map<
+      string,
+      { id: string; name: string; revenue: number; count: number }
+    >();
+    const methodBreakdownMap = new Map<
+      string,
+      { method: string; revenue: number; count: number }
+    >();
 
     for (const p of allMatchingForMetrics) {
       const isSucceeded = p.status === 'SUCCEEDED';
@@ -1186,7 +1225,12 @@ export class TenantPaymentsService {
         const locId = loc?.id || 'unknown';
         const locName = loc?.name || 'Unassigned Location';
         if (!locationBreakdownMap.has(locId)) {
-          locationBreakdownMap.set(locId, { id: locId, name: locName, revenue: 0, count: 0 });
+          locationBreakdownMap.set(locId, {
+            id: locId,
+            name: locName,
+            revenue: 0,
+            count: 0,
+          });
         }
         const locItem = locationBreakdownMap.get(locId)!;
         locItem.revenue += p.amount;
@@ -1197,7 +1241,12 @@ export class TenantPaymentsService {
         const svcId = svc?.id || 'unknown';
         const svcName = svc?.name || 'General Service';
         if (!serviceBreakdownMap.has(svcId)) {
-          serviceBreakdownMap.set(svcId, { id: svcId, name: svcName, revenue: 0, count: 0 });
+          serviceBreakdownMap.set(svcId, {
+            id: svcId,
+            name: svcName,
+            revenue: 0,
+            count: 0,
+          });
         }
         const svcItem = serviceBreakdownMap.get(svcId)!;
         svcItem.revenue += p.amount;
@@ -1206,7 +1255,11 @@ export class TenantPaymentsService {
         // Payment method breakdown
         const methodKey = p.method || 'OTHER';
         if (!methodBreakdownMap.has(methodKey)) {
-          methodBreakdownMap.set(methodKey, { method: methodKey, revenue: 0, count: 0 });
+          methodBreakdownMap.set(methodKey, {
+            method: methodKey,
+            revenue: 0,
+            count: 0,
+          });
         }
         const mItem = methodBreakdownMap.get(methodKey)!;
         mItem.revenue += p.amount;
@@ -1233,9 +1286,15 @@ export class TenantPaymentsService {
       }
     }
 
-    const locationBreakdown = Array.from(locationBreakdownMap.values()).sort((a, b) => b.revenue - a.revenue);
-    const serviceBreakdown = Array.from(serviceBreakdownMap.values()).sort((a, b) => b.revenue - a.revenue);
-    const methodBreakdown = Array.from(methodBreakdownMap.values()).sort((a, b) => b.revenue - a.revenue);
+    const locationBreakdown = Array.from(locationBreakdownMap.values()).sort(
+      (a, b) => b.revenue - a.revenue,
+    );
+    const serviceBreakdown = Array.from(serviceBreakdownMap.values()).sort(
+      (a, b) => b.revenue - a.revenue,
+    );
+    const methodBreakdown = Array.from(methodBreakdownMap.values()).sort(
+      (a, b) => b.revenue - a.revenue,
+    );
 
     return {
       payments: payments.map((p) => {
@@ -1362,17 +1421,17 @@ export class TenantPaymentsService {
 
     switch (event.type) {
       case 'payment_intent.succeeded': {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        const paymentIntent = event.data.object;
         await this.handlePaymentIntentSucceeded(paymentIntent);
         break;
       }
       case 'payment_intent.payment_failed': {
-        const paymentIntent = event.data.object as Stripe.PaymentIntent;
+        const paymentIntent = event.data.object;
         await this.handlePaymentIntentFailed(paymentIntent);
         break;
       }
       case 'account.updated': {
-        const account = event.data.object as Stripe.Account;
+        const account = event.data.object;
         await this.handleAccountUpdated(account);
         break;
       }
@@ -1388,7 +1447,9 @@ export class TenantPaymentsService {
       where: {
         OR: [
           { stripePaymentIntentId: intent.id },
-          ...(intent.metadata?.paymentId ? [{ id: intent.metadata.paymentId }] : []),
+          ...(intent.metadata?.paymentId
+            ? [{ id: intent.metadata.paymentId }]
+            : []),
         ],
       },
       include: { paymentAccount: true },
@@ -1402,13 +1463,17 @@ export class TenantPaymentsService {
     }
 
     if (payment.status === 'SUCCEEDED') {
-      this.logger.log(`Payment ${payment.id} already marked SUCCEEDED. Idempotent skip.`);
+      this.logger.log(
+        `Payment ${payment.id} already marked SUCCEEDED. Idempotent skip.`,
+      );
       return;
     }
 
     const method = intent.payment_method_types?.[0] || 'CARD';
     await this.completePayment(payment.id, method);
-    this.logger.log(`Payment ${payment.id} successfully marked SUCCEEDED via webhook.`);
+    this.logger.log(
+      `Payment ${payment.id} successfully marked SUCCEEDED via webhook.`,
+    );
   }
 
   private async handlePaymentIntentFailed(intent: Stripe.PaymentIntent) {
@@ -1416,7 +1481,9 @@ export class TenantPaymentsService {
       where: {
         OR: [
           { stripePaymentIntentId: intent.id },
-          ...(intent.metadata?.paymentId ? [{ id: intent.metadata.paymentId }] : []),
+          ...(intent.metadata?.paymentId
+            ? [{ id: intent.metadata.paymentId }]
+            : []),
         ],
       },
     });
@@ -1431,7 +1498,9 @@ export class TenantPaymentsService {
       },
     });
 
-    this.logger.warn(`Payment ${payment.id} marked FAILED via webhook: ${intent.last_payment_error?.message}`);
+    this.logger.warn(
+      `Payment ${payment.id} marked FAILED via webhook: ${intent.last_payment_error?.message}`,
+    );
   }
 
   private async handleAccountUpdated(account: Stripe.Account) {

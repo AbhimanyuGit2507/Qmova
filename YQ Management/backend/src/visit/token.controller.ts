@@ -56,19 +56,20 @@ export class TokenController {
     // Check if online Stripe payment is enabled and required for this service
     const stripeActive = Boolean(
       tenant.paymentAccount?.chargesEnabled &&
-        tenant.paymentAccount?.connectedAccountId,
+      tenant.paymentAccount?.connectedAccountId,
     );
     const flow = service.serviceFlow;
     const isOnlinePaid = flow?.isActive
-      ? (flow.paymentTiming === 'BOOKING' || flow.paymentTiming === 'CHECKIN') &&
+      ? (flow.paymentTiming === 'BOOKING' ||
+          flow.paymentTiming === 'CHECKIN') &&
         (service.basePrice ?? 0) > 0 &&
         flow.checkinPayMode !== 'COUNTER_ONLY' &&
         stripeActive
-      : ((service.paymentMode === 'PREPAY' ||
+      : (service.paymentMode === 'PREPAY' ||
           service.paymentMode === 'OPTIONAL_PREPAY' ||
           service.paymentMode === 'PAY_AT_SERVICE') &&
-          (service.basePrice ?? 0) > 0 &&
-          stripeActive);
+        (service.basePrice ?? 0) > 0 &&
+        stripeActive;
 
     // If online Stripe payment applies and user is not explicitly paying at counter, bypass OTP
     if (isOnlinePaid && !body.payAtCounter) {

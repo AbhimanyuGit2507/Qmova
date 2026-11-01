@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { toZonedTime, fromZonedTime, format, formatInTimeZone } from 'date-fns-tz';
+import {
+  toZonedTime,
+  fromZonedTime,
+  format,
+  formatInTimeZone,
+} from 'date-fns-tz';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
@@ -46,7 +51,11 @@ export class AnalyticsService {
       const startParsed = new Date(startDateInput);
       const endParsed = new Date(endDateInput || startDateInput);
 
-      const startDayStr = formatInTimeZone(startParsed, resolvedTz, 'yyyy-MM-dd');
+      const startDayStr = formatInTimeZone(
+        startParsed,
+        resolvedTz,
+        'yyyy-MM-dd',
+      );
       const endDayStr = formatInTimeZone(endParsed, resolvedTz, 'yyyy-MM-dd');
 
       startDate = fromZonedTime(`${startDayStr}T00:00:00.000`, resolvedTz);
@@ -94,7 +103,11 @@ export class AnalyticsService {
           accountCreated = earliestVisit.createdAt;
         }
 
-        const startDayStr = formatInTimeZone(accountCreated, resolvedTz, 'yyyy-MM-dd');
+        const startDayStr = formatInTimeZone(
+          accountCreated,
+          resolvedTz,
+          'yyyy-MM-dd',
+        );
         startDate = fromZonedTime(`${startDayStr}T00:00:00.000`, resolvedTz);
         endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else {
