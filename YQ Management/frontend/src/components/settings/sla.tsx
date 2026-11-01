@@ -117,7 +117,7 @@ export default function SlaPoliciesPage() {
                 value={formData.name} 
                 onChange={e => setFormData({ ...formData, name: e.target.value })}
                 className="w-full bg-card dark:bg-dark-card border border-border dark:border-dark-border px-3 py-2 rounded-lg text-sm focus:border-primary outline-none" 
-                placeholder="e.g. VIP Urgent Care"
+                placeholder="e.g. Priority Care"
               />
             </div>
             <div>

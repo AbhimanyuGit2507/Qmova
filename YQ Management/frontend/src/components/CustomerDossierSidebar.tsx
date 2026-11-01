@@ -20,7 +20,6 @@ import {
   ChevronDown,
   ChevronUp,
   Check,
-  Crown,
   History,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -110,10 +109,6 @@ export function CustomerDossierSidebar({
     });
   };
 
-  const handleToggleVip = () => {
-    const newVip = !dossier?.customer?.isVip;
-    updateCustomerMutation.mutate({ isVip: newVip });
-  };
 
   const handleToggleBlock = () => {
     const newBlocked = !dossier?.customer?.isBlocked;
@@ -253,19 +248,11 @@ export function CustomerDossierSidebar({
             {/* ── Identity & Contact Card ─────────────────────────────────── */}
             <div className="p-4 rounded-2xl bg-surface-container-low dark:bg-white/5 border border-border dark:border-dark-border relative">
               <div className="flex items-start gap-3.5">
-                {/* Avatar with VIP badge */}
+                {/* Avatar */}
                 <div className="relative shrink-0">
                   <div className="w-13 h-13 rounded-full bg-linear-to-br from-indigo-500 to-purple-600 text-white flex items-center justify-center text-lg font-bold shadow-xs">
                     {initial}
                   </div>
-                  {customer?.isVip && (
-                    <div
-                      className="absolute -top-1 -right-1 w-5 h-5 rounded-full bg-amber-400 text-amber-950 flex items-center justify-center shadow-xs"
-                      title="VIP Client"
-                    >
-                      <Crown className="w-3 h-3 fill-current" />
-                    </div>
-                  )}
                 </div>
 
                 {/* Identity Info or Inline Edit */}
@@ -370,18 +357,6 @@ export function CustomerDossierSidebar({
 
               {/* Badges Bar */}
               <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-border/70 dark:border-dark-border/70 flex-wrap">
-                <button
-                  onClick={handleToggleVip}
-                  className={`px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 transition-all cursor-pointer ${
-                    customer?.isVip
-                      ? 'bg-amber-400/20 text-amber-600 dark:text-amber-400 border border-amber-400/30'
-                      : 'bg-surface-container dark:bg-white/5 text-outline hover:text-on-surface border border-transparent'
-                  }`}
-                  title="Toggle VIP Status"
-                >
-                  <Crown className="w-2.5 h-2.5" />
-                  {customer?.isVip ? 'VIP Client' : 'Mark VIP'}
-                </button>
 
                 {(stats?.totalBookings || 0) > 1 ? (
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">

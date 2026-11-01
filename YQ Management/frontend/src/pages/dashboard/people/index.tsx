@@ -1524,11 +1524,6 @@ export default function RecordsPage() {
                               >
                                 {person.name || 'Anonymous Customer'}
                               </p>
-                              {person.isVip && (
-                                <span className="inline-block text-[10px] font-bold text-amber-500 uppercase tracking-widest">
-                                  VIP
-                                </span>
-                              )}
                             </div>
                           </div>
                         </td>

@@ -575,10 +575,10 @@ export default function QueueDetails() {
                       ...formData, 
                       tokenDisplayConfig: { ...formData.tokenDisplayConfig, prefix: e.target.value }
                     })}
-                    placeholder="e.g. A, VIP, EX"
+                    placeholder="e.g. A, PR, EX"
                     className="w-full h-[44px] px-4 rounded-xl border border-border dark:border-dark-border bg-canvas dark:bg-black/50 focus:border-primary focus:ring-1 focus:ring-primary outline-none transition-shadow font-body-md text-on-surface dark:text-white uppercase" 
                   />
-                  <p className="font-body-sm text-outline mt-2">Appended before the token number (e.g. VIP-001)</p>
+                  <p className="font-body-sm text-outline mt-2">Appended before the token number (e.g. PR-001)</p>
                 </div>
 
                 <div>

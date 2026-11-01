@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useMyDesk } from '../MyDeskContext';
 import { fetchApi } from '../../../lib/api';
-import { History, Star, ShieldAlert, Award, Calendar, CheckCircle2, XCircle } from 'lucide-react';
+import { History, Star, ShieldAlert, Calendar, CheckCircle2, XCircle } from 'lucide-react';
 
 export const CustomerHistoryWidget = ({ widgetId }: { widgetId: string }) => {
   const { activeVisit } = useMyDesk();
@@ -76,11 +76,6 @@ export const CustomerHistoryWidget = ({ widgetId }: { widgetId: string }) => {
       <div className="flex justify-between items-center mb-3 shrink-0">
         <div className="flex items-center gap-2">
           <h3 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Customer History</h3>
-          {customerDetails?.isVip && (
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-              <Award className="w-3 h-3" /> VIP
-            </span>
-          )}
           {customerDetails?.isBlocked && (
             <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold bg-rose-100 text-rose-800 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
               <ShieldAlert className="w-3 h-3" /> Blocked

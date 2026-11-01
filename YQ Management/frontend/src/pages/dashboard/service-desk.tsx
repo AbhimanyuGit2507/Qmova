@@ -760,8 +760,9 @@ export default function ServiceDeskToday() {
   });
 
   const [queueFilter, setQueueFilter] = useState<
-    "all" | "walkin" | "appointment"
+    "all" | "walkin" | "appointment" | "completed"
   >("all");
+  const [showCompletedSection, setShowCompletedSection] = useState(true);
 
   useEffect(() => {
     if (tenant?.operatingMode === "APPOINTMENTS") {
@@ -943,65 +944,6 @@ export default function ServiceDeskToday() {
     return v;
   }, [visits, user]);
 
-  const fulfillmentMetrics = React.useMemo(() => {
-    const isEventOrJourney =
-      tenant?.businessType === "events_and_invitations" ||
-      tenant?.operatingMode === "JOURNEY";
-
-    let totalRegistered = 0;
-    let checkedIn = 0;
-    let totalAllocated = 0;
-    let totalGiven = 0;
-    let unitName = "Items";
-    let hasCollection = false;
-
-    (filteredVisits || []).forEach((v: AnyFixMe) => {
-      // Exclude cancelled, missed, or no-show visits from active fulfillment counters
-      if (
-        v.currentState === "CANCELLED" ||
-        v.currentState === "NO_SHOW" ||
-        v.currentState === "MISSED"
-      ) {
-        return;
-      }
-
-      totalRegistered++;
-      if (
-        v.currentState === "CHECKED_IN" ||
-        v.currentState === "IN_SERVICE" ||
-        v.currentState === "COMPLETED" ||
-        v.checkInTime !== null
-      ) {
-        checkedIn++;
-      }
-      const collectionStep = v.visitSteps?.find(
-        (s: AnyFixMe) =>
-          (s.templateStep?.type === "COLLECTION" || s.quantityAllocated) &&
-          s.status !== "CANCELLED" &&
-          s.status !== "SKIPPED",
-      );
-      if (collectionStep) {
-        hasCollection = true;
-        totalAllocated += collectionStep.quantityAllocated || 0;
-        totalGiven += collectionStep.quantityRedeemed || 0;
-        if (collectionStep.templateStep?.entitlementUnit) {
-          unitName = collectionStep.templateStep.entitlementUnit;
-        }
-      }
-    });
-
-    if (!isEventOrJourney && !hasCollection) return null;
-    if (totalRegistered === 0 && !isEventOrJourney) return null;
-
-    return {
-      totalRegistered,
-      checkedIn,
-      totalAllocated,
-      totalGiven,
-      outstanding: Math.max(0, totalAllocated - totalGiven),
-      unitName,
-    };
-  }, [filteredVisits, tenant]);
 
   const filteredAppointments = React.useMemo(() => {
     let a = pendingAppointments || [];
@@ -1076,6 +1018,31 @@ export default function ServiceDeskToday() {
   const upcomingPool = upcomingVisits.sort(
     (a: AnyFixMe, b: AnyFixMe) => getEffectiveTime(a) - getEffectiveTime(b),
   );
+
+  const completedPool = React.useMemo(() => {
+    const fromVisits = filteredVisits.filter(
+      (v: AnyFixMe) => v.currentState === "COMPLETED",
+    );
+    const fromTokens = filteredQueues.flatMap((q: AnyFixMe) =>
+      (q.tokens || [])
+        .filter((t: AnyFixMe) => t.status === "COMPLETED")
+        .map((t: AnyFixMe) => ({
+          ...t,
+          isToken: true,
+          customer: { name: t.customerName, phone: t.phone },
+          waitingStart: t.joinedAt,
+          service: q.services?.[0] || { name: q.name },
+          location: q.location || { name: "Queue" },
+          ticketNumber: `#TKT-${t.id.substring(0, 4)}`,
+          currentState: "COMPLETED",
+        })),
+    );
+    return [...fromVisits, ...fromTokens].sort((a: AnyFixMe, b: AnyFixMe) => {
+      const timeA = new Date(a.completedAt || a.updatedAt || a.createdAt).getTime();
+      const timeB = new Date(b.completedAt || b.updatedAt || b.createdAt).getTime();
+      return timeB - timeA;
+    });
+  }, [filteredVisits, filteredQueues]);
 
   const inServiceVisitsUnsorted = [
     ...filteredVisits.filter((v: AnyFixMe) => v.currentState === "IN_SERVICE"),
@@ -1472,6 +1439,7 @@ export default function ServiceDeskToday() {
         v.displayId?.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesType =
         queueFilter === "all" ||
+        queueFilter === "completed" ||
         (queueFilter === "appointment" &&
           (v.source === "APPOINTMENT" || v.scheduledTime)) ||
         (queueFilter === "walkin" &&
@@ -1482,6 +1450,7 @@ export default function ServiceDeskToday() {
 
   const displayArrived = applyFilters(arrivedPool);
   const displayUpcoming = applyFilters(upcomingPool);
+  const displayCompleted = applyFilters(completedPool);
   const displayTimeline = [...displayArrived, ...displayUpcoming].sort(
     (a: AnyFixMe, b: AnyFixMe) => getEffectiveTime(a) - getEffectiveTime(b),
   );
@@ -1809,64 +1778,6 @@ export default function ServiceDeskToday() {
             )}
           </div>
 
-          {fulfillmentMetrics && (
-            <div className="mt-4 pt-4 border-t border-border dark:border-dark-border">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-label-caps text-label-caps text-outline uppercase tracking-wider text-[11px]">
-                  Attendance & Fulfillment
-                </h3>
-                <span className="text-[10px] px-2 py-0.5 rounded-full font-semibold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                  {fulfillmentMetrics.unitName}
-                </span>
-              </div>
-              <div className="grid grid-cols-2 gap-2">
-                <div className="bg-surface-container dark:bg-zinc-800/60 p-2.5 rounded-xl border border-border dark:border-zinc-700/60">
-                  <div className="text-[10px] text-outline font-semibold mb-0.5">
-                    Registered
-                  </div>
-                  <div className="text-base font-bold font-data-mono text-on-surface dark:text-white">
-                    {fulfillmentMetrics.totalRegistered}
-                  </div>
-                </div>
-                <div className="bg-surface-container dark:bg-zinc-800/60 p-2.5 rounded-xl border border-border dark:border-zinc-700/60">
-                  <div className="text-[10px] text-outline font-semibold mb-0.5">
-                    Checked In
-                  </div>
-                  <div className="text-base font-bold font-data-mono text-emerald-600 dark:text-emerald-400">
-                    {fulfillmentMetrics.checkedIn}
-                  </div>
-                </div>
-                <div className="bg-surface-container dark:bg-zinc-800/60 p-2.5 rounded-xl border border-border dark:border-zinc-700/60">
-                  <div className="text-[10px] text-outline font-semibold mb-0.5">
-                    Allocated
-                  </div>
-                  <div className="text-base font-bold font-data-mono text-on-surface dark:text-white">
-                    {fulfillmentMetrics.totalAllocated}
-                  </div>
-                </div>
-                <div className="bg-surface-container dark:bg-zinc-800/60 p-2.5 rounded-xl border border-border dark:border-zinc-700/60">
-                  <div className="text-[10px] text-outline font-semibold mb-0.5">
-                    Collected
-                  </div>
-                  <div className="text-base font-bold font-data-mono text-primary flex items-baseline gap-1">
-                    <span>{fulfillmentMetrics.totalGiven}</span>
-                    <span className="text-[10px] text-outline font-sans font-normal">
-                      / {fulfillmentMetrics.totalAllocated}
-                    </span>
-                  </div>
-                </div>
-              </div>
-              {fulfillmentMetrics.outstanding > 0 && (
-                <div className="mt-2 text-[11px] text-amber-700 dark:text-amber-400 font-medium px-2.5 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/40 flex justify-between items-center">
-                  <span>Outstanding:</span>
-                  <span className="font-bold font-mono text-xs">
-                    {fulfillmentMetrics.outstanding}{" "}
-                    {fulfillmentMetrics.unitName}
-                  </span>
-                </div>
-              )}
-            </div>
-          )}
 
           <div className="mt-3 pt-4 border-t border-border dark:border-dark-border">
             <div>
@@ -2102,13 +2013,15 @@ export default function ServiceDeskToday() {
 
           {/* Category Filter Buttons: All, Walk-ins, Appointments */}
           <div className="flex items-center gap-2 mb-3.5 overflow-x-auto no-scrollbar shrink-0 py-0.5">
-            {(["all", "walkin", "appointment"] as const).map((f) => {
+            {(["all", "walkin", "appointment", "completed"] as const).map((f) => {
               const label =
                 f === "all"
                   ? "All"
                   : f === "walkin"
                     ? "Walk-ins"
-                    : "Appointments";
+                    : f === "appointment"
+                      ? "Appointments"
+                      : "Completed";
               const count =
                 f === "all"
                   ? totalPoolCount
@@ -2117,10 +2030,12 @@ export default function ServiceDeskToday() {
                         (v: AnyFixMe) =>
                           v.source !== "APPOINTMENT" && !v.scheduledTime,
                       ).length
-                    : arrivedPool.filter(
-                        (v: AnyFixMe) =>
-                          v.source === "APPOINTMENT" || v.scheduledTime,
-                      ).length + upcomingPool.length;
+                    : f === "appointment"
+                      ? arrivedPool.filter(
+                          (v: AnyFixMe) =>
+                            v.source === "APPOINTMENT" || v.scheduledTime,
+                        ).length + upcomingPool.length
+                      : displayCompleted.length;
               const isActive = queueFilter === f;
 
               return (
@@ -2131,7 +2046,9 @@ export default function ServiceDeskToday() {
                   onClick={() => setQueueFilter(f)}
                   className={`px-3.5 py-1.5 rounded-full text-xs font-bold border transition-all cursor-pointer flex items-center gap-1.5 select-none ${
                     isActive
-                      ? "bg-primary text-white border-primary shadow-xs"
+                      ? f === "completed"
+                        ? "bg-zinc-700 text-white border-zinc-700 dark:bg-zinc-700 dark:border-zinc-600 shadow-xs"
+                        : "bg-primary text-white border-primary shadow-xs"
                       : "bg-card dark:bg-dark-card text-on-surface-variant dark:text-zinc-300 border-border dark:border-dark-border hover:border-primary/50 hover:bg-surface-container"
                   }`}
                 >
@@ -2162,7 +2079,7 @@ export default function ServiceDeskToday() {
               </div>
             )}
 
-            {totalPoolCount === 0 && !isLoading && (
+            {totalPoolCount === 0 && displayCompleted.length === 0 && !isLoading && queueFilter !== "completed" && (
               <div className="flex flex-col items-center justify-center h-full text-outline animate-in fade-in duration-500 py-16">
                 <div className="relative mb-6">
                   <div className="absolute inset-0 bg-primary/20 blur-[30px] rounded-full"></div>
@@ -2330,11 +2247,6 @@ export default function ServiceDeskToday() {
                           <h3 className="font-semibold text-sm text-on-surface dark:text-white truncate">
                             {customerName}
                           </h3>
-                          {v.priority > 0 && (
-                            <span className="text-[10px] bg-purple-500/10 text-purple-600 dark:text-purple-400 px-1.5 py-0.5 rounded font-bold tracking-wider uppercase">
-                              VIP
-                            </span>
-                          )}
                           {(() => {
                             const isPaid = v.bookingPayments?.some(
                               (p: any) => p.status === "SUCCEEDED",
@@ -2546,6 +2458,170 @@ export default function ServiceDeskToday() {
                 })}
               </AnimatePresence>
             )}
+
+            {/* Completed Filter Active View */}
+            {queueFilter === "completed" && (
+              <div className="space-y-3">
+                {displayCompleted.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-16 text-center text-outline">
+                    <CheckCircle2 className="w-12 h-12 text-zinc-300 dark:text-zinc-600 mb-2 stroke-1" />
+                    <p className="font-semibold text-sm text-zinc-600 dark:text-zinc-300">
+                      No completed bookings found
+                    </p>
+                    <p className="text-xs text-outline mt-1">
+                      Completed visits will appear here once service has ended.
+                    </p>
+                  </div>
+                ) : (
+                  displayCompleted.map((v: AnyFixMe) => {
+                    const custName = v.customer?.name || industry.terminology.walkIn;
+                    const tkt = v.ticketNumber || v.displayId || `#TKT-${v.id ? v.id.substring(0, 4) : ""}`;
+                    const compTime = v.completedAt || v.updatedAt || v.serviceEnd || v.createdAt;
+                    const compFormatted = compTime
+                      ? new Date(compTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                      : null;
+
+                    return (
+                      <motion.div
+                        layout
+                        initial={{ opacity: 0, scale: 0.98, y: 8 }}
+                        animate={{ opacity: 0.65, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.98, y: -8 }}
+                        transition={{ duration: 0.2 }}
+                        key={`completed-${v.id}`}
+                        data-testid={`completed-card-${v.id}`}
+                        onClick={() => setSelectedVisit(v)}
+                        className={`bg-zinc-100/60 dark:bg-zinc-900/40 border ${
+                          selectedVisit?.id === v.id
+                            ? "border-zinc-400 dark:border-zinc-500 ring-1 ring-zinc-400/50 shadow-xs"
+                            : "border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700"
+                        } rounded-xl p-3.5 flex flex-col gap-2 relative overflow-hidden group cursor-pointer transition-all hover:opacity-95`}
+                      >
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-400 dark:bg-zinc-600" />
+                        <div className="flex items-center justify-between pl-1.5">
+                          <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                            <h3 className="font-semibold text-sm text-zinc-700 dark:text-zinc-300 truncate">
+                              {custName}
+                            </h3>
+                            <span className="text-[10px] bg-zinc-200/80 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded font-mono font-medium">
+                              {tkt}
+                            </span>
+                            <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-200/80 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 border border-zinc-300/80 dark:border-zinc-700 flex items-center gap-1 shrink-0">
+                              <CheckCircle2 className="w-3 h-3 text-zinc-500" /> Completed
+                            </span>
+                          </div>
+                          {compFormatted && (
+                            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono shrink-0">
+                              {compFormatted}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 pl-1.5 pt-0.5">
+                          <div className="flex items-center gap-2 truncate">
+                            <span className="truncate">{v.service?.name || "General Service"}</span>
+                            {v.counter && (
+                              <span className="text-[11px] text-zinc-400">
+                                • Counter {v.counter.number || v.counter.name}
+                              </span>
+                            )}
+                          </div>
+                          <span className="text-[11px] text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
+                            View Details →
+                          </span>
+                        </div>
+                      </motion.div>
+                    );
+                  })
+                )}
+              </div>
+            )}
+
+            {/* Completed Section at the bottom of the Waiting List (All/Walkins/Appts views) */}
+            {displayCompleted.length > 0 && queueFilter !== "completed" && (
+              <div className="mt-8 pt-4 border-t border-border/70 dark:border-dark-border/70">
+                <button
+                  type="button"
+                  onClick={() => setShowCompletedSection((prev) => !prev)}
+                  className="w-full flex items-center justify-between px-3 py-2 rounded-lg bg-zinc-100/70 hover:bg-zinc-200/60 dark:bg-zinc-800/40 dark:hover:bg-zinc-800/70 text-zinc-600 dark:text-zinc-400 text-xs font-semibold transition-colors cursor-pointer mb-3 select-none"
+                >
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-zinc-400" />
+                    <span>Completed Bookings ({displayCompleted.length})</span>
+                  </div>
+                  <div className="flex items-center gap-1 text-[11px] text-zinc-500">
+                    <span>{showCompletedSection ? "Hide" : "Show"}</span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                        showCompletedSection ? "rotate-180" : ""
+                      }`}
+                    />
+                  </div>
+                </button>
+                {showCompletedSection && (
+                  <div className="space-y-3">
+                    {displayCompleted.map((v: AnyFixMe) => {
+                      const custName = v.customer?.name || industry.terminology.walkIn;
+                      const tkt = v.ticketNumber || v.displayId || `#TKT-${v.id ? v.id.substring(0, 4) : ""}`;
+                      const compTime = v.completedAt || v.updatedAt || v.serviceEnd || v.createdAt;
+                      const compFormatted = compTime
+                        ? new Date(compTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
+                        : null;
+
+                      return (
+                        <motion.div
+                          layout
+                          initial={{ opacity: 0, scale: 0.98, y: 8 }}
+                          animate={{ opacity: 0.65, scale: 1, y: 0 }}
+                          exit={{ opacity: 0, scale: 0.98, y: -8 }}
+                          transition={{ duration: 0.2 }}
+                          key={`completed-bottom-${v.id}`}
+                          data-testid={`completed-card-${v.id}`}
+                          onClick={() => setSelectedVisit(v)}
+                          className={`bg-zinc-100/60 dark:bg-zinc-900/40 border ${
+                            selectedVisit?.id === v.id
+                              ? "border-zinc-400 dark:border-zinc-500 ring-1 ring-zinc-400/50 shadow-xs"
+                              : "border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700"
+                          } rounded-xl p-3.5 flex flex-col gap-2 relative overflow-hidden group cursor-pointer transition-all hover:opacity-95`}
+                        >
+                          <div className="absolute left-0 top-0 bottom-0 w-1 bg-zinc-400 dark:bg-zinc-600" />
+                          <div className="flex items-center justify-between pl-1.5">
+                            <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                              <h3 className="font-semibold text-sm text-zinc-700 dark:text-zinc-300 truncate">
+                                {custName}
+                              </h3>
+                              <span className="text-[10px] bg-zinc-200/80 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded font-mono font-medium">
+                                {tkt}
+                              </span>
+                              <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-zinc-200/80 dark:bg-zinc-800/80 text-zinc-600 dark:text-zinc-400 border border-zinc-300/80 dark:border-zinc-700 flex items-center gap-1 shrink-0">
+                                <CheckCircle2 className="w-3 h-3 text-zinc-500" /> Completed
+                              </span>
+                            </div>
+                            {compFormatted && (
+                              <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-mono shrink-0">
+                                {compFormatted}
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex items-center justify-between text-xs text-zinc-500 dark:text-zinc-400 pl-1.5 pt-0.5">
+                            <div className="flex items-center gap-2 truncate">
+                              <span className="truncate">{v.service?.name || "General Service"}</span>
+                              {v.counter && (
+                                <span className="text-[11px] text-zinc-400">
+                                  • Counter {v.counter.number || v.counter.name}
+                                </span>
+                              )}
+                            </div>
+                            <span className="text-[11px] text-zinc-400 dark:text-zinc-500 group-hover:text-zinc-600 dark:group-hover:text-zinc-300 transition-colors">
+                              View Details →
+                            </span>
+                          </div>
+                        </motion.div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
 
@@ -2694,7 +2770,7 @@ export default function ServiceDeskToday() {
                       </button>
                     </div>
 
-                    {/* Secondary Row: Ticket chip, Walk-in/Appt badge, VIP, & State */}
+                    {/* Secondary Row: Ticket chip, Walk-in/Appt badge, & State */}
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         onClick={() => {
@@ -2727,13 +2803,6 @@ export default function ServiceDeskToday() {
                         {isAppt ? "Appointment" : "Walk-in"}
                       </span>
 
-                      {(selectedVisit.isVip ||
-                        selectedVisit.customer?.isVip ||
-                        selectedVisit.priority >= 3) && (
-                        <span className="inline-flex items-center gap-1 text-xs bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 px-2 py-1 rounded-md font-bold uppercase">
-                          <Sparkles className="w-3 h-3 text-purple-500" /> VIP
-                        </span>
-                      )}
 
                       {(!isAppt ||
                         selectedVisit.currentState !== "SCHEDULED") && (

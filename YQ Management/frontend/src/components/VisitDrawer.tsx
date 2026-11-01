@@ -7,7 +7,6 @@ import {
   Calendar,
   Hash,
   ExternalLink,
-  Sparkles,
   Copy,
   Users,
   Clock,
@@ -325,7 +324,6 @@ export function VisitDrawer({ isOpen, onClose, visit }: VisitDrawerProps) {
 
   if (!isOpen || !visit) return null;
 
-  const isExplicitVip = Boolean(visit?.isVip || visit?.customer?.isVip || (visit?.priority && visit.priority >= 3));
   const ticketDisplay = visit?.displayId || visit?.ticketNumber || (visit?.id ? `#TKT-${visit.id.substring(0, 4)}` : '—');
 
   return (
@@ -382,7 +380,7 @@ export function VisitDrawer({ isOpen, onClose, visit }: VisitDrawerProps) {
             </button>
           </div>
 
-          {/* Row 2: Ticket chip, Appt/Walk-in badge, VIP, & Current State */}
+          {/* Row 2: Ticket chip, Appt/Walk-in badge, & Current State */}
           <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => {
@@ -404,11 +402,7 @@ export function VisitDrawer({ isOpen, onClose, visit }: VisitDrawerProps) {
             >
               {isAppt ? 'Appointment' : 'Walk-in'}
             </span>
-            {isExplicitVip && (
-              <span className="inline-flex items-center gap-1 text-xs bg-purple-500/15 text-purple-700 dark:text-purple-300 border border-purple-500/30 px-2 py-1 rounded-md font-bold uppercase">
-                <Sparkles className="w-3 h-3 text-purple-500" /> VIP
-              </span>
-            )}
+
             {(!isAppt || visit.currentState !== 'SCHEDULED') && (
               <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-md border bg-zinc-500/15 text-zinc-700 dark:text-zinc-300 border-zinc-500/30">
                 {visit.currentState.replace(/_/g, ' ')}
