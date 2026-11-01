@@ -132,23 +132,15 @@ const CheckoutForm = ({
     >
       {/* Header */}
       <div className="text-center space-y-2">
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
-            <ShieldCheck className="w-3.5 h-3.5" />
-            <span>256-Bit SSL Encrypted</span>
-          </div>
-          <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#635BFF]/10 border border-[#635BFF]/25 text-[#635BFF] dark:text-[#7A73FF] text-xs font-bold tracking-wide">
-            <svg className="w-3 h-3" viewBox="0 0 24 24" fill="currentColor">
-              <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
-            </svg>
-            <span>Powered by Stripe</span>
-          </div>
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>256-Bit SSL Encrypted Checkout</span>
         </div>
         <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
           Secure Payment
         </h2>
         <p className="text-xs sm:text-sm text-gray-500 dark:text-zinc-400">
-          Enter your card details to instantly confirm your booking
+          Enter your payment details to instantly confirm your booking
         </p>
       </div>
 
@@ -286,52 +278,16 @@ const CheckoutForm = ({
         )}
       </div>
 
-      {/* Trust & Accepted Cards & Powered by Stripe Footer */}
-      <div className="pt-4 border-t border-gray-100 dark:border-zinc-800/80 space-y-3.5">
-        {/* Accepted Payment Methods Chips */}
-        <div className="flex flex-wrap items-center justify-center gap-2">
-          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-black tracking-tight text-[#1A1F71] dark:text-[#6979F8]">
-            VISA
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-bold text-gray-800 dark:text-zinc-200 flex items-center gap-1">
-            <span className="flex -space-x-1 items-center">
-              <span className="w-2.5 h-2.5 rounded-full bg-[#EB001B] inline-block" />
-              <span className="w-2.5 h-2.5 rounded-full bg-[#F79E1B] inline-block opacity-85" />
-            </span>
-            <span>Mastercard</span>
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-extrabold text-[#006FCF] dark:text-[#2E9BFF]">
-            AMEX
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-bold text-gray-700 dark:text-zinc-300">
-            Apple Pay
-          </span>
-          <span className="px-2.5 py-1 rounded-md bg-gray-100 dark:bg-zinc-800/90 border border-gray-200/80 dark:border-zinc-700/60 text-[11px] font-bold text-gray-700 dark:text-zinc-300">
-            Google Pay
-          </span>
+      {/* Trust & Compliance Footer */}
+      <div className="pt-4 border-t border-gray-100 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 px-1 text-[11px] text-gray-500 dark:text-zinc-400">
+        <div className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>PCI-DSS Level 1 Compliant</span>
         </div>
-
-        {/* Powered by Stripe & PCI Compliance */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 px-1 text-[11px] text-gray-500 dark:text-zinc-400">
-          <div className="flex items-center gap-1.5 font-medium">
-            <span>Powered by</span>
-            <span className="inline-flex items-center gap-1 font-bold text-sm text-[#635BFF] dark:text-[#7A73FF]">
-              <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M13.976 9.15c-2.172-.806-3.356-1.426-3.356-2.409 0-.831.683-1.305 1.901-1.305 2.227 0 4.515.858 6.09 1.631l.89-5.494C18.252.975 15.697 0 12.165 0 9.667 0 7.589.654 6.104 1.872 4.56 3.147 3.757 4.992 3.757 7.218c0 4.039 2.467 5.76 6.476 7.219 2.585.92 3.445 1.574 3.445 2.583 0 .98-.84 1.545-2.354 1.545-1.875 0-4.965-.921-6.99-2.109l-.9 5.555C5.175 22.99 8.385 24 11.714 24c2.641 0 4.843-.624 6.328-1.813 1.664-1.305 2.525-3.236 2.525-5.732 0-4.128-2.524-5.851-6.591-7.305z"/>
-              </svg>
-              <span>stripe</span>
-            </span>
-          </div>
-
-          <div className="flex items-center gap-3">
-            <span className="flex items-center gap-1 font-medium text-emerald-600 dark:text-emerald-400">
-              <ShieldCheck className="w-3.5 h-3.5" /> PCI-DSS Level 1
-            </span>
-            <span className="text-gray-300 dark:text-zinc-700">•</span>
-            <span className="font-medium text-gray-500 dark:text-zinc-400">
-              Money-Back Terms
-            </span>
-          </div>
+        <div className="flex items-center gap-2">
+          <span>256-Bit Encrypted</span>
+          <span className="text-gray-300 dark:text-zinc-700">•</span>
+          <span>Refundable Terms</span>
         </div>
       </div>
     </form>
