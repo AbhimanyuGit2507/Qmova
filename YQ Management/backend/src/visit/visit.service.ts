@@ -1076,6 +1076,7 @@ export class VisitService {
     phone?: string | null;
     otp?: string;
     language?: string;
+    payAtCounter?: boolean;
     bookings: {
       serviceId: string;
       queueId?: string;
@@ -1101,8 +1102,36 @@ export class VisitService {
       const tenantId = firstService.tenantId;
       const locationId = firstService.locationId;
 
-      const tenant = await tx.tenant.findUnique({ where: { id: tenantId } });
-      if (tenant?.whatsappConnected && data.phone) {
+      const tenant = await tx.tenant.findUnique({
+        where: { id: tenantId },
+        include: { paymentAccount: true },
+      });
+
+      const stripeActive = Boolean(
+        tenant?.paymentAccount?.chargesEnabled &&
+          tenant?.paymentAccount?.connectedAccountId,
+      );
+
+      // Check if online Stripe payment is applicable for this booking
+      const firstFlow = await tx.serviceFlow.findFirst({
+        where: { serviceId: firstService.id, isActive: true },
+      });
+      const isOnlineStripeBooking =
+        !data.payAtCounter &&
+        (firstFlow?.isActive
+          ? (firstFlow.paymentTiming === 'BOOKING' ||
+              firstFlow.paymentTiming === 'CHECKIN') &&
+            (firstService.basePrice ?? 0) > 0 &&
+            firstFlow.checkinPayMode !== 'COUNTER_ONLY' &&
+            stripeActive
+          : (firstService.paymentMode === 'PREPAY' ||
+              firstService.paymentMode === 'OPTIONAL_PREPAY' ||
+              firstService.paymentMode === 'PAY_AT_SERVICE') &&
+            (firstService.basePrice ?? 0) > 0 &&
+            stripeActive);
+
+      // OTP is required ONLY for bookings that do NOT involve upfront Stripe card authorization
+      if (!isOnlineStripeBooking && tenant?.whatsappConnected && data.phone) {
         if (!data.otp) {
           throw new BadRequestException('OTP is required');
         }
@@ -1204,9 +1233,9 @@ export class VisitService {
         // Check currency-specific Stripe minimum transaction limit
         const minAmountsInCents: Record<string, number> = {
           zar: 800, // R8.00 (~35p) safely meets Stripe 30 pence requirement
-          gbp: 30,  // 30p
-          usd: 50,  // $0.50
-          eur: 50,  // €0.50
+          gbp: 30, // 30p
+          usd: 50, // $0.50
+          eur: 50, // €0.50
         };
         const serviceCurrency = (service.priceCurrency || 'zar').toLowerCase();
         const minStripeAmount = minAmountsInCents[serviceCurrency] || 50;
@@ -1215,18 +1244,21 @@ export class VisitService {
         );
         const canChargeStripe = totalBookingPrice >= minStripeAmount;
 
-        const holdForBookingPayment = bookingFlow?.isActive
-          ? (bookingFlow.paymentTiming === 'BOOKING' || bookingFlow.paymentTiming === 'CHECKIN') &&
-            (service.basePrice ?? 0) > 0 &&
-            payMode !== 'COUNTER_ONLY' &&
-            stripeActive &&
-            canChargeStripe
-          : (service.paymentMode === 'PREPAY' ||
-              service.paymentMode === 'OPTIONAL_PREPAY' ||
-              service.paymentMode === 'PAY_AT_SERVICE') &&
-            (service.basePrice ?? 0) > 0 &&
-            stripeActive &&
-            canChargeStripe;
+        const holdForBookingPayment =
+          !data.payAtCounter &&
+          (bookingFlow?.isActive
+            ? (bookingFlow.paymentTiming === 'BOOKING' ||
+                bookingFlow.paymentTiming === 'CHECKIN') &&
+              (service.basePrice ?? 0) > 0 &&
+              payMode !== 'COUNTER_ONLY' &&
+              stripeActive &&
+              canChargeStripe
+            : (service.paymentMode === 'PREPAY' ||
+                service.paymentMode === 'OPTIONAL_PREPAY' ||
+                service.paymentMode === 'PAY_AT_SERVICE') &&
+              (service.basePrice ?? 0) > 0 &&
+              stripeActive &&
+              canChargeStripe);
 
         if (holdForBookingPayment && !(data as any).paymentId) {
           currentState = 'PENDING_PAYMENT';
@@ -1269,11 +1301,16 @@ export class VisitService {
             scheduledTime.getTime() - totalMins * 60000,
           );
 
+          const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
           const overlappingCount = await tx.visit.count({
             where: {
               serviceId: service.id,
               currentState: {
                 notIn: ['CANCELLED', 'NO_SHOW', 'MISSED', 'COMPLETED'],
+              },
+              NOT: {
+                currentState: 'PENDING_PAYMENT',
+                createdAt: { lt: fifteenMinutesAgo },
               },
               scheduledTime: {
                 lt: slotEnd,
@@ -2003,7 +2040,11 @@ export class VisitService {
 
       // If serviceStart was not previously recorded, look for the earliest activated step in SEF flow
       let resolvedServiceStart = visit.serviceStart;
-      if (!resolvedServiceStart && visit.visitSteps && visit.visitSteps.length > 0) {
+      if (
+        !resolvedServiceStart &&
+        visit.visitSteps &&
+        visit.visitSteps.length > 0
+      ) {
         const sortedActivated = visit.visitSteps
           .filter((s: any) => s.activatedAt)
           .sort(
@@ -2206,10 +2247,12 @@ export class VisitService {
       });
 
       if (visit.appointmentId) {
-        await tx.appointment.update({
-          where: { id: visit.appointmentId },
-          data: { status: 'CANCELLED' },
-        }).catch(() => null);
+        await tx.appointment
+          .update({
+            where: { id: visit.appointmentId },
+            data: { status: 'CANCELLED' },
+          })
+          .catch(() => null);
       }
 
       await tx.outboxEvent.create({
@@ -2664,12 +2707,17 @@ export class VisitService {
     });
 
     if (visit.appointmentId) {
-      await this.prisma.appointment.update({
-        where: { id: visit.appointmentId },
-        data: { status: 'CANCELLED' },
-      }).catch((e) =>
-        console.error('Failed to sync appointment status on cancelPublicVisit', e),
-      );
+      await this.prisma.appointment
+        .update({
+          where: { id: visit.appointmentId },
+          data: { status: 'CANCELLED' },
+        })
+        .catch((e) =>
+          console.error(
+            'Failed to sync appointment status on cancelPublicVisit',
+            e,
+          ),
+        );
     }
 
     await this.prisma.outboxEvent.create({

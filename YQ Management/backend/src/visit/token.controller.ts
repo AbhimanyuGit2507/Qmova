@@ -21,7 +21,9 @@ export class TokenController {
   ) {}
 
   @Post('request-otp')
-  async requestOtp(@Body() body: { phone: string; serviceId: string }) {
+  async requestOtp(
+    @Body() body: { phone: string; serviceId: string; payAtCounter?: boolean },
+  ) {
     if (!body.phone || !body.serviceId) {
       throw new HttpException(
         'Missing phone or serviceId',
@@ -32,8 +34,10 @@ export class TokenController {
     const service = await this.prisma.service.findUnique({
       where: { id: body.serviceId },
       include: {
+        serviceFlow: true,
         tenant: {
           include: {
+            paymentAccount: true,
             subscriptions: {
               where: { status: { in: ['ACTIVE', 'TRIAL', 'PAST_DUE'] } },
               include: { plan: true },
@@ -48,6 +52,31 @@ export class TokenController {
     }
 
     const tenant = service.tenant;
+
+    // Check if online Stripe payment is enabled and required for this service
+    const stripeActive = Boolean(
+      tenant.paymentAccount?.chargesEnabled &&
+        tenant.paymentAccount?.connectedAccountId,
+    );
+    const flow = service.serviceFlow;
+    const isOnlinePaid = flow?.isActive
+      ? (flow.paymentTiming === 'BOOKING' || flow.paymentTiming === 'CHECKIN') &&
+        (service.basePrice ?? 0) > 0 &&
+        flow.checkinPayMode !== 'COUNTER_ONLY' &&
+        stripeActive
+      : ((service.paymentMode === 'PREPAY' ||
+          service.paymentMode === 'OPTIONAL_PREPAY' ||
+          service.paymentMode === 'PAY_AT_SERVICE') &&
+          (service.basePrice ?? 0) > 0 &&
+          stripeActive);
+
+    // If online Stripe payment applies and user is not explicitly paying at counter, bypass OTP
+    if (isOnlinePaid && !body.payAtCounter) {
+      return {
+        bypassOtp: true,
+        reason: 'Online payment required via Stripe (OTP bypassed)',
+      };
+    }
 
     // If WhatsApp is not connected for this tenant, return a graceful bypass payload
     if (!tenant.whatsappConnected || !tenant.whatsappInstanceId) {

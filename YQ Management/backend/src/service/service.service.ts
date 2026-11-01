@@ -38,13 +38,18 @@ export class ServiceService {
   ) {
     if (!timing || timing === 'NONE') return;
     if (payMode !== 'STRIPE_ONLY') return;
-    if (priceInCents === null || priceInCents === undefined || priceInCents <= 0) return;
+    if (
+      priceInCents === null ||
+      priceInCents === undefined ||
+      priceInCents <= 0
+    )
+      return;
 
     const minAmountsInCents: Record<string, number> = {
       zar: 800, // R8.00 (~35p) safely meets Stripe 30 pence requirement
-      gbp: 30,  // 30p
-      usd: 50,  // $0.50
-      eur: 50,  // €0.50
+      gbp: 30, // 30p
+      usd: 50, // $0.50
+      eur: 50, // €0.50
     };
     const currKey = (currency || 'zar').toLowerCase();
     const minRequired = minAmountsInCents[currKey] || 50;
@@ -485,12 +490,24 @@ export class ServiceService {
     }
 
     const exists = await this.findOne(id, tenantId);
-    const targetPayMode = checkinPayMode !== undefined ? checkinPayMode : (exists as any)?.serviceFlow?.checkinPayMode;
-    const targetTiming = paymentTiming !== undefined ? paymentTiming : (exists as any)?.serviceFlow?.paymentTiming;
+    const targetPayMode =
+      checkinPayMode !== undefined
+        ? checkinPayMode
+        : exists?.serviceFlow?.checkinPayMode;
+    const targetTiming =
+      paymentTiming !== undefined
+        ? paymentTiming
+        : exists?.serviceFlow?.paymentTiming;
     const targetCurrency = data.priceCurrency ?? exists.priceCurrency;
-    const targetPrice = data.basePrice !== undefined ? data.basePrice : exists.basePrice;
+    const targetPrice =
+      data.basePrice !== undefined ? data.basePrice : exists.basePrice;
 
-    this.validateStripePricingLimit(targetPrice, targetCurrency, targetPayMode, targetTiming);
+    this.validateStripePricingLimit(
+      targetPrice,
+      targetCurrency,
+      targetPayMode,
+      targetTiming,
+    );
 
     const result = await this.prisma.extendedClient.service.update({
       where: { id: exists.id },
@@ -960,12 +977,17 @@ export class ServiceService {
     const startOfDayUTC = fromZonedTime(localStartStr, timezone);
     const endOfDayUTC = fromZonedTime(localEndStr, timezone);
 
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
     // Gather all booked time ranges from Visit.scheduledTime (active appointments)
     const existingVisits = await this.prisma.visit.findMany({
       where: {
         serviceId,
         currentState: {
           notIn: ['CANCELLED', 'NO_SHOW', 'MISSED', 'COMPLETED'],
+        },
+        NOT: {
+          currentState: 'PENDING_PAYMENT',
+          createdAt: { lt: fifteenMinutesAgo },
         },
         scheduledTime: { gte: startOfDayUTC, lt: endOfDayUTC },
       },

@@ -108,6 +108,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   }, []);
 
   const [createdVisits, setCreatedVisits] = useState<any[]>([]);
+  const [isPayAtCounter, setIsPayAtCounter] = useState(false);
   
   const redirectToStatus = (visitsData: any[]) => {
     const accessTokens = Array.isArray(visitsData) ? visitsData.map((d: AnyFixMe) => d.accessToken).filter(Boolean) : [];
@@ -624,11 +625,15 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
         try {
           const res = await fetchApi(`/token/request-otp`, {
             method: 'POST',
-            body: JSON.stringify({ phone, serviceId: firstServiceId }),
+            body: JSON.stringify({
+              phone,
+              serviceId: firstServiceId,
+              payAtCounter: isPayAtCounter,
+            }),
           });
-          
+
           if (res?.bypassOtp) {
-            await submitJoin();
+            await submitJoin(undefined, isPayAtCounter);
             return;
           }
 
@@ -638,18 +643,23 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
         } catch (e: any) {
           if (e.status === 404) {
             // Number not registered or service not found, silently bypass OTP
-            await submitJoin();
+            await submitJoin(undefined, isPayAtCounter);
             return;
           }
           throw e;
         }
       }
-      await submitJoin();
+      await submitJoin(undefined, isPayAtCounter);
     } catch (err: AnyFixMe) {
       if (err.message === 'QUEUE_FULL') {
-        setErrorMsg('This queue is currently full and at maximum capacity. Please try again later or book an appointment.');
+        setErrorMsg(
+          'This queue is currently full and at maximum capacity. Please try again later or book an appointment.',
+        );
       } else if (err.message && err.message.startsWith('QUEUE_BLOCKED:')) {
-        setErrorMsg(err.message.split('QUEUE_BLOCKED:')[1] || 'This queue is currently blocked.');
+        setErrorMsg(
+          err.message.split('QUEUE_BLOCKED:')[1] ||
+            'This queue is currently blocked.',
+        );
       } else {
         setErrorMsg(err.message || 'Something went wrong.');
       }
@@ -661,25 +671,36 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     if (step === 5) triggerJoinSequence();
   }, [step]);
 
-  const submitJoin = async (otpCode?: string) => {
+  const submitJoin = async (otpCode?: string, counterPay?: boolean) => {
     setLoading(true);
     setErrorMsg('');
+    const effectiveCounterPay = counterPay ?? isPayAtCounter;
     try {
-      const bookings = selectedServiceIds.map(sid => {
+      const bookings = selectedServiceIds.map((sid) => {
         const d = serviceDetails[sid] || {};
-        const s = services.find(x => x.id === sid);
-        const cfg = (s && s.formConfig && s.formConfig.length > 0) ? s.formConfig : (currentQueue?.formConfig || []);
+        const s = services.find((x) => x.id === sid);
+        const cfg =
+          s && s.formConfig && s.formConfig.length > 0
+            ? s.formConfig
+            : currentQueue?.formConfig || [];
         const rawResponses = d.responses || {};
         const enrichedResponses: Record<string, any> = { ...rawResponses };
-        
+
         cfg.forEach((f: any) => {
           if (f && f.id && rawResponses[f.id] !== undefined) {
             const val = rawResponses[f.id];
             if (f.label) {
               enrichedResponses[f.label] = val;
-              const normalized = f.label.toLowerCase().replace(/[^a-z0-9]/g, '_');
+              const normalized = f.label
+                .toLowerCase()
+                .replace(/[^a-z0-9]/g, '_');
               enrichedResponses[normalized] = val;
-              if (normalized.includes('date_of_birth') || normalized === 'dob' || normalized.includes('birthday') || normalized.includes('birth_date')) {
+              if (
+                normalized.includes('date_of_birth') ||
+                normalized === 'dob' ||
+                normalized.includes('birthday') ||
+                normalized.includes('birth_date')
+              ) {
                 enrichedResponses['dob'] = val;
                 enrichedResponses['dateOfBirth'] = val;
                 enrichedResponses['date_of_birth'] = val;
@@ -694,36 +715,42 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
         return {
           serviceId: sid,
           providerId: d.providerId || undefined,
-          scheduledFor: d.joinMode === 'appointment' && d.selectedSlot ? d.selectedSlot : undefined,
+          scheduledFor:
+            d.joinMode === 'appointment' && d.selectedSlot
+              ? d.selectedSlot
+              : undefined,
           formResponses: enrichedResponses,
-          accompanyingGuests
+          accompanyingGuests,
         };
       });
 
       const data = await fetchApi(`/public-visit/join-multiple`, {
         method: 'POST',
-        headers: { 
-          'Idempotency-Key': idempotencyKey
+        headers: {
+          'Idempotency-Key': idempotencyKey,
         },
         body: JSON.stringify({
           customerName: name,
           phone: phone || undefined,
           otp: otpCode || undefined,
           language: 'en',
+          payAtCounter: effectiveCounterPay,
           bookings,
         }),
       });
       if (!data) throw new Error('Failed to complete booking.');
-      
-      const requiresPayment = Array.isArray(data) && data.some((v: any) => v.currentState === 'PENDING_PAYMENT');
-      
+
+      const requiresPayment =
+        Array.isArray(data) &&
+        data.some((v: any) => v.currentState === 'PENDING_PAYMENT');
+
       if (requiresPayment) {
         setCreatedVisits(data);
         setStep(4.5);
         setLoading(false);
         return;
       }
-      
+
       redirectToStatus(data);
     } catch (err: AnyFixMe) {
       if (err.message === 'QUEUE_FULL') {
@@ -1600,22 +1627,71 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   }
 
                   const minStripeThreshold = getMinStripeCents(bookingCurrency);
-                  const isStripeBooking = selectedServiceIds.some(sid => {
-                    const s = services.find(x => x.id === sid);
+                  const isStripeBooking = selectedServiceIds.some((sid) => {
+                    const s = services.find((x) => x.id === sid);
                     const flow = (s as any)?.serviceFlow;
                     return flow?.isActive
-                      ? (flow.paymentTiming === 'BOOKING' && (flow.checkinPayMode === 'STRIPE_ONLY' || flow.checkinPayMode === 'BOTH'))
-                      : ((s as any)?.paymentMode === 'PREPAY');
+                      ? flow.paymentTiming === 'BOOKING' &&
+                          (flow.checkinPayMode === 'STRIPE_ONLY' ||
+                            flow.checkinPayMode === 'BOTH')
+                      : (s as any)?.paymentMode === 'PREPAY';
                   });
-                  const isStripeViable = isStripeBooking && finalTotalCents >= minStripeThreshold;
+                  const isStripeViable =
+                    isStripeBooking && finalTotalCents >= minStripeThreshold;
 
-                  const buttonLabel = isStripeViable && finalTotalCents > 0
-                    ? `Proceed to Payment • ${currSymbol}${(finalTotalCents / 100).toFixed(2)}`
-                    : 'Confirm Booking';
+                  const allowsPayAtCounter = selectedServiceIds.every((sid) => {
+                    const s = services.find((x) => x.id === sid);
+                    const flow = (s as any)?.serviceFlow;
+                    return flow?.isActive
+                      ? flow.checkinPayMode !== 'STRIPE_ONLY'
+                      : (s as any)?.paymentMode !== 'PREPAY';
+                  });
+
+                  if (isStripeViable && finalTotalCents > 0) {
+                    return (
+                      <div className="flex-1 flex flex-col gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsPayAtCounter(false);
+                            submitJoin(undefined, false);
+                          }}
+                          className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2"
+                          style={{ backgroundColor: primaryColor }}
+                        >
+                          <CreditCard className="w-4 h-4" />
+                          <span>
+                            Pay Online • {currSymbol}
+                            {(finalTotalCents / 100).toFixed(2)}
+                          </span>
+                        </button>
+                        {allowsPayAtCounter && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setIsPayAtCounter(true);
+                              goToStep(5);
+                            }}
+                            className="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white bg-transparent hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-1.5 border border-dashed border-gray-300 dark:border-zinc-700"
+                          >
+                            Pay in Person at Counter Instead
+                          </button>
+                        )}
+                      </div>
+                    );
+                  }
 
                   return (
-                    <button type="button" onClick={handleConfirm} className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2" style={{ backgroundColor: primaryColor }}>
-                      {buttonLabel}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsPayAtCounter(true);
+                        handleConfirm();
+                      }}
+                      className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+                      style={{ backgroundColor: primaryColor }}
+                    >
+                      Confirm Booking
                     </button>
                   );
                 })()}
@@ -1625,56 +1701,127 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
 
           {/* STEP 4.5: Payment */}
           {step === 4.5 && (
-            <motion.div key="step4_5" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="flex-1 w-full space-y-6">
+            <motion.div
+              key="step4_5"
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: -20 }}
+              className="flex-1 w-full space-y-6"
+            >
               <PaymentStep
                 tenantId={tenant?.id}
                 amount={(() => {
-                  const bookingCurrency = (services.find(x => x.id === selectedServiceIds[0]) as any)?.priceCurrency || (services.find(x => x.id === selectedServiceIds[0]) as any)?.currency || 'USD';
+                  const bookingCurrency =
+                    (services.find((x) => x.id === selectedServiceIds[0]) as any)
+                      ?.priceCurrency ||
+                    (services.find((x) => x.id === selectedServiceIds[0]) as any)
+                      ?.currency ||
+                    'USD';
                   const totalGuests = 1 + accompanyingGuests;
-                  const rawSubtotalCents = selectedServiceIds.reduce((total, sid) => {
-                    const s = services.find(x => x.id === sid);
-                    const flow = (s as any)?.serviceFlow;
-                    const isBookingPay = flow?.isActive
-                      ? (flow.paymentTiming === 'BOOKING' || flow.paymentTiming === 'CHECKIN')
-                      : ((s as any)?.paymentMode === 'PREPAY' || (s as any)?.paymentMode === 'OPTIONAL_PREPAY' || (s as any)?.paymentMode === 'PAY_AT_SERVICE');
-                    const base = s && isBookingPay && (s as any).basePrice ? parseFloat((s as any).basePrice) : 0;
-                    return total + (base * totalGuests);
-                  }, 0);
+                  const rawSubtotalCents = selectedServiceIds.reduce(
+                    (total, sid) => {
+                      const s = services.find((x) => x.id === sid);
+                      const flow = (s as any)?.serviceFlow;
+                      const isBookingPay = flow?.isActive
+                        ? flow.paymentTiming === 'BOOKING' ||
+                          flow.paymentTiming === 'CHECKIN'
+                        : (s as any)?.paymentMode === 'PREPAY' ||
+                          (s as any)?.paymentMode === 'OPTIONAL_PREPAY' ||
+                          (s as any)?.paymentMode === 'PAY_AT_SERVICE';
+                      const base =
+                        s && isBookingPay && (s as any).basePrice
+                          ? parseFloat((s as any).basePrice)
+                          : 0;
+                      return total + base * totalGuests;
+                    },
+                    0,
+                  );
                   if (rawSubtotalCents <= 0) return 0;
-                  const defaultTaxRate = bookingCurrency.toUpperCase() === 'ZAR' ? 15 : bookingCurrency.toUpperCase() === 'GB' || bookingCurrency.toUpperCase() === 'GBP' ? 20 : bookingCurrency.toUpperCase() === 'EUR' ? 20 : bookingCurrency.toUpperCase() === 'INR' ? 18 : 0;
-                  const taxRate = tenant?.taxConfig?.defaultTaxRatePercent !== undefined ? Number(tenant.taxConfig.defaultTaxRatePercent) : defaultTaxRate;
-                  const isTaxInclusive = tenant?.taxConfig?.taxInclusive !== undefined ? Boolean(tenant.taxConfig.taxInclusive) : (bookingCurrency.toUpperCase() === 'ZAR');
+                  const defaultTaxRate =
+                    bookingCurrency.toUpperCase() === 'ZAR'
+                      ? 15
+                      : bookingCurrency.toUpperCase() === 'GB' ||
+                        bookingCurrency.toUpperCase() === 'GBP'
+                      ? 20
+                      : bookingCurrency.toUpperCase() === 'EUR'
+                      ? 20
+                      : bookingCurrency.toUpperCase() === 'INR'
+                      ? 18
+                      : 0;
+                  const taxRate =
+                    tenant?.taxConfig?.defaultTaxRatePercent !== undefined
+                      ? Number(tenant.taxConfig.defaultTaxRatePercent)
+                      : defaultTaxRate;
+                  const isTaxInclusive =
+                    tenant?.taxConfig?.taxInclusive !== undefined
+                      ? Boolean(tenant.taxConfig.taxInclusive)
+                      : bookingCurrency.toUpperCase() === 'ZAR';
                   if (taxRate > 0 && !isTaxInclusive) {
-                    const taxCents = Math.round(rawSubtotalCents * (taxRate / 100));
+                    const taxCents = Math.round(
+                      rawSubtotalCents * (taxRate / 100),
+                    );
                     return rawSubtotalCents + taxCents;
                   }
                   return rawSubtotalCents;
                 })()}
-                currency={services.find(x => x.id === selectedServiceIds[0]) ? (services.find(x => x.id === selectedServiceIds[0]) as any).priceCurrency || (services.find(x => x.id === selectedServiceIds[0]) as any).currency || 'usd' : 'usd'}
+                currency={
+                  services.find((x) => x.id === selectedServiceIds[0])
+                    ? (services.find((x) => x.id === selectedServiceIds[0]) as any)
+                        .priceCurrency ||
+                      (services.find((x) => x.id === selectedServiceIds[0]) as any)
+                        .currency ||
+                      'usd'
+                    : 'usd'
+                }
                 stripeAccountId={tenant?.paymentAccount?.connectedAccountId}
-                visitId={createdVisits.find(v => v.currentState === 'PENDING_PAYMENT')?.id}
+                visitId={
+                  createdVisits.find((v) => v.currentState === 'PENDING_PAYMENT')
+                    ?.id
+                }
                 isDark={theme === 'dark'}
                 onSuccess={(paymentId) => {
                   setCompletedPaymentId(paymentId);
                   redirectToStatus(createdVisits);
                 }}
-                onBack={() => setStep(4)}
-                onSkip={
-                  async () => {
-                    try {
-                      const pendingIds = createdVisits.filter((v: any) => v.currentState === 'PENDING_PAYMENT').map((v: any) => v.id);
-                      if (pendingIds.length > 0) {
-                        await fetchApi('/public-visit/confirm-counter-payment', {
-                          method: 'POST',
-                          body: JSON.stringify({ visitIds: pendingIds }),
-                        });
-                      }
-                    } catch (err) {
-                      console.warn('Failed to confirm counter payment on skip', err);
+                onBack={async () => {
+                  try {
+                    const pendingIds = createdVisits
+                      .filter((v: any) => v.currentState === 'PENDING_PAYMENT')
+                      .map((v: any) => v.id);
+                    if (pendingIds.length > 0) {
+                      await fetchApi('/public-visit/abandon-pending-payment', {
+                        method: 'POST',
+                        body: JSON.stringify({ visitIds: pendingIds }),
+                      });
                     }
-                    redirectToStatus(createdVisits);
+                  } catch (err) {
+                    console.warn(
+                      'Failed to abandon provisional visit on back:',
+                      err,
+                    );
                   }
-                }
+                  setCreatedVisits([]);
+                  setStep(4);
+                }}
+                onSkip={async () => {
+                  try {
+                    const pendingIds = createdVisits
+                      .filter((v: any) => v.currentState === 'PENDING_PAYMENT')
+                      .map((v: any) => v.id);
+                    if (pendingIds.length > 0) {
+                      await fetchApi('/public-visit/confirm-counter-payment', {
+                        method: 'POST',
+                        body: JSON.stringify({ visitIds: pendingIds }),
+                      });
+                    }
+                  } catch (err) {
+                    console.warn(
+                      'Failed to confirm counter payment on skip',
+                      err,
+                    );
+                  }
+                  redirectToStatus(createdVisits);
+                }}
                 primaryColor={primaryColor}
               />
             </motion.div>

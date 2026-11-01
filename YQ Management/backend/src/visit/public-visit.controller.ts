@@ -314,6 +314,7 @@ export class PublicVisitController {
       phone?: string | null;
       otp?: string;
       language?: string;
+      payAtCounter?: boolean;
       bookings: {
         serviceId: string;
         queueId?: string;
@@ -358,8 +359,12 @@ export class PublicVisitController {
           e,
         );
       }
-    } else if (visitIds.length > 0) {
-      // Offline / Skipped Payment Logic
+    } else if (
+      visitIds.length > 0 &&
+      (body.payAtCounter ||
+        !visits.some((v: any) => v.currentState === 'PENDING_PAYMENT'))
+    ) {
+      // Offline / Pay at Counter Logic: Only create pending record if explicitly choosing counter or confirmed
       try {
         const primaryVisit = visits[0];
         const service = await this.prisma.service.findUnique({
@@ -388,6 +393,8 @@ export class PublicVisitController {
                 currency: service.priceCurrency || 'ZAR',
                 status: 'PENDING',
                 stripePaymentMethodType: 'OFFLINE',
+                method: 'CASH',
+                description: 'Payment pending at counter',
               },
             });
           }
@@ -466,6 +473,42 @@ export class PublicVisitController {
         data: { currentState: newState as any },
       });
 
+      // Find or create offline BookingPayment record marked pending at counter
+      const existingPayment = await this.prisma.bookingPayment.findFirst({
+        where: { visitId: v.id },
+      });
+
+      const partySize = 1 + (v.accompanyingGuests || 0);
+      const totalAmount = Math.round((v.service?.basePrice || 0) * partySize);
+
+      if (existingPayment) {
+        await this.prisma.bookingPayment.update({
+          where: { id: existingPayment.id },
+          data: {
+            status: 'PENDING',
+            stripePaymentMethodType: 'OFFLINE',
+            method: 'CASH',
+            description: 'Payment pending at counter',
+          },
+        });
+      } else if (totalAmount > 0) {
+        await this.prisma.bookingPayment.create({
+          data: {
+            tenantId: v.tenantId,
+            visitId: v.id,
+            customerId: v.customerId,
+            amount: totalAmount,
+            platformFeeAmount: 0,
+            tenantNetAmount: totalAmount,
+            currency: v.service?.priceCurrency || 'ZAR',
+            status: 'PENDING',
+            stripePaymentMethodType: 'OFFLINE',
+            method: 'CASH',
+            description: 'Payment pending at counter',
+          },
+        });
+      }
+
       // Emit VISIT_CREATED so notifications (WhatsApp ticket) and operator queues activate
       await this.prisma.outboxEvent.create({
         data: {
@@ -489,5 +532,47 @@ export class PublicVisitController {
       );
 
     return { success: true, count: visitsToUpdate.length };
+  }
+
+  @Post('abandon-pending-payment')
+  async abandonPendingPayment(
+    @Body() body: { visitIds?: string[]; token?: string },
+  ) {
+    const visitIds = body.visitIds || [];
+    let visitsToDelete: string[] = [];
+
+    if (visitIds.length > 0) {
+      const visits = await this.prisma.visit.findMany({
+        where: { id: { in: visitIds }, currentState: 'PENDING_PAYMENT' },
+        select: { id: true },
+      });
+      visitsToDelete = visits.map((v) => v.id);
+    } else if (body.token) {
+      const v = await this.prisma.visit.findUnique({
+        where: { accessToken: body.token },
+        select: { id: true, currentState: true },
+      });
+      if (v && v.currentState === 'PENDING_PAYMENT') {
+        visitsToDelete = [v.id];
+      }
+    }
+
+    if (visitsToDelete.length === 0) {
+      return { success: true, count: 0 };
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      await tx.bookingPayment.deleteMany({
+        where: { visitId: { in: visitsToDelete }, status: 'PENDING' },
+      });
+      await tx.visitStep.deleteMany({
+        where: { visitId: { in: visitsToDelete } },
+      });
+      await tx.visit.deleteMany({
+        where: { id: { in: visitsToDelete }, currentState: 'PENDING_PAYMENT' },
+      });
+    });
+
+    return { success: true, count: visitsToDelete.length };
   }
 }

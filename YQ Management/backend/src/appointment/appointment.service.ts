@@ -442,7 +442,7 @@ export class AppointmentService {
       where: {
         tenantId,
         ...(locationId ? { locationId } : {}),
-        currentState: { notIn: ['NO_SHOW', 'CANCELLED'] },
+        currentState: { notIn: ['NO_SHOW', 'CANCELLED', 'PENDING_PAYMENT'] },
         OR: [
           { scheduledTime: { gte: dayStart, lte: dayEnd } },
           { scheduledTime: null, createdAt: { gte: dayStart, lte: dayEnd } },
