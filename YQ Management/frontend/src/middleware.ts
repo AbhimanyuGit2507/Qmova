@@ -6,14 +6,7 @@ const SUPER_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || '';
 const SYSTEM_SUBDOMAINS = new Set([
   'www',
   'api',
-  'app',
-  'superadmin',
-  'admin',
   'evo',
-  'status',
-  'docs',
-  'mail',
-  'auth',
 ]);
 
 export const config = {
@@ -130,12 +123,8 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Route superadmin/admin subdomains directly to super-admin portal
+  // Convenience redirects for super-admin management sections if accessed without /super-admin prefix
   if (isSuperAdminSubdomain) {
-    if (url.pathname === '/') {
-      return NextResponse.redirect(new URL('/super-admin', req.url));
-    }
-
     const superAdminPages = [
       'tenants',
       'pricing',
@@ -155,8 +144,8 @@ export async function middleware(req: NextRequest) {
     }
   }
 
-  // Redirect booking links with a tenant slug on non-tenant domains (e.g. superadmin or apex)
-  // e.g. https://superadmin.qmova.yqbuddy.com/booking/uniworld-1 -> https://uniworld-1.qmova.yqbuddy.com/booking
+  // Redirect booking links with a tenant slug on non-tenant domains (e.g. apex domain)
+  // e.g. https://qmova.yqbuddy.com/booking/superadmin -> https://superadmin.qmova.yqbuddy.com/booking
   if (!isTenantSubdomain && url.pathname.startsWith('/booking/')) {
     const bookingParts = url.pathname.split('/').filter(Boolean); // ['booking', 'tenant-slug', ...]
     if (bookingParts.length >= 2) {
@@ -176,6 +165,11 @@ export async function middleware(req: NextRequest) {
         return NextResponse.redirect(redirectUrl);
       }
     }
+  }
+
+  // If someone visits /booking on non-tenant domain without a tenant slug, redirect to marketing home
+  if (!isTenantSubdomain && (url.pathname === '/booking' || url.pathname === '/booking/')) {
+    return NextResponse.redirect(new URL('/', req.url));
   }
 
   // Global paths that should never be rewritten to a tenant folder
