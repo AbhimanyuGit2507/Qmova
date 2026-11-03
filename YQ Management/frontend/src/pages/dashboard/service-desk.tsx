@@ -1,10 +1,11 @@
 import { getTenantUrl, slugify } from "../../lib/utils";
 import React, { useState, useEffect, useRef } from "react";
 import Head from "next/head";
+import { useRouter } from "next/router";
 import AdminLayout from "../../components/AdminLayout";
 import { useQuery, useQueryClient, useMutation } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { fetchApi } from "../../lib/api";
+import { fetchApi, getBackendUrl } from "../../lib/api";
 import { CreateVisitModal } from "../../components/modals/CreateVisitModal";
 import { ScannerModal } from "../../components/modals/ScannerModal";
 import { WhatsAppChatPanel } from "../../components/WhatsAppChatPanel";
@@ -230,6 +231,7 @@ import { useSocket } from "../../components/SocketProvider";
 import InvoiceBuilder from "../../components/InvoiceBuilder";
 import { useUI } from "../../components/UIContext";
 export default function ServiceDeskToday() {
+  const router = useRouter();
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { activeLocationId } = useLocation();

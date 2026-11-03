@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ServiceService } from '../service/service.service';
 import { AppointmentService } from '../appointment/appointment.service';
 import { VisitService } from '../visit/visit.service';
+import { normalizePhoneZA, phoneMatchCondition } from '../utils/phone.util';
 
 export class WhatsappChatbot {
   constructor(
@@ -30,14 +31,26 @@ export class WhatsappChatbot {
       quickReplies: { status: true, cancel: true, human: true },
     };
 
-    let session = await this.prisma.chatSession.findUnique({
-      where: { tenantId_phone: { tenantId, phone } },
+    const normalizedPhone = normalizePhoneZA(phone);
+    const session = await this.prisma.chatSession.upsert({
+      where: { tenantId_phone: { tenantId, phone: normalizedPhone } },
+      create: { tenantId, phone: normalizedPhone, step: 0, context: {} },
+      update: { lastActive: new Date() },
     });
 
-    if (!session) {
-      session = await this.prisma.chatSession.create({
-        data: { tenantId, phone, step: 0 },
+    // Auto-expire sessions older than 24 hours back to initial step 0
+    const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+    if (
+      session.lastActive &&
+      Date.now() - new Date(session.lastActive).getTime() > SESSION_TIMEOUT_MS &&
+      session.step !== 0
+    ) {
+      await this.prisma.chatSession.update({
+        where: { id: session.id },
+        data: { step: 0, context: {}, lastActive: new Date() },
       });
+      session.step = 0;
+      (session as any).context = {};
     }
 
     const isGreeting = ['HI', 'HELLO', 'HEY', 'START', 'MENU', '0'].includes(
@@ -105,6 +118,16 @@ export class WhatsappChatbot {
         upperText === 'check_in'
       ) {
         await this.handleAppointmentCheckin(tenantId, phone, jid);
+        return { handled: true, isHumanPaused: false };
+      }
+
+      if (
+        upperText === 'PAY' ||
+        upperText.includes('PAY ONLINE') ||
+        upperText.includes('PAYMENT') ||
+        upperText === 'pay_online'
+      ) {
+        await this.handlePaymentRequest(tenantId, phone, jid);
         return { handled: true, isHumanPaused: false };
       }
 
@@ -235,13 +258,11 @@ export class WhatsappChatbot {
     phone: string,
     jid: string,
   ) {
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
-
     const visit = await this.prisma.visit.findFirst({
       where: {
         tenantId,
         customer: {
-          phone: { contains: cleanPhone },
+          phone: phoneMatchCondition(phone),
         },
         currentState: { in: ['WAITING', 'CHECKED_IN', 'IN_SERVICE'] },
       },
@@ -266,7 +287,7 @@ export class WhatsappChatbot {
       const todayAppt = await this.prisma.appointment.findFirst({
         where: {
           tenantId,
-          customer: { phone: { contains: cleanPhone } },
+          customer: { phone: phoneMatchCondition(phone) },
           scheduledStart: { gte: todayStart, lte: todayEnd },
           status: { in: ['CONFIRMED', 'SCHEDULED'] },
         },
@@ -373,8 +394,14 @@ export class WhatsappChatbot {
         activeStep.amountCharged
       ) {
         const amountFormatted = (activeStep.amountCharged / 100).toFixed(2);
+        const appBase =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          process.env.APP_URL ||
+          'https://qmova.yqbuddy.com';
+        const directPayUrl = `${appBase}/pay/${activeStep.id}`;
         msg += `\n💳 *Payment Due: R${amountFormatted}*\n`;
-        msg += `Please pay at the counter or complete payment online:\n🔗 ${trackerUrl}\n`;
+        msg += `Pay online securely:\n🔗 ${directPayUrl}\n`;
+        msg += `Or pay at the counter before proceeding.\n`;
       }
     }
 
@@ -385,6 +412,74 @@ export class WhatsappChatbot {
   }
 
   /**
+   * Directly handles customer asking to pay or settle their bill
+   */
+  private async handlePaymentRequest(
+    tenantId: string,
+    phone: string,
+    jid: string,
+  ) {
+    const visit = await this.prisma.visit.findFirst({
+      where: {
+        tenantId,
+        customer: { phone: phoneMatchCondition(phone) },
+        currentState: { in: ['WAITING', 'CHECKED_IN', 'IN_SERVICE'] },
+      },
+      include: {
+        service: true,
+        tenant: true,
+        visitSteps: { orderBy: { stepOrder: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!visit) {
+      await this.sendMsg(
+        jid,
+        `You don't have an active queue ticket with pending payments right now.\n\nReply '1' to check your queue status or '0' for the main menu.`,
+      );
+      return;
+    }
+
+    const paymentStep = visit.visitSteps?.find(
+      (s: any) =>
+        (s.type === 'PAYMENT' || s.templateStep?.type === 'PAYMENT') &&
+        s.paymentStatus !== 'PAID' &&
+        s.status !== 'COMPLETED',
+    );
+
+    const appBase =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      'https://qmova.yqbuddy.com';
+
+    if (paymentStep) {
+      const payUrl = `${appBase}/pay/${paymentStep.id}`;
+      const amount = paymentStep.amountCharged
+        ? `R${(paymentStep.amountCharged / 100).toFixed(2)}`
+        : null;
+
+      await this.sendMsg(
+        jid,
+        `💳 *Payment Required for Ticket #${visit.displayId}*\n\n` +
+          `Service: *${visit.service?.name || 'Service'}*\n` +
+          (amount ? `Amount Due: *${amount}*\n\n` : '\n') +
+          `Click below to complete your payment securely via Card / Stripe:\n🔗 ${payUrl}\n\n` +
+          `Once paid, your ticket will advance to the next step automatically.`,
+      );
+      return;
+    }
+
+    const trackerUrl = `${appBase}/customer/status/${visit.id}`;
+    await this.sendMsg(
+      jid,
+      `✅ You have no outstanding payments due for ticket *#${visit.displayId}*.\n\n` +
+        `Live ticket tracker:\n🔗 ${trackerUrl}\n\n` +
+        `Reply '0' for the main menu.`,
+    );
+  }
+
+  /**
    * 1-Click WhatsApp Check-in for Today's Scheduled Appointments
    */
   private async handleAppointmentCheckin(
@@ -392,7 +487,6 @@ export class WhatsappChatbot {
     phone: string,
     jid: string,
   ) {
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -401,7 +495,7 @@ export class WhatsappChatbot {
     const appt = await this.prisma.appointment.findFirst({
       where: {
         tenantId,
-        customer: { phone: { contains: cleanPhone } },
+        customer: { phone: phoneMatchCondition(phone) },
         scheduledStart: { gte: todayStart, lte: todayEnd },
         status: { in: ['CONFIRMED', 'SCHEDULED'] },
       },
@@ -517,7 +611,7 @@ export class WhatsappChatbot {
       where: {
         tenantId,
         customer: {
-          phone: { contains: phone.replace(/\D/g, '').slice(-9) },
+          phone: phoneMatchCondition(phone),
         },
         currentState: { in: ['WAITING', 'CHECKED_IN'] },
       },
@@ -945,14 +1039,13 @@ export class WhatsappChatbot {
     }
 
     // Find or create customer
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     let customer = await this.prisma.customer.findFirst({
-      where: { tenantId, phone: { contains: cleanPhone } },
+      where: { tenantId, phone: phoneMatchCondition(phone) },
     });
 
     if (!customer) {
       customer = await this.prisma.customer.create({
-        data: { tenantId, name, phone },
+        data: { tenantId, name, phone: normalizePhoneZA(phone) },
       });
     } else {
       if (!customer.name || customer.name === 'Walk-in') {
@@ -1087,6 +1180,7 @@ export class WhatsappChatbot {
       data: {
         ...(step !== undefined ? { step } : {}),
         context: newContext,
+        lastActive: new Date(),
       },
     });
   }

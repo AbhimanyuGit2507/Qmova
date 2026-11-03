@@ -375,8 +375,13 @@ export class TenantPaymentsService {
 
     const publishableKey =
       process.env.STRIPE_PUBLISHABLE_KEY ||
-      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY ||
-      'pk_live_51TncmkIdVVmQLEG3kmpaJE7ROAPd9XcW94BzXuJoLlEjuGCMVflLVSw3chR4GL3IlI9Wnq2WkQKtkVrhxGRSB8mA00G5T3CIYn';
+      process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY;
+
+    if (!publishableKey) {
+      throw new BadRequestException(
+        'Stripe publishable key is not configured on the server. Please set STRIPE_PUBLISHABLE_KEY in environment variables.',
+      );
+    }
 
     return {
       clientSecret: paymentIntent.client_secret,
@@ -1405,13 +1410,18 @@ export class TenantPaymentsService {
         );
       }
     } else {
+      if (process.env.NODE_ENV === 'production') {
+        throw new BadRequestException(
+          'Stripe webhook signature verification is mandatory in production. STRIPE_WEBHOOK_SECRET or signature is missing.',
+        );
+      }
       try {
         event = JSON.parse(rawBody.toString('utf8'));
       } catch {
         throw new BadRequestException('Invalid webhook body JSON');
       }
       this.logger.warn(
-        'STRIPE_WEBHOOK_SECRET not configured; processed event without cryptographic verification.',
+        'STRIPE_WEBHOOK_SECRET not configured; processed event without cryptographic verification in non-production environment.',
       );
     }
 

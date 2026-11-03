@@ -111,4 +111,74 @@ export class MessagesController {
   ) {
     return this.messagesService.deleteMessage(req.user.tenantId, messageId);
   }
+
+  @Post('inbox/:phone/read')
+  async markAsRead(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+  ) {
+    return this.messagesService.markAsRead(req.user.tenantId, phone);
+  }
+
+  @Post('inbox/:phone/mark-read')
+  async markAsReadAlias(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+  ) {
+    return this.messagesService.markAsRead(req.user.tenantId, phone);
+  }
+
+  @Post('inbox/:phone/bot-toggle')
+  async toggleBot(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+    @Body() body: { paused?: boolean },
+  ) {
+    return this.messagesService.toggleBot(
+      req.user.tenantId,
+      phone,
+      body?.paused,
+    );
+  }
+
+  @Post('inbox/:phone/toggle-bot')
+  async toggleBotAlias(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+    @Body() body: { paused?: boolean },
+  ) {
+    return this.messagesService.toggleBot(
+      req.user.tenantId,
+      phone,
+      body?.paused,
+    );
+  }
+
+  @Post('inbox/:phone/payment-link')
+  async sendPaymentLink(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+    @Body() body: { visitId: string; visitStepId?: string },
+  ) {
+    return this.messagesService.sendPaymentLink(
+      req.user.tenantId,
+      phone,
+      body.visitId,
+      body.visitStepId,
+    );
+  }
+
+  @Post('inbox/:phone/send-payment-link')
+  async sendPaymentLinkAlias(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+    @Body() body: { visitId: string; visitStepId?: string },
+  ) {
+    return this.messagesService.sendPaymentLink(
+      req.user.tenantId,
+      phone,
+      body.visitId,
+      body.visitStepId,
+    );
+  }
 }

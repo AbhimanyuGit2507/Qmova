@@ -145,6 +145,15 @@ export class TenantPaymentsController {
     return this.tenantPaymentsService.handleStripeWebhook(signature, rawBody);
   }
 
+  @Post('stripe-webhook')
+  async handleStripeWebhookAlias(
+    @Headers('stripe-signature') signature: string,
+    @Req() req: any,
+  ) {
+    const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body));
+    return this.tenantPaymentsService.handleStripeWebhook(signature, rawBody);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('manual')
   recordManualPayment(

@@ -25,13 +25,13 @@ interface CustomTooltipProps extends TooltipProps<number, string> {
   hasScheduled?: boolean;
 }
 
-function CustomTooltip({ active, payload, label, hasScheduled }: CustomTooltipProps) {
+function CustomTooltip({ active, payload, label, hasScheduled }: any) {
   if (active && payload && payload.length) {
     const actual =
-      payload.find((p) => p.dataKey === 'visits' || p.dataKey === 'actualVisits')
+      payload.find((p: any) => p.dataKey === 'visits' || p.dataKey === 'actualVisits')
         ?.value ?? 0;
     const scheduled =
-      payload.find((p) => p.dataKey === 'scheduled')?.value ?? 0;
+      payload.find((p: any) => p.dataKey === 'scheduled')?.value ?? 0;
 
     return (
       <div className="bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 py-2.5 shadow-xl text-xs space-y-1.5 min-w-[150px]">

@@ -298,8 +298,8 @@ describe('AnalyticsService', () => {
     // In hourly chart, hour 14:00 should have volume = 0, actualVisits = 0, but scheduledBookings = 1
     const hour14 = result.chartData.find((d: any) => d.timeLabel === '14:00');
     expect(hour14).toBeDefined();
-    expect(hour14.volume).toBe(0);
-    expect(hour14.actualVisits).toBe(0);
-    expect(hour14.scheduledBookings).toBe(1);
+    expect(hour14!.volume).toBe(0);
+    expect(hour14!.actualVisits).toBe(0);
+    expect(hour14!.scheduledBookings).toBe(1);
   });
 });

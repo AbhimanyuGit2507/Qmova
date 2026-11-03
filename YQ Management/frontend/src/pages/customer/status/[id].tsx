@@ -287,14 +287,12 @@ export default function CustomerLiveStatus() {
   const handleAddToCalendar = () => {
     if (!scheduledTime) return;
     const startDate = new Date(scheduledTime);
-    const endDate = new Date(startDate.getTime() + 30 * 60 * 1000);
     downloadIcsCalendar({
       title: `${serviceName} - ${tenantName || 'Appointment'}`,
       description: `Appointment reference ${displayId || 'Queue Ticket'} for ${customerName} at ${tenantName || 'qmova'}.`,
       location: locationName || tenantName || '',
       startDate,
-      endDate,
-      filename: `appointment-${displayId || 'qmova'}.ics`,
+      durationMinutes: 30,
     });
     toast.success('Calendar event (.ics) downloaded');
   };

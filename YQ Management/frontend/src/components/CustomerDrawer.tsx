@@ -31,7 +31,7 @@ interface CustomerDrawerProps {
   onOpenPayments?: (searchQuery?: string) => void;
 }
 
-export function CustomerDrawer({ isOpen, onClose, customerId }: CustomerDrawerProps) {
+export function CustomerDrawer({ isOpen, onClose, customerId, onOpenPayments }: CustomerDrawerProps) {
   const [selectedVisit, setSelectedVisit] = React.useState<any>(null);
   const [renderTime] = React.useState(() => Date.now());
   const queryClient = useQueryClient();

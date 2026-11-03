@@ -21,6 +21,7 @@ import {
   ChevronUp,
   Check,
   History,
+  CreditCard,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchApi } from '../lib/api';
@@ -102,6 +103,22 @@ export function CustomerDossierSidebar({
     },
   });
 
+  // ── Send Payment Link Mutation ──────────────────────────────────────────
+  const sendPaymentLinkMutation = useMutation({
+    mutationFn: (body: { visitId: string; visitStepId?: string }) =>
+      fetchApi(`/messages/inbox/${phone}/payment-link`, {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-messages', phone] });
+      toast.success('💳 Payment link sent to customer via WhatsApp');
+    },
+    onError: () => {
+      toast.error('Failed to send payment link');
+    },
+  });
+
   const handleSaveContact = () => {
     updateCustomerMutation.mutate({
       name: editName.trim() || undefined,
@@ -136,6 +153,12 @@ export function CustomerDossierSidebar({
   // ── Helpers ─────────────────────────────────────────────────────────────
   const stats = dossier?.stats;
   const activeTicket = dossier?.activeTicket;
+  const activePaymentStep = activeTicket?.rawVisit?.visitSteps?.find(
+    (s: AnyFixMe) =>
+      (s.type === 'PAYMENT' || s.templateStep?.type === 'PAYMENT') &&
+      s.paymentStatus !== 'PAID' &&
+      s.status !== 'COMPLETED'
+  );
   const upcomingAppointments = dossier?.upcomingAppointments || [];
   const pastBookings = dossier?.pastBookings || [];
   const reviews = dossier?.reviews || [];
@@ -442,6 +465,59 @@ export function CustomerDossierSidebar({
                     </button>
                   )}
                 </div>
+
+                {/* ── FE-06: Send Payment Link via WhatsApp ─────────────── */}
+                {activePaymentStep ? (
+                  <div className="pt-2 border-t border-primary/20 flex flex-col gap-1.5">
+                    <div className="flex items-center justify-between text-xs font-semibold text-emerald-600 dark:text-emerald-400">
+                      <span className="flex items-center gap-1.5">
+                        <CreditCard className="w-3.5 h-3.5" />
+                        Payment Required
+                      </span>
+                      {activePaymentStep.amountCharged && (
+                        <span className="font-mono font-bold">
+                          R{(activePaymentStep.amountCharged / 100).toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <button
+                      onClick={() =>
+                        sendPaymentLinkMutation.mutate({
+                          visitId: activeTicket.id,
+                          visitStepId: activePaymentStep.id,
+                        })
+                      }
+                      disabled={sendPaymentLinkMutation.isPending}
+                      className="w-full py-1.5 px-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition-all shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50 active:scale-95"
+                    >
+                      {sendPaymentLinkMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CreditCard className="w-3.5 h-3.5" />
+                      )}
+                      Send Payment Link via WhatsApp
+                    </button>
+                  </div>
+                ) : (
+                  <div className="pt-1.5 border-t border-primary/15">
+                    <button
+                      onClick={() =>
+                        sendPaymentLinkMutation.mutate({
+                          visitId: activeTicket.id,
+                        })
+                      }
+                      disabled={sendPaymentLinkMutation.isPending}
+                      className="w-full py-1.5 px-2 rounded-xl bg-surface-container dark:bg-white/10 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 text-outline text-[11px] font-semibold transition-all border border-border dark:border-dark-border flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                    >
+                      {sendPaymentLinkMutation.isPending ? (
+                        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      ) : (
+                        <CreditCard className="w-3.5 h-3.5" />
+                      )}
+                      Send Payment Link via WhatsApp
+                    </button>
+                  </div>
+                )}
               </div>
             ) : upcomingAppointments.length > 0 ? (
               <div className="p-3.5 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 space-y-1.5">

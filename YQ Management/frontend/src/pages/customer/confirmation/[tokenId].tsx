@@ -911,7 +911,7 @@ export default function QueueConfirmation() {
         title="Cancel Appointment?"
         description="Are you sure you want to cancel this booking? This will release your time slot for other customers."
         confirmText="Yes, Cancel Booking"
-        confirmButtonClass="bg-rose-600 hover:bg-rose-700 text-white"
+        variant="danger"
         isLoading={isCancelling}
       />
     </div>

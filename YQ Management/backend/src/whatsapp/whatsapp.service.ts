@@ -1713,6 +1713,18 @@ export class WhatsappService implements OnModuleInit {
         },
       });
 
+      if (messageId) {
+        const existingMsg = await this.prisma.message.findFirst({
+          where: { whatsappId: messageId, tenantId: tenant.id },
+        });
+        if (existingMsg) {
+          this.logger.debug(
+            `Message ${messageId} already exists in DB for tenant ${tenant.id}, skipping duplicate.`,
+          );
+          return { ignored: true, reason: 'duplicate_db' };
+        }
+      }
+
       await this.prisma.message.create({
         data: {
           tenantId: tenant.id,
@@ -1721,6 +1733,7 @@ export class WhatsappService implements OnModuleInit {
           body: rawText,
           sender: 'CUSTOMER',
           isRead: false,
+          whatsappId: messageId || undefined,
         },
       });
 

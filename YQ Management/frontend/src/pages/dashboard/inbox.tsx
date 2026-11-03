@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Head from 'next/head';
 import { useRouter } from 'next/router';
 import AdminLayout from '../../components/AdminLayout';
@@ -35,6 +35,10 @@ import {
   ShieldCheck,
   Check,
   ChevronDown,
+  CreditCard,
+  ToggleLeft,
+  ToggleRight,
+  Clock as ClockIcon,
 } from 'lucide-react';
 import EmojiPicker, { EmojiClickData, Theme } from 'emoji-picker-react';
 import { toast } from 'sonner';
@@ -265,7 +269,7 @@ export default function InboxPage() {
   } = useQuery({
     queryKey: ['inbox-conversations', effectiveLocationId],
     queryFn: () => fetchApi<AnyFixMe[]>(`/messages/inbox${locParam}`),
-    refetchInterval: 5000,
+    refetchInterval: 12000, // supplemented by socket events
   });
 
   // ── Query Messages for Selected Phone ──────────────────────────────────────
@@ -277,7 +281,7 @@ export default function InboxPage() {
     queryKey: ['inbox-messages', selectedPhone],
     queryFn: () => fetchApi<AnyFixMe[]>(`/messages/inbox/${selectedPhone}`),
     enabled: !!selectedPhone,
-    refetchInterval: 3000,
+    refetchInterval: 6000, // supplemented by socket events
   });
 
   // Ensure non-null arrays for conversations and messages
@@ -289,25 +293,82 @@ export default function InboxPage() {
     return safeConversations.find((c: AnyFixMe) => c.customerPhone === selectedPhone);
   }, [safeConversations, selectedPhone]);
 
+  // Query Current Tenant for custom canned responses
+  const { data: currentTenant } = useQuery({
+    queryKey: ['tenant', 'me'],
+    queryFn: () => fetchApi<AnyFixMe>('/tenant/me'),
+    staleTime: 60000,
+  });
+
+  const quickResponses = useMemo(() => {
+    const custom = currentTenant?.chatbotConfig?.cannedResponses;
+    if (Array.isArray(custom) && custom.length > 0) {
+      return custom;
+    }
+    return QUICK_RESPONSES;
+  }, [currentTenant]);
+
+  // Derive bot active state from conversation (isHumanPaused is false/undefined by default)
+  const isHumanPaused = currentConversation?.isHumanPaused ?? false;
+  const isBotActive = !isHumanPaused;
+
   // Auto-scroll on new message
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [safeMessages]);
 
-  // Socket: Message Deleted Handler
+  // ── FE-01: Socket – Real-time message & conversation updates ────────────────
   useEffect(() => {
     if (!socket) return;
-    const handler = (payload: AnyFixMe) => {
+
+    // Message deleted
+    const deletedHandler = (payload: AnyFixMe) => {
       if (payload.type === 'MESSAGE_DELETED') {
         queryClient.invalidateQueries({ queryKey: ['inbox-messages', selectedPhone] });
         queryClient.invalidateQueries({ queryKey: ['inbox-conversations'] });
       }
     };
-    socket.on('MESSAGE_DELETED', handler);
+
+    // New incoming WhatsApp message – refresh message list + conversations
+    const newMsgHandler = (payload: AnyFixMe) => {
+      const phone = payload?.customerPhone || payload?.phone;
+      queryClient.invalidateQueries({ queryKey: ['inbox-conversations'] });
+      if (phone === selectedPhone) {
+        queryClient.invalidateQueries({ queryKey: ['inbox-messages', selectedPhone] });
+      }
+    };
+
+    // Any conversation meta update (bot toggle, read, etc.)
+    const convoUpdatedHandler = () => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-conversations'] });
+    };
+
+    socket.on('MESSAGE_DELETED', deletedHandler);
+    socket.on('WHATSAPP_NEW_MESSAGE', newMsgHandler);
+    socket.on('WHATSAPP_INCOMING', newMsgHandler);
+    socket.on('WHATSAPP_CONVERSATION_UPDATED', convoUpdatedHandler);
     return () => {
-      socket.off('MESSAGE_DELETED', handler);
+      socket.off('MESSAGE_DELETED', deletedHandler);
+      socket.off('WHATSAPP_NEW_MESSAGE', newMsgHandler);
+      socket.off('WHATSAPP_INCOMING', newMsgHandler);
+      socket.off('WHATSAPP_CONVERSATION_UPDATED', convoUpdatedHandler);
     };
   }, [socket, selectedPhone, queryClient]);
+
+  // ── FE-02: Mark-as-read when a conversation is opened ──────────────────────
+  useEffect(() => {
+    if (!selectedPhone) return;
+    // Optimistically zero the unread counter in local cache
+    queryClient.setQueryData<AnyFixMe[]>(['inbox-conversations', effectiveLocationId], (old) => {
+      if (!Array.isArray(old)) return old;
+      return old.map((c: AnyFixMe) =>
+        c.customerPhone === selectedPhone ? { ...c, unreadCount: 0 } : c
+      );
+    });
+    // Fire-and-forget to backend
+    fetchApi(`/messages/inbox/${selectedPhone}/mark-read`, { method: 'POST' }).catch(() => {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedPhone]);
 
   // Click outside emoji picker
   useEffect(() => {
@@ -362,6 +423,31 @@ export default function InboxPage() {
 
     return list;
   }, [safeConversations, tabFilter, search]);
+
+  // ── 24h Window Warning ──────────────────────────────────────────────────────
+  const lastCustomerMsgAgeHours = useMemo(() => {
+    const customerMsgs = safeMessages.filter((m: AnyFixMe) => m.sender === 'CUSTOMER');
+    if (customerMsgs.length === 0) return null;
+    const lastMsg = customerMsgs[customerMsgs.length - 1];
+    const msgTime = new Date(lastMsg.createdAt).getTime();
+    return (Date.now() - msgTime) / (1000 * 60 * 60); // hours
+  }, [safeMessages]);
+
+  const is24hExpired = lastCustomerMsgAgeHours !== null && lastCustomerMsgAgeHours >= 24;
+
+  // ── FE-03: Bot / Human Toggle Mutation ─────────────────────────────────────
+  const toggleBotMutation = useMutation({
+    mutationFn: () =>
+      fetchApi<AnyFixMe>(`/messages/inbox/${selectedPhone}/toggle-bot`, {
+        method: 'POST',
+        body: JSON.stringify({ paused: !isHumanPaused }),
+      }),
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-conversations'] });
+      toast.success(data?.isHumanPaused ? '👤 Switched to human mode' : '🤖 Bot re-enabled');
+    },
+    onError: () => toast.error('Failed to toggle bot mode'),
+  });
 
   // ── Send Message Mutation ──────────────────────────────────────────────────
   const sendMutation = useMutation({
@@ -789,6 +875,27 @@ export default function InboxPage() {
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {/* FE-03: Bot / Human mode toggle */}
+                  <button
+                    onClick={() => toggleBotMutation.mutate()}
+                    disabled={toggleBotMutation.isPending}
+                    title={isBotActive ? 'Bot is ON — click to hand off to human agent' : 'Human mode — click to re-enable bot'}
+                    className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
+                      isBotActive
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 hover:border-red-500/20'
+                        : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-500/20'
+                    }`}
+                  >
+                    {toggleBotMutation.isPending ? (
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    ) : isBotActive ? (
+                      <ToggleRight className="w-3.5 h-3.5" />
+                    ) : (
+                      <ToggleLeft className="w-3.5 h-3.5" />
+                    )}
+                    {isBotActive ? 'Bot' : 'Human'}
+                  </button>
+
                   <a
                     href={`tel:${selectedPhone}`}
                     className="p-2 text-outline hover:text-primary hover:bg-primary/10 rounded-xl transition-colors cursor-pointer"
@@ -944,7 +1051,7 @@ export default function InboxPage() {
                   <Sparkles className="w-3.5 h-3.5 text-primary" />
                   Quick:
                 </span>
-                {QUICK_RESPONSES.map((qr) => (
+                {quickResponses.map((qr: AnyFixMe) => (
                   <button
                     key={qr.label}
                     type="button"
@@ -957,6 +1064,23 @@ export default function InboxPage() {
               </div>
 
               {/* ── Input Composer Area ───────────────────────────────────── */}
+              {/* FE-04: 24h WhatsApp Messaging Window Warning ─────────────── */}
+              {is24hExpired && (
+                <div className="mx-3.5 mt-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2 text-xs animate-in fade-in duration-300">
+                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <p className="font-bold text-amber-700 dark:text-amber-300">24-hour window expired</p>
+                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
+                      Last customer message was{' '}
+                      <span className="font-mono font-semibold">
+                        {lastCustomerMsgAgeHours !== null ? `${Math.round(lastCustomerMsgAgeHours)}h` : ''} ago
+                      </span>
+                      . WhatsApp restricts free-form replies — use an approved template or wait for the customer to message again.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <div className="p-3.5 border-t border-border dark:border-dark-border bg-surface dark:bg-dark-card shrink-0 relative">
                 {/* Media Preview Box */}
                 {media && (

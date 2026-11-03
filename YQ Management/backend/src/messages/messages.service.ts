@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RedisService } from '../redis/redis.service';
@@ -261,9 +261,14 @@ export class MessagesService {
       phone: { contains: p.replace(/\D/g, '').slice(-9) },
     }));
 
-    const customers = await this.prisma.customer.findMany({
-      where: { tenantId, OR: orConditions },
-    });
+    const [customers, sessions] = await Promise.all([
+      this.prisma.customer.findMany({
+        where: { tenantId, OR: orConditions },
+      }),
+      this.prisma.chatSession.findMany({
+        where: { tenantId, phone: { in: phones } },
+      }),
+    ]);
 
     const customerMap = new Map();
     for (const c of customers) {
@@ -273,9 +278,20 @@ export class MessagesService {
       }
     }
 
+    const sessionMap = new Map();
+    for (const s of sessions) {
+      sessionMap.set(s.phone, s);
+    }
+
     return convos.map((c) => {
       const cleanPhone = c.customerPhone.replace(/\D/g, '').slice(-9);
       const cust = customerMap.get(cleanPhone);
+      const session = sessionMap.get(c.customerPhone);
+      const isHumanPaused =
+        session?.context && typeof session.context === 'object'
+          ? !!(session.context as any).isHumanPaused
+          : false;
+
       return {
         ...c,
         customerId: cust?.id || null,
@@ -283,6 +299,7 @@ export class MessagesService {
         customerEmail: cust?.email || null,
         customerAvatar: cust?.avatarUrl || null,
         lastMessage: c.messages?.[0] || null,
+        isHumanPaused,
       };
     });
   }
@@ -544,6 +561,7 @@ export class MessagesService {
               bookingPayments: true,
               visitInvoice: true,
               reviewRequests: true,
+              visitSteps: { orderBy: { stepOrder: 'asc' } },
             },
             orderBy: { createdAt: 'desc' },
             take: 50,
@@ -896,5 +914,101 @@ export class MessagesService {
     }
 
     return customer;
+  }
+
+  async markAsRead(tenantId: string, phone: string) {
+    await this.prisma.customerConversation.updateMany({
+      where: { tenantId, customerPhone: phone },
+      data: { unreadCount: 0 },
+    });
+    this.queueGateway.broadcastTenantUpdate(tenantId, 'NEW_INBOX_MESSAGE', {
+      phone,
+      unreadCount: 0,
+    });
+    return { success: true };
+  }
+
+  async toggleBot(tenantId: string, phone: string, paused?: boolean) {
+    const session = await this.prisma.chatSession.findUnique({
+      where: { tenantId_phone: { tenantId, phone } },
+    });
+    const currentContext = (session?.context as object) || {};
+    const currentlyPaused = !!(currentContext as any).isHumanPaused;
+    const targetPaused =
+      typeof paused === 'boolean' ? paused : !currentlyPaused;
+
+    await this.prisma.chatSession.upsert({
+      where: { tenantId_phone: { tenantId, phone } },
+      create: {
+        tenantId,
+        phone,
+        step: 0,
+        context: { ...currentContext, isHumanPaused: targetPaused },
+      },
+      update: {
+        context: { ...currentContext, isHumanPaused: targetPaused },
+        lastActive: new Date(),
+      },
+    });
+    this.queueGateway.broadcastTenantUpdate(tenantId, 'NEW_INBOX_MESSAGE', {
+      phone,
+      isHumanPaused: targetPaused,
+      botEnabled: !targetPaused,
+    });
+    return {
+      success: true,
+      isHumanPaused: targetPaused,
+      botEnabled: !targetPaused,
+    };
+  }
+
+  async sendPaymentLink(
+    tenantId: string,
+    phone: string,
+    visitId: string,
+    visitStepId?: string,
+  ) {
+    const visit = await this.prisma.visit.findUnique({
+      where: { id: visitId },
+      include: {
+        service: true,
+        tenant: true,
+        visitSteps: { orderBy: { stepOrder: 'asc' } },
+      },
+    });
+
+    if (!visit || visit.tenantId !== tenantId) {
+      throw new BadRequestException('Visit not found');
+    }
+
+    const step = visitStepId
+      ? visit.visitSteps.find((s) => s.id === visitStepId)
+      : visit.visitSteps.find(
+          (s) => s.type === 'PAYMENT' && s.status === 'ACTIVE',
+        );
+
+    const appBase =
+      process.env.NEXT_PUBLIC_APP_URL ||
+      process.env.APP_URL ||
+      'https://qmova.yqbuddy.com';
+
+    const payUrl = step
+      ? `${appBase}/pay/${step.id}`
+      : `${appBase}/customer/status/${visit.id}`;
+
+    const amount = step?.amountCharged
+      ? `R${(step.amountCharged / 100).toFixed(2)}`
+      : visit.service?.basePrice
+        ? `R${(visit.service.basePrice / 100).toFixed(2)}`
+        : null;
+
+    const messageText =
+      `💳 *Payment Request from ${visit.tenant.name}*\n\n` +
+      `Ticket: *${visit.displayId || 'Queue Visit'}*\n` +
+      `Service: *${visit.service?.name || 'Service'}*\n` +
+      (amount ? `Amount Due: *${amount}*\n\n` : '\n') +
+      `Please click the link below to complete your payment securely:\n${payUrl}`;
+
+    return this.sendInboxMessage(tenantId, phone, messageText);
   }
 }

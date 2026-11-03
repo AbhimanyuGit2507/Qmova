@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'react-phone-number-input/style.css';
 import { useTheme } from '../../../../components/ThemeProvider';
-import { Sun, Moon, Calendar } from 'lucide-react';
+import { Sun, Moon, Calendar, CreditCard } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 const QRCode = dynamic(() => import('react-qr-code'), { ssr: false });
@@ -1052,7 +1052,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                             required={field.required}
                             wrapperClassName="w-full"
                             className="w-full pl-11 pr-4 py-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl outline-none focus:ring-2 focus:border-transparent text-sm text-gray-900 dark:text-white transition-all shadow-sm cursor-pointer"
-                            style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
+                            {...({ style: { '--tw-ring-color': primaryColor } } as any)}
                           />
                         </div>
                       ) : field.type === 'textarea' ? (

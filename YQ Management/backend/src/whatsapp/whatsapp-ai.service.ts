@@ -5,6 +5,7 @@ import { AiService } from '../ai/ai.service';
 import { ServiceService } from '../service/service.service';
 import { AppointmentService } from '../appointment/appointment.service';
 import { VisitService } from '../visit/visit.service';
+import { normalizePhoneZA, phoneMatchCondition } from '../utils/phone.util';
 
 @Injectable()
 export class WhatsappAiService {
@@ -31,14 +32,32 @@ export class WhatsappAiService {
     const tenantId = tenant.id;
 
     // Check if human paused
-    let session = await this.prisma.chatSession.findUnique({
-      where: { tenantId_phone: { tenantId, phone } },
+    const normalizedPhone = normalizePhoneZA(phone);
+    const session = await this.prisma.chatSession.upsert({
+      where: { tenantId_phone: { tenantId, phone: normalizedPhone } },
+      create: { tenantId, phone: normalizedPhone, step: 0, context: {} },
+      update: { lastActive: new Date() },
     });
 
-    if (!session) {
-      session = await this.prisma.chatSession.create({
-        data: { tenantId, phone, step: 0 },
-      });
+    // Auto-expire session timeouts older than 24 hours back to bot mode
+    const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
+    if (
+      session.lastActive &&
+      Date.now() - new Date(session.lastActive).getTime() > SESSION_TIMEOUT_MS
+    ) {
+      if (session.context && (session.context as any).isHumanPaused) {
+        await this.prisma.chatSession.update({
+          where: { id: session.id },
+          data: {
+            context: {
+              ...((session.context as object) || {}),
+              isHumanPaused: false,
+            },
+            lastActive: new Date(),
+          },
+        });
+        (session.context as any).isHumanPaused = false;
+      }
     }
 
     if (session.context && (session.context as any).isHumanPaused) {
@@ -138,6 +157,16 @@ export class WhatsappAiService {
       },
       {
         type: 'function',
+        name: 'getPaymentLink',
+        description:
+          'Get a secure online payment link for the customer to pay for their ticket or service. Use this whenever the customer asks how to pay, asks for a payment link, or wants to settle their bill.',
+        parameters: {
+          type: 'OBJECT',
+          properties: {},
+        },
+      },
+      {
+        type: 'function',
         name: 'transferToHuman',
         description:
           'Transfer the conversation to a human operator. Use this if the user asks for a human, or if you cannot help them.',
@@ -149,9 +178,10 @@ export class WhatsappAiService {
     ];
 
     const systemInstruction = `You are a helpful AI assistant for a business named ${tenant.name}. 
-Your job is to assist customers with queue status, bookings, and general inquiries via WhatsApp.
+Your job is to assist customers with queue status, bookings, payments, and general inquiries via WhatsApp.
 Keep responses short, friendly, and conversational. Do not use markdown (except *bold* or _italic_ supported by WhatsApp).
 Always try to use the provided tools if the user is asking about their queue status, wait time, or wants to cancel.
+If they ask for a payment link or how to pay online, call getPaymentLink.
 If they want to book an appointment, ask for the date, time, and service if not provided, then call bookAppointment.
 If you don't know the answer or the user is frustrated, call transferToHuman.`;
 
@@ -205,6 +235,8 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
             result = await this.executeGetJourneyStatus(tenantId, phone);
           } else if (name === 'bookAppointment') {
             result = await this.executeBookAppointment(tenantId, phone, args);
+          } else if (name === 'getPaymentLink') {
+            result = await this.executeGetPaymentLink(tenantId, phone);
           } else if (name === 'transferToHuman') {
             await this.prisma.chatSession.update({
               where: { id: session.id },
@@ -254,11 +286,10 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
   // --- Tool Implementations ---
 
   private async executeGetQueuePosition(tenantId: string, phone: string) {
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     const visit = await this.prisma.visit.findFirst({
       where: {
         tenantId,
-        customer: { phone: { contains: cleanPhone } },
+        customer: { phone: phoneMatchCondition(phone) },
         currentState: { in: ['WAITING', 'CHECKED_IN', 'IN_SERVICE'] },
       },
       include: { queue: true, service: true },
@@ -318,21 +349,50 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
   }
 
   private async executeCancelVisit(tenantId: string, phone: string) {
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     const visit = await this.prisma.visit.findFirst({
       where: {
         tenantId,
-        customer: { phone: { contains: cleanPhone } },
+        customer: { phone: phoneMatchCondition(phone) },
         currentState: { in: ['WAITING', 'CHECKED_IN'] },
       },
+      include: { tenant: true },
     });
 
     if (!visit)
       return { success: false, message: 'No active tickets to cancel.' };
 
+    const hasPayment = await this.prisma.bookingPayment.findFirst({
+      where: { visitId: visit.id, status: 'SUCCEEDED' },
+    });
+
+    if (hasPayment) {
+      const supportEmail = visit.tenant?.supportEmail || 'the business directly';
+      return {
+        success: false,
+        message: `Ticket ${visit.displayId || 'Unknown'} has an active payment and cannot be cancelled automatically. Please contact ${supportEmail} for refund assistance.`,
+      };
+    }
+
+    const existingMeta =
+      typeof visit.metadata === 'object' && visit.metadata !== null
+        ? (visit.metadata as Record<string, any>)
+        : {};
+
     await this.prisma.visit.update({
       where: { id: visit.id },
-      data: { currentState: 'CANCELLED', completedAt: new Date() },
+      data: {
+        currentState: 'CANCELLED',
+        completedAt: new Date(),
+        cancelledBy: 'CUSTOMER',
+        cancelReason: 'Cancelled by customer via WhatsApp AI',
+        metadata: {
+          ...existingMeta,
+          cancellation: {
+            reason: 'Cancelled by customer via WhatsApp AI',
+            cancelledAt: new Date(),
+          },
+        },
+      },
     });
 
     return { success: true, message: `Ticket ${visit.displayId} cancelled.` };
@@ -347,14 +407,13 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
     if (!date || !time)
       return { success: false, message: 'Missing date or time.' };
 
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     let customer = await this.prisma.customer.findFirst({
-      where: { tenantId, phone: { contains: cleanPhone } },
+      where: { tenantId, phone: phoneMatchCondition(phone) },
     });
 
     if (!customer) {
       customer = await this.prisma.customer.create({
-        data: { tenantId, phone, name: 'WhatsApp User' },
+        data: { tenantId, phone: normalizePhoneZA(phone), name: 'WhatsApp User' },
       });
     }
 
@@ -407,7 +466,6 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
     tenantId: string,
     phone: string,
   ) {
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -416,7 +474,7 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
     const appt = await this.prisma.appointment.findFirst({
       where: {
         tenantId,
-        customer: { phone: { contains: cleanPhone } },
+        customer: { phone: phoneMatchCondition(phone) },
         scheduledStart: { gte: todayStart, lte: todayEnd },
         status: { in: ['CONFIRMED', 'SCHEDULED'] },
       },
@@ -513,11 +571,10 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
   }
 
   private async executeGetJourneyStatus(tenantId: string, phone: string) {
-    const cleanPhone = phone.replace(/\D/g, '').slice(-9);
     const visit = await this.prisma.visit.findFirst({
       where: {
         tenantId,
-        customer: { phone: { contains: cleanPhone } },
+        customer: { phone: phoneMatchCondition(phone) },
         currentState: { in: ['WAITING', 'CHECKED_IN', 'IN_SERVICE'] },
       },
       include: {
@@ -584,6 +641,65 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
           ? (activeStep.amountCharged / 100).toFixed(2)
           : null,
       trackerUrl: `${baseAppUrl}/customer/status/${visit.id}`,
+    };
+  }
+
+  private async executeGetPaymentLink(tenantId: string, phone: string) {
+    const visit = await this.prisma.visit.findFirst({
+      where: {
+        tenantId,
+        customer: { phone: phoneMatchCondition(phone) },
+        currentState: { in: ['WAITING', 'CHECKED_IN', 'IN_SERVICE'] },
+      },
+      include: {
+        service: true,
+        tenant: true,
+        visitSteps: { orderBy: { stepOrder: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (!visit) {
+      return {
+        success: false,
+        message: 'No active queue ticket found for this customer.',
+      };
+    }
+
+    const paymentStep = visit.visitSteps?.find(
+      (s: any) =>
+        (s.type === 'PAYMENT' || s.templateStep?.type === 'PAYMENT') &&
+        s.paymentStatus !== 'PAID' &&
+        s.status !== 'COMPLETED',
+    );
+
+    const baseAppUrl =
+      process.env.APP_URL ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      (process.env.DOMAIN_BASE
+        ? `https://${process.env.DOMAIN_BASE}`
+        : 'https://qmova.yqbuddy.com');
+
+    if (paymentStep) {
+      const payUrl = `${baseAppUrl}/pay/${paymentStep.id}`;
+      const amount = paymentStep.amountCharged
+        ? `R${(paymentStep.amountCharged / 100).toFixed(2)}`
+        : null;
+      return {
+        success: true,
+        ticket: visit.displayId,
+        service: visit.service?.name,
+        amountDue: amount,
+        paymentUrl: payUrl,
+        message: `Direct secure payment link: ${payUrl}${amount ? ` for ${amount}` : ''}. Please share this link with the customer to complete payment online.`,
+      };
+    }
+
+    const trackerUrl = `${baseAppUrl}/customer/status/${visit.id}`;
+    return {
+      success: true,
+      ticket: visit.displayId,
+      message: `No payment step is currently required. The customer can track their ticket and view status at: ${trackerUrl}`,
     };
   }
 }

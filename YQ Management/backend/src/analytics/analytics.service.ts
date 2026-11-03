@@ -77,9 +77,13 @@ export class AnalyticsService {
         startDate = fromZonedTime(`${pastStr}T00:00:00.000`, resolvedTz);
         endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else if (timeframe === 'year' || timeframe === '1y') {
-        const d = toZonedTime(new Date(), resolvedTz);
-        d.setMonth(d.getMonth() - 11, 1);
-        const pastStr = formatInTimeZone(d, resolvedTz, 'yyyy-MM-01');
+        const now = new Date();
+        const curY = parseInt(formatInTimeZone(now, resolvedTz, 'yyyy'), 10);
+        const curM = parseInt(formatInTimeZone(now, resolvedTz, 'M'), 10); // 1-12
+        const targetM = curM - 11;
+        const startY = targetM <= 0 ? curY - 1 : curY;
+        const startM = targetM <= 0 ? targetM + 12 : targetM;
+        const pastStr = `${startY}-${String(startM).padStart(2, '0')}-01`;
         startDate = fromZonedTime(`${pastStr}T00:00:00.000`, resolvedTz);
         endDate = fromZonedTime(`${todayStr}T23:59:59.999`, resolvedTz);
       } else if (timeframe === 'all') {

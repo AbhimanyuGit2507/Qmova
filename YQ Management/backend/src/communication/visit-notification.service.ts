@@ -9,6 +9,7 @@ import {
 import { SmsService } from '../sms/sms.service';
 import { TemplateService } from './templates/template.service';
 import * as QRCode from 'qrcode';
+import { normalizePhoneZA } from '../utils/phone.util';
 
 /**
  * Supported visit lifecycle notification types.
@@ -113,7 +114,7 @@ export class VisitNotificationService {
    * Strips all non-digit characters. Handles both local and E.164 formats.
    */
   private normalizePhone(phone: string): string {
-    return phone.replace(/\D/g, '');
+    return normalizePhoneZA(phone);
   }
 
   // ─── Shared DB fetch helpers ────────────────────────────────────────────────
@@ -722,11 +723,15 @@ export class VisitNotificationService {
 
     if (!step) return;
 
-    // Only NOTIFICATION and FORM steps proactively message the customer upon activation by default,
+    // NOTIFICATION, FORM, and PAYMENT steps proactively message the customer upon activation,
     // OR if the step template explicitly requires it via notifyCustomerOnActivation.
+    const isPaymentStep =
+      step.templateStep.type === 'PAYMENT' || step.type === 'PAYMENT';
+
     const shouldNotify =
       step.templateStep.type === 'NOTIFICATION' ||
       step.templateStep.type === 'FORM' ||
+      isPaymentStep ||
       step.templateStep.notifyCustomerOnActivation;
 
     if (!shouldNotify) return;
@@ -734,7 +739,7 @@ export class VisitNotificationService {
     const visit = await this.fetchVisitBase(step.visitId);
     if (!this.canSendMessage(visit, 'STEP_ACTIVATED')) return;
 
-    // Resolve the message — priority: notificationTemplate > customerInstruction > FORM URL > generic
+    // Resolve the message — priority: notificationTemplate > customerInstruction > FORM/PAYMENT URL > generic
     let rawTemplate =
       step.templateStep.notificationTemplate ||
       step.templateStep.customerInstruction ||
@@ -742,7 +747,17 @@ export class VisitNotificationService {
 
     if (!rawTemplate) {
       if (step.templateStep.type === 'FORM') {
-        rawTemplate = `Hi {{customer_name}}, please complete the following form to proceed: ${process.env.NEXT_PUBLIC_APP_URL}/form/${visit.accessToken}/${step.id}`;
+        rawTemplate = `Hi {{customer_name}}, please complete the following form to proceed: ${process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL}/form/${visit.accessToken}/${step.id}`;
+      } else if (isPaymentStep) {
+        const appBase =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          process.env.APP_URL ||
+          'https://qmova.yqbuddy.com';
+        const payUrl = `${appBase}/pay/${step.id}`;
+        const amountStr = step.amountCharged
+          ? `Amount: *R${(step.amountCharged / 100).toFixed(2)}*\n\n`
+          : '';
+        rawTemplate = `Hi {{customer_name}}, payment is required for *{{step_name}}* at {{business_name}}.\n\n${amountStr}💳 Pay securely online:\n${payUrl}`;
       } else {
         rawTemplate = `Hi {{customer_name}}, your visit has advanced to *{{step_name}}* at {{business_name}}.`;
       }
