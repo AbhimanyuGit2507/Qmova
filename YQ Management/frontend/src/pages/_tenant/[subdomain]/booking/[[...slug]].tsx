@@ -1094,6 +1094,60 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                             </option>
                           ))}
                         </select>
+                      ) : field.type === 'radio' ? (
+                        <div className="space-y-2 p-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl">
+                          {(field.options || []).map((opt: string, i: number) => (
+                            <label key={i} className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+                              <input
+                                type="radio"
+                                name={field.id}
+                                value={opt}
+                                checked={currentDetails.responses[field.id] === opt}
+                                onChange={() =>
+                                  updateCurrentDetails({
+                                    responses: {
+                                      ...currentDetails.responses,
+                                      [field.id]: opt,
+                                    },
+                                  })
+                                }
+                                required={field.required && !currentDetails.responses[field.id]}
+                                style={{ accentColor: primaryColor }}
+                              />
+                              <span>{opt}</span>
+                            </label>
+                          ))}
+                        </div>
+                      ) : field.type === 'multiselect' ? (
+                        <div className="space-y-2 p-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl">
+                          {(field.options || []).map((opt: string, i: number) => {
+                            const curVals: string[] = Array.isArray(currentDetails.responses[field.id])
+                              ? currentDetails.responses[field.id]
+                              : [];
+                            const isChecked = curVals.includes(opt);
+                            return (
+                              <label key={i} className="flex items-center gap-3 cursor-pointer text-sm text-gray-700 dark:text-gray-300">
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  onChange={(e) => {
+                                    const next = e.target.checked
+                                      ? [...curVals, opt]
+                                      : curVals.filter((v: string) => v !== opt);
+                                    updateCurrentDetails({
+                                      responses: {
+                                        ...currentDetails.responses,
+                                        [field.id]: next,
+                                      },
+                                    });
+                                  }}
+                                  style={{ accentColor: primaryColor }}
+                                />
+                                <span>{opt}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
                       ) : field.type === 'checkbox' ? (
                         <label className="flex items-center gap-3 cursor-pointer p-3 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl">
                           <input
@@ -1117,6 +1171,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       ) : field.type === 'number' ? (
                         <input
                           type="number"
+                          min={field.min ?? undefined}
+                          max={field.max ?? undefined}
                           value={currentDetails.responses[field.id] ?? ''}
                           onChange={(e) =>
                             updateCurrentDetails({

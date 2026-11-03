@@ -447,6 +447,10 @@ const defaultForm = {
   notificationTemplate: "",
   notifyStaffOnActivation: false,
   formConfig: "",
+  orderItems: [] as any[],
+  orderMultiSelect: true,
+  orderShowPrices: true,
+  orderCatalogId: "",
   cvTitle: "",
   cvMessage: "",
   cvShowEta: true,
@@ -530,6 +534,11 @@ const STAGE_TYPES = [
     value: "FORM",
     label: "📋 Form",
     info: "Customer must fill out a dynamic form at this stage (e.g. intake, triage).",
+  },
+  {
+    value: "ORDER",
+    label: "🛒 Order / Menu Selection",
+    info: "Customer or staff selects items from a menu or catalog (e.g. food dishes, retail products, add-on packages). Automatically computes total price.",
   },
 ];
 
@@ -734,6 +743,10 @@ export default function JourneyBuilder() {
         form.type === "FORM" && form.formConfig
           ? JSON.parse(form.formConfig)
           : undefined,
+      orderItems: form.type === "ORDER" ? form.orderItems : undefined,
+      orderMultiSelect: form.orderMultiSelect,
+      orderShowPrices: form.orderShowPrices,
+      orderCatalogId: form.orderCatalogId || undefined,
       customerView: (() => {
         const cv: any = {};
         if (form.cvTitle) cv.title = form.cvTitle;
@@ -868,6 +881,10 @@ export default function JourneyBuilder() {
       formConfig: step.formConfig
         ? JSON.stringify(step.formConfig, null, 2)
         : "",
+      orderItems: step.orderItems || [],
+      orderMultiSelect: step.orderMultiSelect ?? true,
+      orderShowPrices: step.orderShowPrices ?? true,
+      orderCatalogId: step.orderCatalogId || "",
       cvTitle: step.customerView?.title || "",
       cvMessage: step.customerView?.message || "",
       cvShowEta: step.customerView?.showEta ?? true,
@@ -2205,7 +2222,7 @@ export default function JourneyBuilder() {
                                   label="Allocation Rule"
                                   info="How many items each customer is entitled to receive."
                                 />
-                                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 mt-1 mb-3">
+                                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 mt-1 mb-3">
                                   {[
                                     {
                                       id: "fixed",
@@ -2222,6 +2239,14 @@ export default function JourneyBuilder() {
                                       active:
                                         stepForm.entitlementFormula ===
                                         "accompanyingGuests + 1",
+                                    },
+                                    {
+                                      id: "formField",
+                                      label: "Form Question",
+                                      desc: "From custom booking question",
+                                      active: stepForm.entitlementFormula?.startsWith(
+                                        "formField:",
+                                      ),
                                     },
                                     {
                                       id: "custom",
@@ -2251,6 +2276,13 @@ export default function JourneyBuilder() {
                                             ...stepForm,
                                             entitlementFormula:
                                               "accompanyingGuests + 1",
+                                          });
+                                        } else if (opt.id === "formField") {
+                                          setStepForm({
+                                            ...stepForm,
+                                            entitlementFormula: "formField:portions",
+                                            entitlementFixed:
+                                              stepForm.entitlementFixed || "1",
                                           });
                                         } else {
                                           setStepForm({
@@ -2312,6 +2344,32 @@ export default function JourneyBuilder() {
                                       1 base + accompanying guests
                                     </span>{" "}
                                     items (e.g. 1 parent + 3 guests = 4 plates).
+                                  </div>
+                                )}
+
+                                {stepForm.entitlementFormula?.startsWith(
+                                  "formField:",
+                                ) && (
+                                  <div className="space-y-2 p-3 bg-indigo-50/50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 rounded-xl">
+                                    <FieldLabel
+                                      label="Question Field Identifier / Label"
+                                      info="Enter the field ID or label from your custom booking questions (e.g. 'portions', 'quantity', 'mealCount')."
+                                    />
+                                    <input
+                                      type="text"
+                                      value={stepForm.entitlementFormula.replace("formField:", "")}
+                                      onChange={(e) =>
+                                        setStepForm({
+                                          ...stepForm,
+                                          entitlementFormula: `formField:${e.target.value.trim()}`,
+                                        })
+                                      }
+                                      placeholder="e.g. portions"
+                                      className="w-full h-10 px-3 bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-lg text-xs font-mono text-on-surface dark:text-white"
+                                    />
+                                    <p className="text-[10px] text-indigo-700 dark:text-indigo-300">
+                                      When a customer answers this question during booking, their entitlement quantity will automatically match their answer.
+                                    </p>
                                   </div>
                                 )}
 
@@ -2386,6 +2444,216 @@ export default function JourneyBuilder() {
                                     </div>
                                   </label>
                                 ))}
+                              </div>
+                            </section>
+                          )}
+
+                          {/* Order / Menu Selection */}
+                          {stepForm.type === "ORDER" && (
+                            <section className="space-y-4">
+                              <h4 className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest flex items-center justify-between">
+                                <span>🛒 Order & Menu Rules</span>
+                                <span className="text-zinc-400 font-normal normal-case">
+                                  {stepForm.orderItems?.length || 0} items
+                                </span>
+                              </h4>
+
+                              {/* Catalog Link Banner */}
+                              <div className="p-3 bg-surface-container-lowest dark:bg-zinc-800/60 border border-border dark:border-zinc-700 rounded-xl space-y-1.5">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-on-surface dark:text-white">
+                                    Item Catalog Source
+                                  </span>
+                                  {flow?.service?.enableCatalog && (
+                                    <span className="text-[10px] px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 font-bold border border-emerald-500/20">
+                                      Service Catalog Active
+                                    </span>
+                                  )}
+                                </div>
+                                <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                                  {flow?.service?.enableCatalog
+                                    ? "Catalog items from this service are automatically available. You can also customize stage-specific items below."
+                                    : "Configure dishes or items below. To manage items centrally with CSV import, enable 'Service Catalog' in Service Settings."}
+                                </p>
+                              </div>
+
+                              {/* Items list manager */}
+                              <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                  <label className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
+                                    Menu Dishes & Products
+                                  </label>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const current = stepForm.orderItems || [];
+                                      setStepForm({
+                                        ...stepForm,
+                                        orderItems: [
+                                          ...current,
+                                          {
+                                            id: Math.random().toString(36).substr(2, 9),
+                                            name: "",
+                                            category: "Mains",
+                                            unitPrice: 5000,
+                                            currency: stepForm.stepPriceCurrency || "ZAR",
+                                            maxQty: 5,
+                                            isAvailable: true,
+                                          },
+                                        ],
+                                      });
+                                    }}
+                                    className="px-2.5 py-1 text-xs font-bold bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-100 dark:hover:bg-indigo-900/60 transition-colors flex items-center gap-1"
+                                  >
+                                    + Add Item
+                                  </button>
+                                </div>
+
+                                {(!stepForm.orderItems || stepForm.orderItems.length === 0) ? (
+                                  <div className="p-4 border border-dashed border-border dark:border-zinc-700 rounded-xl text-center">
+                                    <p className="text-xs text-zinc-500">No items configured for this step yet.</p>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setStepForm({
+                                          ...stepForm,
+                                          orderItems: [
+                                            { id: "sample_1", name: "Starters Plate", category: "Starters", unitPrice: 3500, currency: "ZAR", maxQty: 5, isAvailable: true },
+                                            { id: "sample_2", name: "Main Meal Dish", category: "Mains", unitPrice: 7500, currency: "ZAR", maxQty: 5, isAvailable: true },
+                                            { id: "sample_3", name: "Cold Beverage", category: "Beverages", unitPrice: 2500, currency: "ZAR", maxQty: 5, isAvailable: true },
+                                          ],
+                                        });
+                                      }}
+                                      className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mt-1 hover:underline inline-block"
+                                    >
+                                      Load sample 3-course menu
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
+                                    {stepForm.orderItems.map((item: any, idx: number) => (
+                                      <div
+                                        key={item.id || idx}
+                                        className="p-3 bg-surface-container-lowest dark:bg-zinc-800/80 border border-border dark:border-zinc-700 rounded-xl space-y-2 relative group"
+                                      >
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const filtered = (stepForm.orderItems || []).filter((_: any, i: number) => i !== idx);
+                                            setStepForm({ ...stepForm, orderItems: filtered });
+                                          }}
+                                          className="absolute top-2.5 right-2.5 text-zinc-400 hover:text-red-500 transition-colors p-1 text-sm font-bold"
+                                          title="Remove item"
+                                        >
+                                          ×
+                                        </button>
+
+                                        <div className="grid grid-cols-2 gap-2 pr-6">
+                                          <div>
+                                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Item Name</label>
+                                            <input
+                                              type="text"
+                                              value={item.name}
+                                              onChange={(e) => {
+                                                const next = [...stepForm.orderItems];
+                                                next[idx].name = e.target.value;
+                                                setStepForm({ ...stepForm, orderItems: next });
+                                              }}
+                                              placeholder="e.g. Paneer Tikka"
+                                              className="w-full text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-lg outline-none text-on-surface dark:text-white"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Category</label>
+                                            <input
+                                              type="text"
+                                              value={item.category || ""}
+                                              onChange={(e) => {
+                                                const next = [...stepForm.orderItems];
+                                                next[idx].category = e.target.value;
+                                                setStepForm({ ...stepForm, orderItems: next });
+                                              }}
+                                              placeholder="e.g. Starters, Mains, Drinks"
+                                              className="w-full text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-lg outline-none text-on-surface dark:text-white"
+                                            />
+                                          </div>
+                                        </div>
+
+                                        <div className="grid grid-cols-2 gap-2">
+                                          <div>
+                                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Price (Rands)</label>
+                                            <input
+                                              type="number"
+                                              step="0.01"
+                                              value={item.unitPrice ? (item.unitPrice / 100).toString() : "0"}
+                                              onChange={(e) => {
+                                                const next = [...stepForm.orderItems];
+                                                next[idx].unitPrice = Math.round(parseFloat(e.target.value || "0") * 100);
+                                                setStepForm({ ...stepForm, orderItems: next });
+                                              }}
+                                              className="w-full text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-lg outline-none text-on-surface dark:text-white"
+                                            />
+                                          </div>
+                                          <div>
+                                            <label className="text-[10px] font-bold text-zinc-500 uppercase">Max Qty</label>
+                                            <input
+                                              type="number"
+                                              min="1"
+                                              value={item.maxQty || 5}
+                                              onChange={(e) => {
+                                                const next = [...stepForm.orderItems];
+                                                next[idx].maxQty = parseInt(e.target.value, 10) || 1;
+                                                setStepForm({ ...stepForm, orderItems: next });
+                                              }}
+                                              className="w-full text-xs px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-border dark:border-zinc-700 rounded-lg outline-none text-on-surface dark:text-white"
+                                            />
+                                          </div>
+                                        </div>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+
+                              {/* Ordering Toggles */}
+                              <div className="space-y-2 pt-1">
+                                <label className="flex items-center gap-3 cursor-pointer p-3 border border-border dark:border-zinc-700 rounded-xl">
+                                  <input
+                                    type="checkbox"
+                                    checked={stepForm.orderMultiSelect}
+                                    onChange={(e) =>
+                                      setStepForm({ ...stepForm, orderMultiSelect: e.target.checked })
+                                    }
+                                    className="w-4 h-4 rounded text-indigo-600"
+                                  />
+                                  <div>
+                                    <div className="font-semibold text-xs text-on-surface dark:text-white">
+                                      Allow Multi-Select
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500">
+                                      Customer can select multiple items across different categories.
+                                    </div>
+                                  </div>
+                                </label>
+
+                                <label className="flex items-center gap-3 cursor-pointer p-3 border border-border dark:border-zinc-700 rounded-xl">
+                                  <input
+                                    type="checkbox"
+                                    checked={stepForm.orderShowPrices}
+                                    onChange={(e) =>
+                                      setStepForm({ ...stepForm, orderShowPrices: e.target.checked })
+                                    }
+                                    className="w-4 h-4 rounded text-indigo-600"
+                                  />
+                                  <div>
+                                    <div className="font-semibold text-xs text-on-surface dark:text-white">
+                                      Show Prices to Customer
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500">
+                                      Display item prices and running total during ordering.
+                                    </div>
+                                  </div>
+                                </label>
                               </div>
                             </section>
                           )}

@@ -166,16 +166,16 @@ export default function FormStepPage() {
                     {field.type === 'textarea' ? (
                       <textarea
                         required={field.required}
-                        value={formData[field.name] || ''}
-                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        value={formData[field.name || field.id] || ''}
+                        onChange={(e) => handleInputChange(field.name || field.id, e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 min-h-[100px]"
                         placeholder={field.placeholder}
                       />
-                    ) : field.type === 'select' ? (
+                    ) : field.type === 'select' || field.type === 'dropdown' ? (
                       <select
                         required={field.required}
-                        value={formData[field.name] || ''}
-                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        value={formData[field.name || field.id] || ''}
+                        onChange={(e) => handleInputChange(field.name || field.id, e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                       >
                         <option value="">Select an option</option>
@@ -183,13 +183,66 @@ export default function FormStepPage() {
                           <option key={opt} value={opt}>{opt}</option>
                         ))}
                       </select>
+                    ) : field.type === 'radio' ? (
+                      <div className="space-y-2 pt-1">
+                        {field.options?.map((opt: string) => (
+                          <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                            <input
+                              type="radio"
+                              name={field.name || field.id}
+                              value={opt}
+                              checked={(formData[field.name || field.id] || '') === opt}
+                              onChange={() => handleInputChange(field.name || field.id, opt)}
+                              required={field.required && !formData[field.name || field.id]}
+                              className="text-emerald-600 focus:ring-emerald-500"
+                            />
+                            <span>{opt}</span>
+                          </label>
+                        ))}
+                      </div>
+                    ) : field.type === 'multiselect' ? (
+                      <div className="space-y-2 pt-1">
+                        {field.options?.map((opt: string) => {
+                          const currentVals: string[] = Array.isArray(formData[field.name || field.id])
+                            ? formData[field.name || field.id]
+                            : [];
+                          const isChecked = currentVals.includes(opt);
+                          return (
+                            <label key={opt} className="flex items-center gap-2 cursor-pointer text-sm text-gray-700">
+                              <input
+                                type="checkbox"
+                                checked={isChecked}
+                                onChange={(e) => {
+                                  const next = e.target.checked
+                                    ? [...currentVals, opt]
+                                    : currentVals.filter((v: string) => v !== opt);
+                                  handleInputChange(field.name || field.id, next);
+                                }}
+                                className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
+                              />
+                              <span>{opt}</span>
+                            </label>
+                          );
+                        })}
+                      </div>
+                    ) : field.type === 'number' ? (
+                      <input
+                        type="number"
+                        min={field.min ?? undefined}
+                        max={field.max ?? undefined}
+                        required={field.required}
+                        value={formData[field.name || field.id] ?? ''}
+                        onChange={(e) => handleInputChange(field.name || field.id, e.target.value)}
+                        className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                        placeholder={field.placeholder}
+                      />
                     ) : field.type === 'checkbox' ? (
                       <div className="flex items-center">
                         <input
                           type="checkbox"
                           required={field.required}
-                          checked={formData[field.name] || false}
-                          onChange={(e) => handleInputChange(field.name, e.target.checked)}
+                          checked={formData[field.name || field.id] || false}
+                          onChange={(e) => handleInputChange(field.name || field.id, e.target.checked)}
                           className="h-4 w-4 text-emerald-600 focus:ring-emerald-500 border-gray-300 rounded"
                         />
                         <span className="ml-2 text-sm text-gray-600">{field.description || 'Yes'}</span>
@@ -198,8 +251,8 @@ export default function FormStepPage() {
                       <input
                         type={field.type || 'text'}
                         required={field.required}
-                        value={formData[field.name] || ''}
-                        onChange={(e) => handleInputChange(field.name, e.target.value)}
+                        value={formData[field.name || field.id] || ''}
+                        onChange={(e) => handleInputChange(field.name || field.id, e.target.value)}
                         className="w-full px-4 py-2 border border-gray-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                         placeholder={field.placeholder}
                       />

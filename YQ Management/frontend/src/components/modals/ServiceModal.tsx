@@ -5,6 +5,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { fetchApi } from '../../lib/api';
 import { toast } from 'sonner';
 import { ScheduleEditor } from '../common/ScheduleEditor';
+import { ServiceCatalogManager } from '../catalog/ServiceCatalogManager';
 
 interface ServiceModalProps {
   isOpen: boolean;
@@ -46,6 +47,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
   const [checkinPayMode, setCheckinPayMode] = useState<string>('COUNTER_ONLY');
   const [allowUnpaidCheckout, setAllowUnpaidCheckout] = useState(false);
   const [autoSendInvoice, setAutoSendInvoice] = useState(false);
+  const [enableCatalog, setEnableCatalog] = useState(false);
 
   const queryClient = useQueryClient();
 
@@ -83,6 +85,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       setMaxDaysInAdvance(service.maxDaysInAdvance ?? 30);
       setBasePrice(service.basePrice ? (service.basePrice / 100).toString() : '');
       setPriceCurrency(service.priceCurrency || 'ZAR');
+      setEnableCatalog(service.enableCatalog || false);
       
       if (service.serviceFlow) {
         setPaymentTiming(service.serviceFlow.paymentTiming || 'NONE');
@@ -239,6 +242,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       checkinPayMode: (!stripeConnected || !checkinPayMode) ? 'COUNTER_ONLY' : checkinPayMode,
       allowUnpaidCheckout,
       autoSendInvoice,
+      enableCatalog,
       formConfig,
       useLocationHours,
       businessHoursOverride: useLocationHours ? null : businessHoursOverride,
@@ -926,7 +930,45 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
           
           {isAdvancedMode && (
             <div className="pt-6 border-t border-gray-200 dark:border-white/10 space-y-4">
-              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center">
+              {/* Service Catalog Gate Toggle & Manager */}
+              <div className="p-4 bg-gray-50/80 dark:bg-black/30 border border-gray-200 dark:border-white/5 rounded-2xl space-y-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <span>Structured Item Catalog</span>
+                      {enableCatalog && (
+                        <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                          Active
+                        </span>
+                      )}
+                    </h3>
+                    <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">
+                      Menu dishes, retail merchandise, and add-on services that customers can select and order.
+                    </p>
+                  </div>
+
+                  <label className="relative inline-flex items-center cursor-pointer shrink-0 mt-0.5">
+                    <input
+                      type="checkbox"
+                      checked={enableCatalog}
+                      onChange={(e) => setEnableCatalog(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-10 h-5 bg-gray-200 peer-focus:outline-none rounded-full peer dark:bg-zinc-800 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-indigo-600"></div>
+                  </label>
+                </div>
+
+                {enableCatalog && (
+                  <div className="pt-3 border-t border-gray-200 dark:border-white/5">
+                    <ServiceCatalogManager
+                      serviceId={service?.id}
+                      currency={priceCurrency}
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row sm:justify-between sm:items-center pt-2">
                 <div>
                   <h3 className="text-sm font-bold text-gray-900 dark:text-white">Custom Booking Questions</h3>
                   <p className="text-xs text-gray-500 dark:text-zinc-400 mt-1">Ask customers for extra information during booking.</p>
@@ -999,16 +1041,20 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
                             <option value="email">Email Address</option>
                             <option value="phone">Phone Number</option>
                             <option value="date">Date</option>
-                            <option value="number">Number</option>
+                            <option value="number">Number / Quantity</option>
                             <option value="dropdown">Dropdown List</option>
-                            <option value="checkbox">Checkbox (Yes/No)</option>
+                            <option value="radio">Single Choice (Radio Cards)</option>
+                            <option value="multiselect">Multiple Choices (Checkboxes)</option>
+                            <option value="checkbox">Single Checkbox (Yes/No)</option>
                           </select>
                         </div>
                       </div>
 
-                      {field.type === 'dropdown' && (
+                      {(field.type === 'dropdown' || field.type === 'radio' || field.type === 'multiselect') && (
                         <div className="mb-4 pr-10">
-                          <label className="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">Dropdown Options</label>
+                          <label className="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1.5 uppercase tracking-wider">
+                            Options (comma-separated)
+                          </label>
                           <input
                             type="text"
                             value={field.options ? field.options.join(', ') : ''}
@@ -1017,10 +1063,43 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
                               newConfig[index].options = e.target.value.split(',').map(s => s.trim()).filter(s => s);
                               setFormConfig(newConfig);
                             }}
-                            placeholder="Separate options with commas (e.g. Apple, Banana, Orange)"
+                            placeholder="Separate options with commas (e.g. Standard, Vegetarian, Vegan, Gluten-Free)"
                             className="w-full bg-gray-50 dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 focus:bg-white dark:focus:bg-zinc-900 transition-all"
                           />
-                          <p className="text-[10px] text-gray-500 mt-1.5">Enter comma-separated values.</p>
+                          <p className="text-[10px] text-gray-500 mt-1.5">Enter choices separated by commas.</p>
+                        </div>
+                      )}
+
+                      {field.type === 'number' && (
+                        <div className="grid grid-cols-2 gap-3 mb-4 pr-10">
+                          <div>
+                            <label className="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">Min Value</label>
+                            <input
+                              type="number"
+                              value={field.min ?? ''}
+                              onChange={(e) => {
+                                const newConfig = [...formConfig];
+                                newConfig[index].min = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                                setFormConfig(newConfig);
+                              }}
+                              placeholder="e.g. 1"
+                              className="w-full bg-gray-50 dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white"
+                            />
+                          </div>
+                          <div>
+                            <label className="block text-[11px] font-bold text-gray-500 dark:text-zinc-400 mb-1 uppercase tracking-wider">Max Value</label>
+                            <input
+                              type="number"
+                              value={field.max ?? ''}
+                              onChange={(e) => {
+                                const newConfig = [...formConfig];
+                                newConfig[index].max = e.target.value ? parseInt(e.target.value, 10) : undefined;
+                                setFormConfig(newConfig);
+                              }}
+                              placeholder="e.g. 20"
+                              className="w-full bg-gray-50 dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-lg px-3 py-2 text-xs text-gray-900 dark:text-white"
+                            />
+                          </div>
                         </div>
                       )}
                       

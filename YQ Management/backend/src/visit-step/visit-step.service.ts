@@ -4,9 +4,11 @@ import {
   BadRequestException,
   Logger,
   UnauthorizedException,
+  Optional,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { InvoiceService } from '../invoice/invoice.service';
 import { AdvanceStepDto } from './dto/advance-step.dto';
 import { RedeemEntitlementDto } from './dto/redeem-entitlement.dto';
 import { Prisma } from '@prisma/client';
@@ -18,6 +20,7 @@ export class VisitStepService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
+    @Optional() private readonly invoiceService?: InvoiceService,
   ) {}
 
   resolveAllocation(
@@ -37,6 +40,25 @@ export class VisitStepService {
     if (template.entitlementFormula === 'accompanyingGuests + 1') {
       const guests = context?.accompanyingGuests || 0;
       allocated = guests + 1;
+    } else if (
+      template.entitlementFormula?.startsWith('formField:') ||
+      template.entitlementFormula?.startsWith('field_')
+    ) {
+      const fieldKey = template.entitlementFormula.replace('formField:', '');
+      const meta = (context?.metadata || {}) as Record<string, any>;
+      const forms = (context?.formResponses || {}) as Record<string, any>;
+      const rawVal = forms[fieldKey] ?? meta[fieldKey];
+      if (typeof rawVal === 'number' && rawVal > 0) {
+        allocated = rawVal;
+      } else if (
+        typeof rawVal === 'string' &&
+        !isNaN(parseInt(rawVal, 10)) &&
+        parseInt(rawVal, 10) > 0
+      ) {
+        allocated = parseInt(rawVal, 10);
+      } else {
+        allocated = template.entitlementFixed ?? 1;
+      }
     } else if (
       template.entitlementFormula === 'custom_quantity' ||
       template.entitlementFormula?.startsWith('metadata.') ||
@@ -405,6 +427,12 @@ export class VisitStepService {
       throw new BadRequestException(`Step is already ${step.status}`);
     }
 
+    if (step.type === 'ORDER') {
+      throw new BadRequestException(
+        'ORDER steps must be completed by submitting an order via /submit-order, not /advance.',
+      );
+    }
+
     if (
       staffId &&
       staffId !== 'SYSTEM' &&
@@ -713,6 +741,87 @@ export class VisitStepService {
       staffId,
       { formData },
     );
+
+    await this.evaluateNextSteps(step.visitId, step.id);
+    return updated;
+  }
+
+  async submitOrder(
+    tenantId: string,
+    visitStepId: string,
+    staffId: string,
+    selectedItems: any[],
+  ) {
+    const step = await this.prisma.visitStep.findUnique({
+      where: { id: visitStepId },
+      include: { templateStep: true },
+    });
+    if (!step || step.tenantId !== tenantId)
+      throw new NotFoundException('Step not found');
+    if (step.type !== 'ORDER')
+      throw new BadRequestException('Not an order step');
+    if (step.status === 'DONE' || step.status === 'SKIPPED') {
+      throw new BadRequestException(
+        `Cannot submit order on step in status ${step.status}`,
+      );
+    }
+
+    if (!Array.isArray(selectedItems) || selectedItems.length === 0) {
+      throw new BadRequestException('Must select at least one item');
+    }
+
+    let amountCharged = 0;
+    const sanitizedItems = selectedItems.map((item) => {
+      const qty = Math.max(1, parseInt(item.qty || item.quantity, 10) || 1);
+      const unitPrice = Math.max(
+        0,
+        parseInt(item.unitPrice || item.price, 10) || 0,
+      );
+      const lineTotal = qty * unitPrice;
+      amountCharged += lineTotal;
+      return {
+        itemId: item.itemId || item.id,
+        name: item.name || item.itemName || 'Item',
+        category: item.category || undefined,
+        qty,
+        unitPrice,
+        lineTotal,
+      };
+    });
+
+    const updated = await this.prisma.visitStep.update({
+      where: { id: step.id },
+      data: {
+        status: 'DONE',
+        completedAt: new Date(),
+        selectedItems: sanitizedItems as any,
+        amountCharged,
+        lastRedeemedBy: staffId,
+      },
+    });
+
+    await this.logEvent(
+      step.id,
+      step.visitId,
+      tenantId,
+      'ORDER_SUBMITTED',
+      staffId === 'CUSTOMER' ? 'CUSTOMER' : 'STAFF',
+      staffId,
+      { selectedItems: sanitizedItems, amountCharged },
+    );
+
+    if (this.invoiceService) {
+      try {
+        await this.invoiceService.appendOrderLineItems(
+          step.visitId,
+          sanitizedItems,
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `Could not append order line items to invoice for visit ${step.visitId}: ${err?.message}`,
+        );
+      }
+    }
 
     await this.evaluateNextSteps(step.visitId, step.id);
     return updated;
@@ -1164,6 +1273,25 @@ export class VisitStepService {
 
     await this.evaluateNextSteps(step.visitId, step.id);
     return updated;
+  }
+
+  async submitOrderPublic(
+    accessToken: string,
+    stepId: string,
+    selectedItems: any[],
+  ) {
+    const step = await this.prisma.visitStep.findFirst({
+      where: {
+        id: stepId,
+        visit: {
+          OR: [{ accessToken }, { id: accessToken }],
+        },
+      },
+      include: { templateStep: true },
+    });
+
+    if (!step) throw new NotFoundException('Step not found');
+    return this.submitOrder(step.tenantId, step.id, 'CUSTOMER', selectedItems);
   }
 
   async revertStepPublic(accessToken: string, stepId: string) {

@@ -273,6 +273,19 @@ export class PublicVisitController {
     );
   }
 
+  @Post(':accessToken/submit-order/:stepId')
+  async submitOrderPublic(
+    @Param('accessToken') accessToken: string,
+    @Param('stepId') stepId: string,
+    @Body() body: { selectedItems: any[] },
+  ) {
+    return this.visitStepService.submitOrderPublic(
+      accessToken,
+      stepId,
+      body.selectedItems,
+    );
+  }
+
   @Post(':accessToken/revert-step/:stepId')
   async revertStepPublic(
     @Param('accessToken') accessToken: string,

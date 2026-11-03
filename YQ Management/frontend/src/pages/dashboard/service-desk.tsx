@@ -2993,6 +2993,76 @@ export default function ServiceDeskToday() {
                     );
                   })()}
 
+                  {/* 4c. Order Items / Selection Summary (if applicable) */}
+                  {(() => {
+                    const orderStep = selectedVisit.visitSteps?.find(
+                      (s: AnyFixMe) =>
+                        (s.templateStep?.type === "ORDER" || s.type === "ORDER" || s.selectedItems) &&
+                        s.status !== "CANCELLED" &&
+                        s.status !== "SKIPPED"
+                    );
+                    if (!orderStep) return null;
+                    const items = (orderStep.selectedItems as any[]) || [];
+                    const hasItems = items.length > 0;
+                    const totalCents =
+                      orderStep.amountCharged ||
+                      items.reduce(
+                        (acc, i) =>
+                          acc +
+                          (i.lineTotal || (i.qty * i.unitPrice) || 0),
+                        0,
+                      );
+
+                    return (
+                      <div className="flex flex-col gap-1.5 text-sm py-2 px-3 rounded-xl bg-surface-container dark:bg-inverse-surface border border-border dark:border-dark-border">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <span className="material-symbols-outlined text-[18px] text-amber-500">
+                              shopping_bag
+                            </span>
+                            <span className="text-outline text-xs uppercase tracking-wider font-bold">
+                              Order Summary:
+                            </span>
+                            <span className="font-semibold text-on-surface dark:text-white text-xs">
+                              {hasItems ? `${items.length} items` : "Pending Selection"}
+                            </span>
+                          </div>
+                          {totalCents > 0 && (
+                            <span className="font-bold font-mono text-xs px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                              ZAR {(totalCents / 100).toFixed(2)}
+                            </span>
+                          )}
+                        </div>
+
+                        {hasItems && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {items.map((item, idx) => (
+                              <span
+                                key={item.itemId || idx}
+                                className="text-[11px] px-2 py-0.5 rounded-md bg-surface-container-high dark:bg-zinc-800 text-on-surface dark:text-zinc-200 border border-border dark:border-zinc-700 flex items-center gap-1"
+                              >
+                                <span className="font-bold text-primary dark:text-sky-400">
+                                  {item.qty}×
+                                </span>
+                                <span>{item.name}</span>
+                                {item.unitPrice > 0 && (
+                                  <span className="text-[10px] text-outline font-mono">
+                                    (R
+                                    {(
+                                      (item.lineTotal
+                                        ? item.lineTotal
+                                        : item.qty * item.unitPrice) / 100
+                                    ).toFixed(2)}
+                                    )
+                                  </span>
+                                )}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
 
                   <div className="text-sm text-on-surface dark:text-zinc-300 flex items-center gap-x-4 gap-y-1.5 flex-wrap py-1">
                     <div>

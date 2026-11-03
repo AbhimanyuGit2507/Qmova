@@ -20,6 +20,7 @@ export enum StepTypeDto {
   FORM = 'FORM',
   CHECK_IN = 'CHECK_IN',
   CHECK_OUT = 'CHECK_OUT',
+  ORDER = 'ORDER',
 }
 
 export enum StepTriggerDto {
@@ -191,6 +192,21 @@ export class CreateStepDto {
 
   @IsOptional()
   outcomeOptions?: string[];
+
+  @IsOptional()
+  orderItems?: any[];
+
+  @IsOptional()
+  @IsBoolean()
+  orderMultiSelect?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  orderShowPrices?: boolean;
+
+  @IsOptional()
+  @IsString()
+  orderCatalogId?: string;
 
   @IsOptional()
   transitions?: {

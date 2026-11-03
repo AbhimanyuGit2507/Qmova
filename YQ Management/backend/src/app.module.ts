@@ -41,6 +41,7 @@ import { BlockOffModule } from './block-off/block-off.module';
 import { LocationModule } from './location/location.module';
 import { AiModule } from './ai/ai.module';
 import { ServiceModule } from './service/service.module';
+import { ServiceCatalogModule } from './service-catalog/service-catalog.module';
 import { StaffModule } from './staff/staff.module';
 import { ResourceModule } from './resource/resource.module';
 import { CustomerModule } from './customer/customer.module';
@@ -136,6 +137,7 @@ import { SmsModule } from './sms/sms.module';
     LocationModule,
     AiModule,
     ServiceModule,
+    ServiceCatalogModule,
     StaffModule,
     ResourceModule,
     CustomerModule,

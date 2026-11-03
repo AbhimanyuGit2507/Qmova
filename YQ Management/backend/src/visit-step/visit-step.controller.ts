@@ -88,6 +88,20 @@ export class VisitStepController {
     );
   }
 
+  @Post(':stepId/submit-order')
+  submitOrder(
+    @Req() req: any,
+    @Param('stepId') stepId: string,
+    @Body() dto: { selectedItems: any[] },
+  ) {
+    return this.visitStepService.submitOrder(
+      req.user.tenantId,
+      stepId,
+      req.user.id,
+      dto.selectedItems,
+    );
+  }
+
   @Post(':stepId/skip')
   @RequirePagePermission('flow:skip')
   skipStep(@Req() req: any, @Param('stepId') stepId: string) {

@@ -94,6 +94,7 @@ export class ServiceService {
       warningThresholdMins?: number;
       breachThresholdMins?: number;
       escalationPhones?: string[];
+      enableCatalog?: boolean;
     },
   ) {
     if (!data.locationId) {
@@ -424,6 +425,7 @@ export class ServiceService {
       checkinPayMode?: string;
       allowUnpaidCheckout?: boolean;
       autoSendInvoice?: boolean;
+      enableCatalog?: boolean;
     },
   ) {
     const {

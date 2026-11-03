@@ -32,6 +32,9 @@ import {
   X,
   ExternalLink,
   ArrowRight,
+  ShoppingBag,
+  Plus,
+  Minus,
 } from 'lucide-react';
 import Image from 'next/image';
 import Link from 'next/link';
@@ -74,6 +77,10 @@ interface TemplateStep {
     }>;
   } | null;
   notifyCustomerOnActivation?: boolean;
+  orderItems?: any;
+  orderMultiSelect?: boolean;
+  orderShowPrices?: boolean;
+  orderCatalogId?: string | null;
 }
 
 interface VisitStepItem {
@@ -83,6 +90,7 @@ interface VisitStepItem {
   type?: string;
   status: 'LOCKED' | 'PENDING' | 'QUEUED' | 'ACTIVE' | 'UNLOCKED' | 'DONE' | 'SKIPPED' | 'EXPIRED' | 'DEFERRED';
   formData?: Record<string, unknown>;
+  selectedItems?: any;
   amountCharged?: number | null;
   paymentStatus?: string | null;
   templateStep?: TemplateStep;
@@ -366,6 +374,64 @@ export default function CustomerLiveStatus() {
       toast.error((err as Error).message || 'Error submitting form. Please try again.');
     } finally {
       setIsSubmittingForm(false);
+    }
+  };
+
+  const isOrderStep =
+    (activeStep?.templateStep?.type === 'ORDER' || activeStep?.type === 'ORDER') &&
+    activeStep.status === 'ACTIVE';
+
+  const [orderSelections, setOrderSelections] = useState<Record<string, number>>({});
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
+
+  const handleSubmitOrder = async (stepId: string) => {
+    if (!accessToken) return;
+    setIsSubmittingOrder(true);
+    try {
+      const baseUrl =
+        typeof window !== 'undefined'
+          ? process.env.NEXT_PUBLIC_API_URL || getBackendUrl()
+          : getBackendUrl();
+
+      const items = (activeStep?.templateStep?.orderItems as any[]) || [];
+      const selectedList = Object.entries(orderSelections)
+        .filter(([_, qty]) => qty > 0)
+        .map(([itemId, qty]) => {
+          const item = items.find((i) => (i.id || i.itemId) === itemId);
+          return {
+            itemId,
+            name: item?.name || 'Item',
+            category: item?.category,
+            qty,
+            unitPrice: item?.unitPrice || 0,
+            lineTotal: (item?.unitPrice || 0) * qty,
+          };
+        });
+
+      if (selectedList.length === 0) {
+        toast.error('Please select at least one item before continuing');
+        setIsSubmittingOrder(false);
+        return;
+      }
+
+      const res = await fetch(`${baseUrl}/public-visit/${accessToken}/submit-order/${stepId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ selectedItems: selectedList }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.message || 'Failed to submit order');
+      }
+
+      toast.success('Order submitted successfully!');
+      setOrderSelections({});
+      triggerRefetch();
+    } catch (err: unknown) {
+      toast.error((err as Error).message || 'Error submitting order. Please try again.');
+    } finally {
+      setIsSubmittingOrder(false);
     }
   };
 
@@ -848,6 +914,133 @@ export default function CustomerLiveStatus() {
                       <Send className="w-4 h-4" />
                     )}
                     Submit Form & Continue
+                  </button>
+                </div>
+              )}
+
+              {/* Order / Menu Selection Step UI */}
+              {isOrderStep && (
+                <div className="pt-2 border-t border-slate-100 dark:border-zinc-800 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <ShoppingBag className="w-4 h-4 text-indigo-500" />
+                      <h4 className="font-bold text-xs text-slate-900 dark:text-white">
+                        {activeStep.name || "Select Your Items / Menu"}
+                      </h4>
+                    </div>
+                    {activeStep.templateStep?.orderShowPrices !== false && (
+                      <span className="text-[11px] font-mono font-bold text-indigo-600 dark:text-indigo-400">
+                        Total: ZAR {(
+                          Object.entries(orderSelections).reduce((acc, [id, qty]) => {
+                            const item = ((activeStep.templateStep?.orderItems as any[]) || []).find((i) => (i.id || i.itemId) === id);
+                            return acc + ((item?.unitPrice || 0) * qty);
+                          }, 0) / 100
+                        ).toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Items list */}
+                  {(() => {
+                    const items = (activeStep.templateStep?.orderItems as any[]) || [];
+                    if (items.length === 0) {
+                      return (
+                        <div className="p-4 bg-slate-50 dark:bg-zinc-900 rounded-xl text-center text-xs text-slate-500">
+                          No items available for selection on this step.
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                        {items.map((item: any, idx: number) => {
+                          const itemId = item.id || item.itemId || `item_${idx}`;
+                          const currentQty = orderSelections[itemId] || 0;
+                          const showPrice = activeStep.templateStep?.orderShowPrices !== false;
+
+                          return (
+                            <div
+                              key={itemId}
+                              className="p-3 bg-white dark:bg-zinc-900 border border-slate-200 dark:border-zinc-800 rounded-xl flex items-center justify-between gap-3 shadow-xs"
+                            >
+                              <div className="flex-1 min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-xs font-bold text-slate-900 dark:text-white">
+                                    {item.name}
+                                  </span>
+                                  {item.category && (
+                                    <span className="text-[10px] px-1.5 py-0.2 rounded-md bg-indigo-50 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-medium">
+                                      {item.category}
+                                    </span>
+                                  )}
+                                </div>
+                                {item.description && (
+                                  <p className="text-[10px] text-slate-500 dark:text-zinc-400 truncate mt-0.5">
+                                    {item.description}
+                                  </p>
+                                )}
+                                {showPrice && item.unitPrice > 0 && (
+                                  <span className="text-xs font-mono font-semibold text-slate-700 dark:text-zinc-300 block mt-0.5">
+                                    ZAR {(item.unitPrice / 100).toFixed(2)}
+                                  </span>
+                                )}
+                              </div>
+
+                              {/* Stepper */}
+                              <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-zinc-800 rounded-lg p-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    if (currentQty > 0) {
+                                      setOrderSelections({
+                                        ...orderSelections,
+                                        [itemId]: currentQty - 1,
+                                      });
+                                    }
+                                  }}
+                                  disabled={currentQty === 0}
+                                  className="w-6 h-6 rounded flex items-center justify-center text-slate-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 transition-colors"
+                                >
+                                  <Minus className="w-3 h-3" />
+                                </button>
+                                <span className="w-5 text-center text-xs font-bold font-mono text-slate-900 dark:text-white">
+                                  {currentQty}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    const max = item.maxQty || 10;
+                                    if (currentQty < max) {
+                                      setOrderSelections({
+                                        ...orderSelections,
+                                        [itemId]: currentQty + 1,
+                                      });
+                                    }
+                                  }}
+                                  disabled={currentQty >= (item.maxQty || 10)}
+                                  className="w-6 h-6 rounded flex items-center justify-center text-slate-600 dark:text-zinc-300 hover:bg-white dark:hover:bg-zinc-700 disabled:opacity-30 transition-colors"
+                                >
+                                  <Plus className="w-3 h-3" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    );
+                  })()}
+
+                  <button
+                    onClick={() => handleSubmitOrder(activeStep.id)}
+                    disabled={isSubmittingOrder || Object.values(orderSelections).every((q) => q === 0)}
+                    className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs transition-colors shadow-sm disabled:opacity-50"
+                  >
+                    {isSubmittingOrder ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Send className="w-4 h-4" />
+                    )}
+                    Confirm & Place Order
                   </button>
                 </div>
               )}

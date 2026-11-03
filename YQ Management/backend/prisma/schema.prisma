@@ -78,6 +78,7 @@ model Tenant {
   clinicalNotes           ClinicalNote[]
   prescriptions           Prescription[]
   medicalProfiles         PatientMedicalProfile[]
+  serviceCatalogs         ServiceCatalog[]
 }
 
 model CheckInOtp {
@@ -587,6 +588,8 @@ model Service {
   priceCurrency              String        @default("ZAR")
   requiresPayment            Boolean       @default(false)
   allowOfflinePayment        Boolean       @default(false)
+  enableCatalog              Boolean       @default(false)
+  catalog                    ServiceCatalog?
   appointments               Appointment[]
   location                   Location?     @relation(fields: [locationId], references: [id], onDelete: Cascade)
   slaPolicy                  SlaPolicy?    @relation(fields: [slaPolicyId], references: [id])
@@ -985,6 +988,10 @@ model FlowStepTemplate {
   bufferDuration             Int?
   concurrentSlots            Int?
   expectedDuration           Int?
+  orderItems                 Json?
+  orderMultiSelect           Boolean              @default(true)
+  orderShowPrices            Boolean              @default(true)
+  orderCatalogId             String?
   flow                       ServiceFlow          @relation(fields: [flowId], references: [id], onDelete: Cascade)
   transitions                FlowStepTransition[] @relation("FromStep")
   visitSteps                 VisitStep[]
@@ -1040,6 +1047,7 @@ model VisitStep {
   createdAt         DateTime         @default(now())
   updatedAt         DateTime         @updatedAt
   formData          Json?
+  selectedItems     Json?
   bookingPayments   BookingPayment[]
   templateStep      FlowStepTemplate @relation(fields: [templateStepId], references: [id], onDelete: Cascade)
   visit             Visit            @relation(fields: [visitId], references: [id], onDelete: Cascade)
@@ -1316,6 +1324,7 @@ enum StepType {
   FORM
   CHECK_IN
   CHECK_OUT
+  ORDER
 }
 
 enum PaymentTiming {
@@ -1373,6 +1382,7 @@ enum StepEventType {
   EXPIRED
   STAFF_NOTE
   PAYMENT_MADE
+  ORDER_SUBMITTED
 }
 
 enum BookingPaymentStatus {
@@ -1456,4 +1466,40 @@ model PatientMedicalProfile {
   tenant             Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([tenantId])
+}
+
+model ServiceCatalog {
+  id        String               @id @default(uuid())
+  tenantId  String
+  serviceId String?              @unique
+  name      String
+  currency  String               @default("ZAR")
+  isActive  Boolean              @default(true)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  tenant    Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  service   Service?             @relation(fields: [serviceId], references: [id], onDelete: Cascade)
+  items     ServiceCatalogItem[]
+
+  @@index([tenantId])
+}
+
+model ServiceCatalogItem {
+  id          String         @id @default(uuid())
+  catalogId   String
+  name        String
+  description String?
+  category    String?
+  unitPrice   Int            // in cents
+  currency    String         @default("ZAR")
+  imageUrl    String?
+  maxQty      Int            @default(1)
+  isAvailable Boolean        @default(true)
+  sortOrder   Int            @default(0)
+  taxRate     Float?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  catalog     ServiceCatalog @relation(fields: [catalogId], references: [id], onDelete: Cascade)
+
+  @@index([catalogId])
 }

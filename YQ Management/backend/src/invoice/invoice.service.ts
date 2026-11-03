@@ -231,4 +231,80 @@ export class InvoiceService {
 
     return updated;
   }
+
+  async appendOrderLineItems(visitId: string, selectedItems: any[]) {
+    if (!selectedItems || !selectedItems.length) return;
+
+    let invoice = await this.prisma.visitInvoice.findUnique({
+      where: { visitId },
+      include: { tenant: true },
+    });
+
+    if (!invoice) {
+      try {
+        invoice = await this.generateVisitInvoice(visitId);
+      } catch (e: any) {
+        this.logger.warn(
+          `Could not generate visit invoice before appending order items: ${e?.message}`,
+        );
+      }
+    }
+
+    if (!invoice) return;
+
+    const existingSnap = Array.isArray(invoice.lineItemsSnap)
+      ? (invoice.lineItemsSnap as any[])
+      : [];
+    const newItems = selectedItems.map((item) => ({
+      name: item.name || item.itemName || 'Ordered Item',
+      qty: item.qty || item.quantity || 1,
+      unitPrice: item.unitPrice ?? 0,
+      category: item.category || undefined,
+      taxable: true,
+      source: 'ORDER_STAGE',
+    }));
+
+    const mergedSnap = [
+      ...existingSnap.filter((i) => i.source !== 'ORDER_STAGE'),
+      ...newItems,
+    ];
+
+    const taxConfig = (invoice.tenant?.taxConfig as any) || {
+      country: 'IN',
+      defaultTaxRatePercent: 18,
+      taxInclusive: false,
+    };
+
+    let subtotal = 0;
+    mergedSnap.forEach((item) => {
+      subtotal += (item.unitPrice || 0) * (item.qty || 1);
+    });
+
+    const computed = computeTax(
+      subtotal,
+      taxConfig.country,
+      taxConfig.defaultTaxRatePercent || 0,
+      taxConfig.taxInclusive || false,
+    );
+
+    const updated = await this.prisma.visitInvoice.update({
+      where: { id: invoice.id },
+      data: {
+        subtotal: Math.round(computed.subtotal),
+        totalTax: Math.round(computed.totalTax),
+        total: Math.round(computed.total),
+        taxLines: computed.taxLines as any,
+        lineItemsSnap: mergedSnap as any,
+      },
+    });
+
+    await this.prisma.visit.update({
+      where: { id: visitId },
+      data: {
+        lineItems: mergedSnap as any,
+      },
+    });
+
+    return updated;
+  }
 }
