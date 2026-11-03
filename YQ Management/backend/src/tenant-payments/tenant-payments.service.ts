@@ -420,12 +420,23 @@ export class TenantPaymentsService {
       return payment;
     }
 
+    const manualMethods = [
+      'CASH',
+      'CARD_TERMINAL',
+      'EFT',
+      'OTHER',
+      'OFFLINE_CASH',
+      'MANUAL',
+      'COUNTER',
+    ];
+    const isManualMethod = manualMethods.includes((method || '').toUpperCase());
+
     if (
+      !isManualMethod &&
       payment.stripePaymentIntentId &&
-      method !== 'OFFLINE_CASH' &&
       payment.paymentAccount?.connectedAccountId
     ) {
-      // Verify with Stripe
+      // Verify with Stripe for online card payments
       const intent = await this.stripe.paymentIntents.retrieve(
         payment.stripePaymentIntentId,
         undefined,
@@ -436,15 +447,30 @@ export class TenantPaymentsService {
           `Payment intent is not succeeded. Status: ${intent.status}`,
         );
       }
-    } else if (method === 'OFFLINE_CASH') {
-      // Offline cash handled via staff UI or direct completion
+    } else if (
+      isManualMethod &&
+      payment.stripePaymentIntentId &&
+      payment.paymentAccount?.connectedAccountId
+    ) {
+      // If customer paid manually in person, cancel the unused Stripe payment intent so it doesn't stay open
+      try {
+        await this.stripe.paymentIntents.cancel(
+          payment.stripePaymentIntentId,
+          { cancellation_reason: 'abandoned' },
+          { stripeAccount: payment.paymentAccount.connectedAccountId },
+        );
+      } catch (err: any) {
+        this.logger.warn(
+          `Could not cancel Stripe payment intent ${payment.stripePaymentIntentId}: ${err?.message}`,
+        );
+      }
     }
 
-    const allowedMethods = ['CASH', 'CARD_TERMINAL', 'EFT', 'OTHER'];
+    const standardAllowedMethods = ['CASH', 'CARD_TERMINAL', 'EFT', 'OTHER'];
     const normalizedMethod =
-      method && allowedMethods.includes(method.toUpperCase())
+      method && standardAllowedMethods.includes(method.toUpperCase())
         ? (method.toUpperCase() as any)
-        : payment.method;
+        : (method?.toUpperCase() === 'OFFLINE_CASH' ? 'CASH' : payment.method);
 
     const updated = await this.prisma.bookingPayment.update({
       where: { id: paymentId },

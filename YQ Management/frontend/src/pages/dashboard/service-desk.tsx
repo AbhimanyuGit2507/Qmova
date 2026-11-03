@@ -3885,6 +3885,7 @@ export default function ServiceDeskToday() {
                   method: data.method,
                   proofUrl: data.proofUrl,
                   description: data.description,
+                  staffId: user?.id,
                   sendWhatsAppReceipt: data.sendReceipt,
                 }),
               },

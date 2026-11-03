@@ -126,12 +126,16 @@ export class TenantPaymentsController {
       method?: string;
       proofUrl?: string;
       description?: string;
+      staffId?: string;
       sendWhatsAppReceipt?: boolean;
     },
+    @Req() req?: any,
   ) {
+    const staffId = body?.staffId || req?.user?.userId || req?.user?.id;
     return this.tenantPaymentsService.completePayment(id, body?.method, {
       proofUrl: body?.proofUrl,
       description: body?.description,
+      staffId,
       sendWhatsAppReceipt: body?.sendWhatsAppReceipt,
     });
   }
