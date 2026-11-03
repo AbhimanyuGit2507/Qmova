@@ -967,6 +967,7 @@ export class SuperAdminService {
             blueprintId: _bid,
             customerView,
             notificationRules,
+            orderItems,
             ...stepData
           }) => ({
             ...stepData,
@@ -975,6 +976,8 @@ export class SuperAdminService {
               notificationRules === null
                 ? undefined
                 : (notificationRules as any),
+            orderItems:
+              orderItems === null ? undefined : (orderItems as any),
             blueprintId: newFlow.id,
           }),
         ),

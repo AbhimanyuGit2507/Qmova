@@ -1194,6 +1194,10 @@ model BlueprintStep {
   expectedDuration           Int?
   allowedStaffRoles          String[]      @default([])
   notificationRules          Json?
+  orderItems                 Json?
+  orderMultiSelect           Boolean       @default(true)
+  orderShowPrices            Boolean       @default(true)
+  orderCatalogId             String?
   blueprint                  BlueprintFlow @relation(fields: [blueprintId], references: [id], onDelete: Cascade)
 
   @@index([blueprintId])

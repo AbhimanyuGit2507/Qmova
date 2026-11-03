@@ -38,6 +38,10 @@ export interface StepTemplateData {
   expectedDuration?: number; // In minutes
   bufferDuration?: number; // In minutes
   concurrentSlots?: number;
+  orderItems?: any[];
+  orderMultiSelect?: boolean;
+  orderShowPrices?: boolean;
+  orderCatalogId?: string;
 }
 
 export interface FlowTemplate {
@@ -392,19 +396,51 @@ export const INDUSTRY_TEMPLATES: FlowTemplate[] = [
       },
       {
         stepOrder: 4,
-        name: 'Order Taking',
+        name: 'Order Taking & Menu Selection',
         description:
-          'Order is placed at the counter, table, or via QR code menu.',
-        type: 'CHECKPOINT',
+          'Guest browses digital menu, selects dishes, and submits their order.',
+        type: 'ORDER',
         trigger: 'MANUAL_STAFF',
         isOptional: true,
         requiresQrScan: true,
         requiresStaffAction: true,
+        orderMultiSelect: true,
+        orderShowPrices: true,
+        orderItems: [
+          {
+            id: 'item_starter',
+            name: 'Soup & Fresh Salad Bowl',
+            category: 'Starters',
+            unitPrice: 4500,
+            maxQty: 5,
+          },
+          {
+            id: 'item_main',
+            name: 'Chef Special Main Plate',
+            category: 'Mains',
+            unitPrice: 12000,
+            maxQty: 5,
+          },
+          {
+            id: 'item_dessert',
+            name: 'Artisan Dessert of the Day',
+            category: 'Desserts',
+            unitPrice: 3500,
+            maxQty: 3,
+          },
+          {
+            id: 'item_beverage',
+            name: 'Freshly Squeezed Juice / Soft Drink',
+            category: 'Beverages',
+            unitPrice: 2500,
+            maxQty: 10,
+          },
+        ],
         customerInstruction:
-          'Please use the QR menu to place your order, or a waiter will assist you.',
+          'Please browse our menu, pick your dishes, and place your order.',
         staffInstruction:
-          'Capture full order. Mark any dietary restrictions or special requests.',
-        notifyCustomerOnActivation: false,
+          'Review selected dishes, confirm special requests, and fire order to kitchen.',
+        notifyCustomerOnActivation: true,
       },
       {
         stepOrder: 5,

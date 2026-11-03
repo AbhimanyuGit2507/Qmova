@@ -112,6 +112,10 @@ async function main() {
           expectedDuration: step.expectedDuration,
           bufferDuration: step.bufferDuration,
           concurrentSlots: step.concurrentSlots,
+          orderItems: step.orderItems || null,
+          orderMultiSelect: step.orderMultiSelect ?? true,
+          orderShowPrices: step.orderShowPrices ?? true,
+          orderCatalogId: step.orderCatalogId || null,
         })),
       });
 

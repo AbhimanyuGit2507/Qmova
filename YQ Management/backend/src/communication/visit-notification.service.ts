@@ -731,6 +731,7 @@ export class VisitNotificationService {
     const shouldNotify =
       step.templateStep.type === 'NOTIFICATION' ||
       step.templateStep.type === 'FORM' ||
+      step.templateStep.type === 'ORDER' ||
       isPaymentStep ||
       step.templateStep.notifyCustomerOnActivation;
 
@@ -748,6 +749,12 @@ export class VisitNotificationService {
     if (!rawTemplate) {
       if (step.templateStep.type === 'FORM') {
         rawTemplate = `Hi {{customer_name}}, please complete the following form to proceed: ${process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL}/form/${visit.accessToken}/${step.id}`;
+      } else if (step.templateStep.type === 'ORDER') {
+        const appBase =
+          process.env.NEXT_PUBLIC_APP_URL ||
+          process.env.APP_URL ||
+          'https://qmova.yqbuddy.com';
+        rawTemplate = `Hi {{customer_name}}, your menu is ready! 🛒 Please select and place your order for *{{step_name}}* at {{business_name}}:\n${appBase}/customer/status/${visit.accessToken}`;
       } else if (isPaymentStep) {
         const appBase =
           process.env.NEXT_PUBLIC_APP_URL ||

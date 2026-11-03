@@ -647,6 +647,25 @@ export class VisitService {
             requireManualCheckIn: true,
             basePrice: true,
             priceCurrency: true,
+            enableCatalog: true,
+            catalog: {
+              select: {
+                items: {
+                  where: { isAvailable: true },
+                  orderBy: { sortOrder: 'asc' },
+                  select: {
+                    id: true,
+                    name: true,
+                    description: true,
+                    category: true,
+                    unitPrice: true,
+                    currency: true,
+                    imageUrl: true,
+                    maxQty: true,
+                  },
+                },
+              },
+            },
             serviceFlow: {
               select: {
                 isActive: true,
@@ -705,6 +724,7 @@ export class VisitService {
             type: true,
             status: true,
             formData: true,
+            selectedItems: true,
             templateStep: {
               select: {
                 type: true,
@@ -719,6 +739,10 @@ export class VisitService {
                 isPriceVariable: true,
                 customerView: true,
                 notifyCustomerOnActivation: true,
+                orderItems: true,
+                orderMultiSelect: true,
+                orderShowPrices: true,
+                orderCatalogId: true,
               },
             },
             amountCharged: true,
@@ -758,9 +782,31 @@ export class VisitService {
       );
     }
 
+    const mappedSteps = (visit.visitSteps || []).map((step: any) => {
+      let orderItems = step.templateStep?.orderItems;
+      if (
+        (step.type === 'ORDER' || step.templateStep?.type === 'ORDER') &&
+        (!orderItems ||
+          (Array.isArray(orderItems) && orderItems.length === 0)) &&
+        visit.service?.catalog?.items?.length
+      ) {
+        orderItems = visit.service.catalog.items;
+      }
+      return {
+        ...step,
+        templateStep: step.templateStep
+          ? {
+              ...step.templateStep,
+              orderItems,
+            }
+          : undefined,
+      };
+    });
+
     return {
       token: {
         ...visit,
+        visitSteps: mappedSteps,
         status: visit.currentState,
         customerName: visit.customer?.name,
         scheduledFor: visit.scheduledTime,
@@ -847,6 +893,7 @@ export class VisitService {
             stepOrder: true,
             name: true,
             status: true,
+            selectedItems: true,
             templateStep: {
               select: {
                 type: true,
@@ -855,6 +902,10 @@ export class VisitService {
                 stepPrice: true,
                 stepPriceCurrency: true,
                 isPriceVariable: true,
+                orderItems: true,
+                orderMultiSelect: true,
+                orderShowPrices: true,
+                orderCatalogId: true,
               },
             },
             amountCharged: true,
@@ -1383,7 +1434,11 @@ export class VisitService {
             visit.tenantId,
             visit.id,
             visit.serviceId,
-            { accompanyingGuests: visit.accompanyingGuests || 0 },
+            {
+              accompanyingGuests: visit.accompanyingGuests || 0,
+              formResponses: (visit.formResponses as Record<string, any>) || undefined,
+              metadata: (visit.metadata as Record<string, any>) || undefined,
+            },
             tx,
           );
         }
@@ -1589,7 +1644,11 @@ export class VisitService {
             v.tenantId,
             v.id,
             v.serviceId,
-            { accompanyingGuests: 0 },
+            {
+              accompanyingGuests: v.accompanyingGuests || 0,
+              formResponses: (v.formResponses as Record<string, any>) || undefined,
+              metadata: (v.metadata as Record<string, any>) || undefined,
+            },
             tx,
           );
         }
@@ -1653,7 +1712,11 @@ export class VisitService {
           u.tenantId,
           u.id,
           u.serviceId,
-          { accompanyingGuests: u.accompanyingGuests || 0 },
+          {
+            accompanyingGuests: u.accompanyingGuests || 0,
+            formResponses: (u.formResponses as Record<string, any>) || undefined,
+            metadata: (u.metadata as Record<string, any>) || undefined,
+          },
           tx,
         );
       }
@@ -1857,7 +1920,7 @@ export class VisitService {
     const items = snapshot.length
       ? snapshot.map((i) => ({
           name: String(i.name),
-          quantity: Number(i.quantity ?? 1),
+          quantity: Number(i.quantity ?? i.qty ?? 1),
           unitPrice: Number(i.unitPrice ?? 0),
         }))
       : (visit.service.basePrice ?? 0) > 0

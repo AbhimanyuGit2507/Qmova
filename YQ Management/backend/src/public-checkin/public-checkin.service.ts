@@ -246,7 +246,11 @@ export class PublicCheckinService {
           u.tenantId,
           u.id,
           visit.serviceId,
-          { accompanyingGuests: u.accompanyingGuests || 0 },
+          {
+            accompanyingGuests: u.accompanyingGuests || 0,
+            formResponses: (u.formResponses as Record<string, any>) || undefined,
+            metadata: (u.metadata as Record<string, any>) || undefined,
+          },
           tx,
         );
       }

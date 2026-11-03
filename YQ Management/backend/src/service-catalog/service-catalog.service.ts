@@ -59,23 +59,26 @@ export class ServiceCatalogService {
     return catalog;
   }
 
-  async findCatalogByServiceId(tenantId: string, serviceId: string) {
+  async findCatalogByServiceId(tenantId: string | undefined, serviceId: string) {
+    const whereClause: any = { serviceId };
+    if (tenantId) whereClause.tenantId = tenantId;
+
     let catalog = await this.prisma.serviceCatalog.findFirst({
-      where: { serviceId, tenantId },
+      where: whereClause,
       include: { items: { orderBy: { sortOrder: 'asc' } } },
     });
 
     if (!catalog) {
       // Find service to get its name
       const service = await this.prisma.service.findFirst({
-        where: { id: serviceId, tenantId },
+        where: { id: serviceId, ...(tenantId ? { tenantId } : {}) },
       });
       if (!service) throw new NotFoundException('Service not found');
 
       // Auto-create initial catalog for service if not yet created
       catalog = await this.prisma.serviceCatalog.create({
         data: {
-          tenantId,
+          tenantId: service.tenantId,
           serviceId,
           name: `${service.name} Catalog`,
           currency: service.priceCurrency || 'ZAR',

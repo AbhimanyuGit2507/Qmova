@@ -44,10 +44,48 @@ export class VisitStepService {
       template.entitlementFormula?.startsWith('formField:') ||
       template.entitlementFormula?.startsWith('field_')
     ) {
-      const fieldKey = template.entitlementFormula.replace('formField:', '');
+      const fieldKey = template.entitlementFormula
+        .replace('formField:', '')
+        .trim();
       const meta = (context?.metadata || {}) as Record<string, any>;
       const forms = (context?.formResponses || {}) as Record<string, any>;
-      const rawVal = forms[fieldKey] ?? meta[fieldKey];
+
+      // 1. Direct lookup
+      let rawVal = forms[fieldKey] ?? meta[fieldKey];
+
+      // 2. Prefix-based lookup
+      if (rawVal === undefined) {
+        rawVal =
+          forms[`field_${fieldKey}`] ??
+          meta[`field_${fieldKey}`] ??
+          forms[fieldKey.replace('field_', '')] ??
+          meta[fieldKey.replace('field_', '')];
+      }
+
+      // 3. Case-insensitive / partial match
+      if (rawVal === undefined) {
+        const lowerKey = fieldKey.toLowerCase();
+        for (const [k, v] of Object.entries({ ...meta, ...forms })) {
+          if (k.toLowerCase() === lowerKey || k.toLowerCase().includes(lowerKey)) {
+            rawVal = v;
+            break;
+          }
+        }
+      }
+
+      // 4. Fallback to common quantity aliases
+      if (rawVal === undefined) {
+        rawVal =
+          forms.quantity ??
+          forms.mealCount ??
+          forms.plates ??
+          forms.meals ??
+          forms.count ??
+          meta.quantity ??
+          meta.mealCount ??
+          meta.plates;
+      }
+
       if (typeof rawVal === 'number' && rawVal > 0) {
         allocated = rawVal;
       } else if (
@@ -823,6 +861,26 @@ export class VisitStepService {
       }
     }
 
+    const visit = await this.prisma.visit.findUnique({
+      where: { id: step.visitId },
+      select: { queueId: true },
+    });
+    if (visit?.queueId) {
+      await this.prisma.outboxEvent.create({
+        data: {
+          type: 'VISIT_UPDATED',
+          payload: {
+            visitId: step.visitId,
+            tenantId,
+            queueId: visit.queueId,
+            stepId: step.id,
+            action: 'ORDER_SUBMITTED',
+            amountCharged,
+          },
+        },
+      });
+    }
+
     await this.evaluateNextSteps(step.visitId, step.id);
     return updated;
   }
@@ -1129,23 +1187,98 @@ export class VisitStepService {
           }
         }
       } else {
-        // No more steps: Mark entire visit completed
-        await tx.visit.update({
-          where: { id: visitId },
-          data: { currentState: 'COMPLETED', completedAt: new Date() },
+        // No more steps to activate
+        // Check if checkout payment is required
+        const flow = await tx.serviceFlow.findUnique({
+          where: { id: completedStep.templateStep.flowId },
+          select: { paymentTiming: true, allowUnpaidCheckout: true },
         });
-        const visit = await tx.visit.findUnique({ where: { id: visitId } });
-        if (visit?.queueId) {
-          await tx.outboxEvent.create({
+
+        let balanceDue = 0;
+        if (flow?.paymentTiming === 'CHECKOUT') {
+          const visitRecord = await tx.visit.findUnique({
+            where: { id: visitId },
+            include: { service: true },
+          });
+          if (visitRecord) {
+            const snapshot = Array.isArray(visitRecord.lineItems)
+              ? (visitRecord.lineItems as any[])
+              : [];
+            const items = snapshot.length
+              ? snapshot.map((i) => ({
+                  quantity: Number(i.quantity ?? i.qty ?? 1),
+                  unitPrice: Number(i.unitPrice ?? 0),
+                }))
+              : (visitRecord.service?.basePrice ?? 0) > 0
+                ? [
+                    {
+                      quantity: 1,
+                      unitPrice: visitRecord.service?.basePrice as number,
+                    },
+                  ]
+                : [];
+            const total = items.reduce(
+              (sum, i) => sum + i.quantity * i.unitPrice,
+              0,
+            );
+            const payments = await tx.bookingPayment.findMany({
+              where: { visitId, status: 'SUCCEEDED' },
+              select: { amount: true, refundedAmount: true },
+            });
+            const paid = payments.reduce(
+              (s, p) => s + p.amount - (p.refundedAmount || 0),
+              0,
+            );
+            balanceDue = Math.max(0, total - paid);
+          }
+        }
+
+        if (balanceDue > 0 && !flow?.allowUnpaidCheckout) {
+          await tx.visit.update({
+            where: { id: visitId },
             data: {
-              type: 'VISIT_COMPLETED',
-              payload: {
-                visitId,
-                tenantId: completedStep.tenantId,
-                queueId: visit.queueId,
-              },
+              currentState: 'PENDING_PAYMENT',
+              balanceDue,
             },
           });
+          const visit = await tx.visit.findUnique({ where: { id: visitId } });
+          if (visit?.queueId) {
+            await tx.outboxEvent.create({
+              data: {
+                type: 'VISIT_UPDATED',
+                payload: {
+                  visitId,
+                  tenantId: completedStep.tenantId,
+                  queueId: visit.queueId,
+                  status: 'PENDING_PAYMENT',
+                  balanceDue,
+                },
+              },
+            });
+          }
+        } else {
+          // Mark entire visit completed
+          await tx.visit.update({
+            where: { id: visitId },
+            data: {
+              currentState: 'COMPLETED',
+              completedAt: new Date(),
+              balanceDue: balanceDue > 0 ? balanceDue : 0,
+            },
+          });
+          const visit = await tx.visit.findUnique({ where: { id: visitId } });
+          if (visit?.queueId) {
+            await tx.outboxEvent.create({
+              data: {
+                type: 'VISIT_COMPLETED',
+                payload: {
+                  visitId,
+                  tenantId: completedStep.tenantId,
+                  queueId: visit.queueId,
+                },
+              },
+            });
+          }
         }
       }
     }); // End of transaction
