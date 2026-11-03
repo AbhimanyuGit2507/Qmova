@@ -17,34 +17,37 @@ export function getTenantUrl(subdomain: string, path: string = '') {
     return `${window.location.protocol}//${subdomain}.localhost${portPart}${formattedPath}`;
   }
   
-  let baseDomain = process.env.NEXT_PUBLIC_APP_URL;
-  if (!baseDomain && process.env.NEXT_PUBLIC_DOMAIN_BASE) {
-    baseDomain = `${window.location.protocol}//${process.env.NEXT_PUBLIC_DOMAIN_BASE}`;
-  }
-  if (!baseDomain) {
-    const hostname = window.location.hostname;
-    const parts = hostname.split('.');
-    if (parts.length > 2) {
-      const isKnownPrefix = ['app', 'www', 'superadmin', 'admin', subdomain].includes(parts[0]);
-      const baseHostname = isKnownPrefix ? parts.slice(1).join('.') : hostname;
-      baseDomain = `${window.location.protocol}//${baseHostname}`;
-    } else {
-      baseDomain = `${window.location.protocol}//${hostname}`;
-    }
+  // Extract root apex host
+  let baseHostname = '';
+  if (process.env.NEXT_PUBLIC_DOMAIN_BASE) {
+    baseHostname = process.env.NEXT_PUBLIC_DOMAIN_BASE.replace(/^https?:\/\//, '').split('/')[0].split(':')[0];
+  } else if (process.env.NEXT_PUBLIC_APP_URL) {
+    try {
+      baseHostname = new URL(process.env.NEXT_PUBLIC_APP_URL).hostname;
+    } catch {}
   }
   
-  try {
-    const url = new URL(baseDomain);
-    
-    // Only prepend the subdomain if the hostname doesn't already start with it
-    if (!url.hostname.startsWith(`${subdomain}.`)) {
-      url.hostname = `${subdomain}.${url.hostname}`;
-    }
-    
-    return `${url.protocol}//${url.hostname}${url.port ? `:${url.port}` : ''}${formattedPath}`;
-  } catch (e) {
-    return '';
+  if (!baseHostname) {
+    baseHostname = window.location.hostname;
   }
+
+  // Strip port if present
+  baseHostname = baseHostname.split(':')[0].toLowerCase();
+
+  // Strip known system prefixes or any existing subdomain from baseHostname
+  const SYSTEM_PREFIXES = ['app', 'www', 'superadmin', 'admin', 'evo', 'api'];
+  const parts = baseHostname.split('.');
+  if (SYSTEM_PREFIXES.includes(parts[0]) || parts[0] === subdomain.toLowerCase()) {
+    baseHostname = parts.slice(1).join('.');
+  } else if (baseHostname.endsWith('.qmova.yqbuddy.com') && baseHostname !== 'qmova.yqbuddy.com') {
+    baseHostname = 'qmova.yqbuddy.com';
+  } else if (baseHostname.endsWith('.qmova.com') && baseHostname !== 'qmova.com') {
+    baseHostname = 'qmova.com';
+  } else if (parts.length >= 4) {
+    baseHostname = parts.slice(1).join('.');
+  }
+
+  return `${window.location.protocol}//${subdomain}.${baseHostname}${portPart}${formattedPath}`;
 }
 
 export function slugify(text: string): string {

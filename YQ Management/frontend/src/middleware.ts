@@ -3,6 +3,19 @@ import type { NextRequest } from 'next/server';
 
 const SUPER_ADMIN_EMAIL = process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL || '';
 
+const SYSTEM_SUBDOMAINS = new Set([
+  'www',
+  'api',
+  'app',
+  'superadmin',
+  'admin',
+  'evo',
+  'status',
+  'docs',
+  'mail',
+  'auth',
+]);
+
 export const config = {
   matcher: [
     /*
@@ -27,6 +40,27 @@ export async function middleware(req: NextRequest) {
   const hostname = rawHost.split(':')[0].toLowerCase();
   const isLocal = hostname.includes('localhost') || hostname.includes('127.0.0.1');
 
+  // Check known base domains
+  const baseCandidates: string[] = [];
+
+  const envAppUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
+  if (envAppUrl) {
+    try {
+      baseCandidates.push(new URL(envAppUrl).hostname.toLowerCase());
+    } catch {}
+  }
+  const envDomainBase = process.env.NEXT_PUBLIC_DOMAIN_BASE || process.env.DOMAIN_BASE;
+  if (envDomainBase) {
+    baseCandidates.push(envDomainBase.toLowerCase());
+  }
+
+  // Known production fallbacks
+  baseCandidates.push('qmova.yqbuddy.com');
+  baseCandidates.push('qmova.com');
+
+  // Deduplicate candidates
+  const uniqueBases = Array.from(new Set(baseCandidates.filter(Boolean)));
+
   let subdomain = '';
 
   if (isLocal) {
@@ -35,27 +69,6 @@ export async function middleware(req: NextRequest) {
       subdomain = parts[0];
     }
   } else {
-    // Check known base domains
-    const baseCandidates: string[] = [];
-
-    const envAppUrl = process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL;
-    if (envAppUrl) {
-      try {
-        baseCandidates.push(new URL(envAppUrl).hostname.toLowerCase());
-      } catch {}
-    }
-    const envDomainBase = process.env.NEXT_PUBLIC_DOMAIN_BASE || process.env.DOMAIN_BASE;
-    if (envDomainBase) {
-      baseCandidates.push(envDomainBase.toLowerCase());
-    }
-
-    // Known production fallbacks
-    baseCandidates.push('qmova.yqbuddy.com');
-    baseCandidates.push('qmova.com');
-
-    // Deduplicate candidates
-    const uniqueBases = Array.from(new Set(baseCandidates.filter(Boolean)));
-
     // If hostname exactly matches any apex/root domain, it is NOT a tenant subdomain
     const isRootDomain = uniqueBases.some(base => hostname === base);
 
@@ -71,12 +84,15 @@ export async function middleware(req: NextRequest) {
       // Generic fallback for subdomains if hostname has 3+ parts and not a reserved prefix
       if (!subdomain) {
         const parts = hostname.split('.');
-        if (parts.length >= 3 && !['www', 'api', 'evo', 'app', 'qmova'].includes(parts[0])) {
+        if (parts.length >= 3 && !SYSTEM_SUBDOMAINS.has(parts[0])) {
           subdomain = parts[0];
         }
       }
     }
   }
+
+  const isSuperAdminSubdomain = subdomain === 'superadmin' || subdomain === 'admin';
+  const isTenantSubdomain = Boolean(subdomain && !SYSTEM_SUBDOMAINS.has(subdomain));
 
   // Handle Next.js internal data fetching requests (_next/data)
   if (url.pathname.startsWith('/_next/data/')) {
@@ -96,7 +112,7 @@ export async function middleware(req: NextRequest) {
         }
       }
       // Subdomain-based tenant: /_next/data/[buildId]/...
-      else if (subdomain && subdomain !== 'www' && !dataSubPath.startsWith('_tenant') && !dataSubPath.startsWith('dashboard') && !dataSubPath.startsWith('super-admin')) {
+      else if (isTenantSubdomain && !dataSubPath.startsWith('_tenant') && !dataSubPath.startsWith('dashboard') && !dataSubPath.startsWith('super-admin')) {
         url.pathname = `/_next/data/${buildId}/_tenant/${subdomain}/${dataSubPath}`;
         return NextResponse.rewrite(url);
       }
@@ -114,9 +130,56 @@ export async function middleware(req: NextRequest) {
     }
   }
 
+  // Route superadmin/admin subdomains directly to super-admin portal
+  if (isSuperAdminSubdomain) {
+    if (url.pathname === '/') {
+      return NextResponse.redirect(new URL('/super-admin', req.url));
+    }
+
+    const superAdminPages = [
+      'tenants',
+      'pricing',
+      'analytics',
+      'blogs',
+      'marketing',
+      'communication',
+      'inquiries',
+      'system-control',
+      'system-logs',
+      'integrations',
+    ];
+    const firstSegment = url.pathname.split('/').filter(Boolean)[0];
+    if (firstSegment && superAdminPages.includes(firstSegment)) {
+      url.pathname = `/super-admin${url.pathname}`;
+      return NextResponse.redirect(url);
+    }
+  }
+
+  // Redirect booking links with a tenant slug on non-tenant domains (e.g. superadmin or apex)
+  // e.g. https://superadmin.qmova.yqbuddy.com/booking/uniworld-1 -> https://uniworld-1.qmova.yqbuddy.com/booking
+  if (!isTenantSubdomain && url.pathname.startsWith('/booking/')) {
+    const bookingParts = url.pathname.split('/').filter(Boolean); // ['booking', 'tenant-slug', ...]
+    if (bookingParts.length >= 2) {
+      const candidateTenant = bookingParts[1];
+      const restPath = bookingParts.slice(2).join('/');
+      const targetPath = restPath ? `/booking/${restPath}` : '/booking';
+
+      if (isLocal) {
+        const port = req.nextUrl.port ? `:${req.nextUrl.port}` : '';
+        const redirectUrl = new URL(`${req.nextUrl.protocol}//${candidateTenant}.localhost${port}${targetPath}`);
+        url.searchParams.forEach((v, k) => redirectUrl.searchParams.set(k, v));
+        return NextResponse.redirect(redirectUrl);
+      } else {
+        const baseDomain = uniqueBases[0] || 'qmova.yqbuddy.com';
+        const redirectUrl = new URL(`https://${candidateTenant}.${baseDomain}${targetPath}`);
+        url.searchParams.forEach((v, k) => redirectUrl.searchParams.set(k, v));
+        return NextResponse.redirect(redirectUrl);
+      }
+    }
+  }
+
   // Global paths that should never be rewritten to a tenant folder
   const globalPaths = [
-    '/',
     '/login',
     '/register',
     '/onboarding',
@@ -127,7 +190,6 @@ export async function middleware(req: NextRequest) {
     '/about',
     '/contact',
     '/support',
-    '/status',
     '/blog',
     '/changelog',
     '/docs',
@@ -148,12 +210,22 @@ export async function middleware(req: NextRequest) {
     '/staff-desk',
     '/join',
   ];
-  const isGlobalPath = globalPaths.some(p => p === '/' ? url.pathname === '/' : (url.pathname.startsWith(p) || url.pathname === p));
+  const isGlobalPath = globalPaths.some(p => url.pathname.startsWith(p) || url.pathname === p);
 
-  // Rewrite to the _tenant dynamic route for subdomains
-  if (subdomain && subdomain !== 'www' && !url.pathname.startsWith('/_tenant') && !isGlobalPath) {
-    url.pathname = `/_tenant/${subdomain}${url.pathname}`;
-    return NextResponse.rewrite(url);
+  // Rewrite to the _tenant dynamic route for actual tenant subdomains
+  if (isTenantSubdomain && !url.pathname.startsWith('/_tenant')) {
+    // If accessing root of tenant subdomain, rewrite to _tenant/[subdomain]
+    // which delegates to pages/_tenant/[subdomain]/index.tsx (redirecting to /booking)
+    if (url.pathname === '/') {
+      url.pathname = `/_tenant/${subdomain}`;
+      return NextResponse.rewrite(url);
+    }
+
+    // Rewrite all non-global tenant routes (e.g. /booking, /tv, /status, /checkin, /pay)
+    if (!isGlobalPath) {
+      url.pathname = `/_tenant/${subdomain}${url.pathname}`;
+      return NextResponse.rewrite(url);
+    }
   }
 
   // Extract token: always prioritize fresh SSO/login tokens in URL parameters over existing browser cookies
@@ -181,7 +253,6 @@ export async function middleware(req: NextRequest) {
 
   // Verify super-admin permissions
   if (req.nextUrl.pathname.startsWith('/super-admin')) {
-
     try {
       const backendUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || (process.env.NEXT_PUBLIC_DOMAIN_BASE ? 'https://api.' + process.env.NEXT_PUBLIC_DOMAIN_BASE : 'https://api.qmova.com');
       const res = await fetch(`${backendUrl}/auth/me`, {
