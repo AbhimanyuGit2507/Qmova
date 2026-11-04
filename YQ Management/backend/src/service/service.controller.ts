@@ -84,6 +84,7 @@ export class ServiceController {
       checkinPayMode?: string;
       allowUnpaidCheckout?: boolean;
       autoSendInvoice?: boolean;
+      maxOverdueMinutes?: number;
     },
   ) {
     return this.serviceService.create(req.user.tenantId, body);
@@ -167,6 +168,7 @@ export class ServiceController {
       checkinPayMode?: string;
       allowUnpaidCheckout?: boolean;
       autoSendInvoice?: boolean;
+      maxOverdueMinutes?: number;
     },
   ) {
     return this.serviceService.update(id, req.user.tenantId, body);

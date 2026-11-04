@@ -662,4 +662,141 @@ export class VisitCron {
       );
     }
   }
+
+  /**
+   * Auto-mark visits as NO_SHOW if they exceed their service's maxOverdueMinutes threshold.
+   * Default threshold is 60 minutes (1 hour). Threshold of 0 disables auto-no-show.
+   * Covers:
+   * 1. Scheduled appointments: now >= scheduledTime + maxOverdueMinutes
+   * 2. Walk-ins / queue visits: now >= (waitingStart || checkInTime || actualArrival || createdAt) + maxOverdueMinutes
+   */
+  @Cron(CronExpression.EVERY_MINUTE)
+  async handleOverdueVisitsSweep() {
+    try {
+      const activeUnattendedStates: (
+        | 'WAITING'
+        | 'CHECKED_IN'
+        | 'CALLED'
+        | 'ON_HOLD'
+        | 'PENDING_PAYMENT'
+        | 'SCHEDULED'
+        | 'CREATED'
+      )[] = [
+        'WAITING',
+        'CHECKED_IN',
+        'CALLED',
+        'ON_HOLD',
+        'PENDING_PAYMENT',
+        'SCHEDULED',
+        'CREATED',
+      ];
+
+      const activeVisits = await this.prisma.visit.findMany({
+        where: {
+          currentState: { in: activeUnattendedStates },
+        },
+        include: {
+          service: {
+            select: { id: true, name: true, maxOverdueMinutes: true },
+          },
+        },
+        take: 300,
+      });
+
+      if (!activeVisits || activeVisits.length === 0) return;
+
+      const now = new Date();
+      const nowMs = now.getTime();
+
+      for (const visit of activeVisits) {
+        const limitMins = visit.service?.maxOverdueMinutes ?? 60;
+        if (limitMins <= 0) continue; // 0 disables auto-no-show
+
+        const limitMs = limitMins * 60 * 1000;
+        let isOverdue = false;
+        let reason = '';
+
+        if (visit.scheduledTime) {
+          const schedMs = new Date(visit.scheduledTime).getTime();
+          if (nowMs >= schedMs + limitMs) {
+            isOverdue = true;
+            reason = `Auto No-Show: Appointment unattended after ${limitMins}m grace period`;
+          }
+        } else {
+          const arrTs =
+            visit.waitingStart ||
+            visit.checkInTime ||
+            visit.actualArrival ||
+            visit.createdAt;
+          if (arrTs) {
+            const arrMs = new Date(arrTs).getTime();
+            if (nowMs >= arrMs + limitMs) {
+              isOverdue = true;
+              reason = `Auto No-Show: Wait time exceeded maximum overdue limit (${limitMins}m)`;
+            }
+          }
+        }
+
+        if (isOverdue) {
+          this.logger.log(
+            `[Overdue Sweep] Marking visit ${visit.id} (${visit.displayId || 'TKT'}) as NO_SHOW. Reason: ${reason}`,
+          );
+
+          const existingMeta =
+            typeof visit.metadata === 'object' && visit.metadata !== null
+              ? (visit.metadata as Record<string, any>)
+              : {};
+
+          await this.prisma.visit.update({
+            where: { id: visit.id },
+            data: {
+              currentState: 'NO_SHOW',
+              completedAt: now,
+              cancelReason: reason,
+              metadata: {
+                ...existingMeta,
+                noShow: {
+                  markedAt: now.toISOString(),
+                  reason,
+                  automated: true,
+                  maxOverdueMinutes: limitMins,
+                },
+              },
+            },
+          });
+
+          if (visit.appointmentId) {
+            await this.prisma.appointment
+              .update({
+                where: { id: visit.appointmentId },
+                data: { status: 'NO_SHOW' },
+              })
+              .catch((err) =>
+                this.logger.warn(
+                  `Failed to update appointment ${visit.appointmentId} to NO_SHOW: ${err}`,
+                ),
+              );
+          }
+
+          // Emit VISIT_MISSED outbox event so UI and real-time sockets update immediately
+          await this.prisma.outboxEvent.create({
+            data: {
+              type: 'VISIT_MISSED',
+              payload: {
+                visitId: visit.id,
+                queueId: visit.queueId,
+                tenantId: visit.tenantId,
+                reason,
+              },
+            },
+          });
+        }
+      }
+    } catch (err: any) {
+      this.logger.error(
+        `Failed during overdue visits sweep: ${err.message}`,
+        err.stack,
+      );
+    }
+  }
 }

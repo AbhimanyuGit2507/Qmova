@@ -19,12 +19,18 @@ describe('VisitService - Temporal Booking & Queue Hygiene Engine', () => {
       findMany: jest.fn(),
       findFirst: jest.fn(),
       updateMany: jest.fn(),
+      update: jest.fn(),
       create: jest.fn(),
       count: jest.fn().mockResolvedValue(0),
     },
     appointment: {
       findMany: jest.fn(),
       updateMany: jest.fn(),
+      update: jest.fn(),
+    },
+    outboxEvent: {
+      create: jest.fn(),
+      createMany: jest.fn(),
     },
     user: {
       findUnique: jest.fn(),
@@ -96,6 +102,131 @@ describe('VisitService - Temporal Booking & Queue Hygiene Engine', () => {
           cancelReason: 'Day Rollover Auto-Complete',
         }),
       });
+    });
+
+    it('should auto-mark overdue walk-in visits as NO_SHOW when elapsed wait time exceeds service maxOverdueMinutes', async () => {
+      const twoHoursAgo = new Date(Date.now() - 120 * 60 * 1000);
+      const overdueVisit = {
+        id: 'visit-overdue-1',
+        displayId: 'Q001',
+        currentState: 'WAITING',
+        scheduledTime: null,
+        waitingStart: twoHoursAgo,
+        checkInTime: null,
+        actualArrival: null,
+        createdAt: twoHoursAgo,
+        queueId: 'q-1',
+        tenantId: 'tenant-1',
+        metadata: {},
+        service: {
+          id: 'srv-1',
+          name: 'Burger Service',
+          maxOverdueMinutes: 60,
+        },
+      };
+
+      prisma.visit.findMany
+        .mockResolvedValueOnce([]) // stale waiting
+        .mockResolvedValueOnce([]) // lingering in_service
+        .mockResolvedValueOnce([overdueVisit]); // overdue visits query
+      prisma.appointment.findMany.mockResolvedValueOnce([]);
+      prisma.visit.update.mockResolvedValue({ ...overdueVisit, currentState: 'NO_SHOW' });
+      prisma.outboxEvent.create.mockResolvedValue({});
+
+      await service.autoSweepStaleVisits('tenant-1', 'loc-1', 'UTC');
+
+      expect(prisma.visit.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'visit-overdue-1' },
+          data: expect.objectContaining({
+            currentState: 'NO_SHOW',
+            cancelReason: expect.stringContaining('60m'),
+          }),
+        }),
+      );
+      expect(prisma.outboxEvent.create).toHaveBeenCalledWith({
+        data: expect.objectContaining({
+          type: 'VISIT_MISSED',
+          payload: expect.objectContaining({
+            visitId: 'visit-overdue-1',
+            tenantId: 'tenant-1',
+          }),
+        }),
+      });
+    });
+
+    it('should auto-mark overdue appointment as NO_SHOW when scheduledTime grace period has elapsed', async () => {
+      const ninetyMinsAgo = new Date(Date.now() - 90 * 60 * 1000);
+      const overdueApptVisit = {
+        id: 'visit-appt-1',
+        displayId: 'A001',
+        currentState: 'SCHEDULED',
+        scheduledTime: ninetyMinsAgo,
+        appointmentId: 'appt-123',
+        queueId: 'q-1',
+        tenantId: 'tenant-1',
+        metadata: {},
+        service: {
+          id: 'srv-1',
+          name: 'Doctor Consultation',
+          maxOverdueMinutes: 30,
+        },
+      };
+
+      prisma.visit.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([overdueApptVisit]);
+      prisma.appointment.findMany.mockResolvedValueOnce([]);
+      prisma.visit.update.mockResolvedValue({ ...overdueApptVisit, currentState: 'NO_SHOW' });
+      prisma.appointment.update.mockResolvedValue({});
+      prisma.outboxEvent.create.mockResolvedValue({});
+
+      await service.autoSweepStaleVisits('tenant-1', 'loc-1', 'UTC');
+
+      expect(prisma.visit.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'visit-appt-1' },
+          data: expect.objectContaining({
+            currentState: 'NO_SHOW',
+            cancelReason: expect.stringContaining('30m grace period'),
+          }),
+        }),
+      );
+      expect(prisma.appointment.update).toHaveBeenCalledWith({
+        where: { id: 'appt-123' },
+        data: { status: 'NO_SHOW' },
+      });
+    });
+
+    it('should not mark visit as NO_SHOW if wait time is within maxOverdueMinutes or disabled (0)', async () => {
+      const tenMinsAgo = new Date(Date.now() - 10 * 60 * 1000);
+      const freshVisit = {
+        id: 'visit-fresh',
+        currentState: 'WAITING',
+        scheduledTime: null,
+        waitingStart: tenMinsAgo,
+        createdAt: tenMinsAgo,
+        service: { id: 'srv-1', maxOverdueMinutes: 60 },
+      };
+      const disabledVisit = {
+        id: 'visit-disabled',
+        currentState: 'WAITING',
+        scheduledTime: null,
+        waitingStart: new Date(Date.now() - 500 * 60 * 1000),
+        createdAt: new Date(Date.now() - 500 * 60 * 1000),
+        service: { id: 'srv-2', maxOverdueMinutes: 0 },
+      };
+
+      prisma.visit.findMany
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([])
+        .mockResolvedValueOnce([freshVisit, disabledVisit]);
+      prisma.appointment.findMany.mockResolvedValueOnce([]);
+
+      await service.autoSweepStaleVisits('tenant-1', 'loc-1', 'UTC');
+
+      expect(prisma.visit.update).not.toHaveBeenCalled();
     });
   });
 

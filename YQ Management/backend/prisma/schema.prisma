@@ -589,6 +589,7 @@ model Service {
   requiresPayment            Boolean       @default(false)
   allowOfflinePayment        Boolean       @default(false)
   enableCatalog              Boolean       @default(false)
+  maxOverdueMinutes          Int           @default(60)
   catalog                    ServiceCatalog?
   appointments               Appointment[]
   location                   Location?     @relation(fields: [locationId], references: [id], onDelete: Cascade)

@@ -95,6 +95,7 @@ export class ServiceService {
       breachThresholdMins?: number;
       escalationPhones?: string[];
       enableCatalog?: boolean;
+      maxOverdueMinutes?: number;
     },
   ) {
     if (!data.locationId) {
@@ -139,6 +140,10 @@ export class ServiceService {
       businessHoursOverride: data.businessHoursOverride,
       exceptionDatesOverride: data.exceptionDatesOverride,
       requiredSkills: data.requiredSkills || [],
+      maxOverdueMinutes:
+        data.maxOverdueMinutes !== undefined
+          ? Number(data.maxOverdueMinutes)
+          : 60,
       basePrice: data.basePrice,
       priceCurrency: data.priceCurrency,
       paymentMode: data.paymentMode || 'NONE',
@@ -450,6 +455,7 @@ export class ServiceService {
       allowUnpaidCheckout?: boolean;
       autoSendInvoice?: boolean;
       enableCatalog?: boolean;
+      maxOverdueMinutes?: number;
     },
   ) {
     const {
@@ -513,6 +519,10 @@ export class ServiceService {
         updateData.requiresPayment = true;
         updateData.allowOfflinePayment = true;
       }
+    }
+
+    if (data.maxOverdueMinutes !== undefined) {
+      updateData.maxOverdueMinutes = Number(data.maxOverdueMinutes);
     }
 
     const exists = await this.findOne(id, tenantId);

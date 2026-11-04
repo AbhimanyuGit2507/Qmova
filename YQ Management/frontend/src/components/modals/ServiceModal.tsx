@@ -19,6 +19,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
   const [name, setName] = useState('');
   const [description, setDescription] = useState('');
   const [expectedDuration, setExpectedDuration] = useState('15');
+  const [maxOverdueMinutes, setMaxOverdueMinutes] = useState(60);
   const [selectedLocId, setSelectedLocId] = useState(locationId || '');
 
   const [allowAppointments, setAllowAppointments] = useState(true);
@@ -62,6 +63,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       setName(service.name || '');
       setDescription(service.description || '');
       setExpectedDuration(service.expectedDuration?.toString() || '15');
+      setMaxOverdueMinutes(service.maxOverdueMinutes ?? 60);
       setSelectedLocId(service.locationId || locationId || '');
       setAllowAppointments(service.allowAppointments || false);
       setAllowProviderSelection(service.allowProviderSelection || false);
@@ -130,6 +132,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       setName('');
       setDescription('');
       setExpectedDuration('15');
+      setMaxOverdueMinutes(60);
       setSelectedLocId(locationId || '');
 
       setAllowAppointments(true);
@@ -223,6 +226,10 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       name, 
       description, 
       expectedDuration: parseInt(expectedDuration, 10),
+      maxOverdueMinutes:
+        parseInt(maxOverdueMinutes.toString(), 10) >= 0
+          ? parseInt(maxOverdueMinutes.toString(), 10)
+          : 60,
       locationId: selectedLocId,
 
       allowAppointments,
@@ -624,15 +631,39 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
               </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Expected Duration (mins)</label>
-            <input
-              type="number"
-              min="1"
-              value={expectedDuration}
-              onChange={(e) => setExpectedDuration(e.target.value)}
-              className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-            />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                Expected Duration (mins)
+              </label>
+              <input
+                type="number"
+                min="1"
+                value={expectedDuration}
+                onChange={(e) => setExpectedDuration(e.target.value)}
+                className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">
+                Max Overdue / No-Show Limit (mins)
+              </label>
+              <input
+                type="number"
+                min="0"
+                max="1440"
+                value={maxOverdueMinutes}
+                onChange={(e) =>
+                  setMaxOverdueMinutes(
+                    e.target.value === '' ? 0 : parseInt(e.target.value, 10),
+                  )
+                }
+                className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+              />
+              <p className="text-[11px] text-gray-500 dark:text-zinc-400 mt-1">
+                Auto-marks unattended visits as No-Show after this duration (default: 60m). Set to 0 to disable.
+              </p>
+            </div>
           </div>
 
           {isAdvancedMode && (

@@ -291,6 +291,113 @@ export class VisitService {
           `[JIT Sweep] Auto-marked ${pastScheduledAppointments.length} past appointments as NO_SHOW for tenant ${tenantId}`,
         );
       }
+
+      // 4. Overdue unattended visits exceeding service maxOverdueMinutes threshold
+      const activeUnattendedVisits = await this.prisma.visit.findMany({
+        where: {
+          ...baseWhere,
+          currentState: {
+            in: [
+              'WAITING',
+              'CHECKED_IN',
+              'CALLED',
+              'ON_HOLD',
+              'PENDING_PAYMENT',
+              'SCHEDULED',
+              'CREATED',
+            ],
+          },
+        },
+        include: {
+          service: {
+            select: { id: true, name: true, maxOverdueMinutes: true },
+          },
+        },
+        take: 300,
+      });
+
+      const now = new Date();
+      const nowMs = now.getTime();
+
+      for (const v of activeUnattendedVisits) {
+        const limitMins = v.service?.maxOverdueMinutes ?? 60;
+        if (limitMins <= 0) continue; // 0 disables auto-no-show
+        const limitMs = limitMins * 60 * 1000;
+
+        let isOverdue = false;
+        let reason = '';
+
+        if (v.scheduledTime) {
+          const schedMs = new Date(v.scheduledTime).getTime();
+          if (nowMs >= schedMs + limitMs) {
+            isOverdue = true;
+            reason = `Auto No-Show: Appointment unattended after ${limitMins}m grace period`;
+          }
+        } else {
+          const arrTs =
+            v.waitingStart ||
+            v.checkInTime ||
+            v.actualArrival ||
+            v.createdAt;
+          if (arrTs) {
+            const arrMs = new Date(arrTs).getTime();
+            if (nowMs >= arrMs + limitMs) {
+              isOverdue = true;
+              reason = `Auto No-Show: Wait time exceeded maximum overdue limit (${limitMins}m)`;
+            }
+          }
+        }
+
+        if (isOverdue) {
+          const existingMeta =
+            typeof v.metadata === 'object' && v.metadata !== null
+              ? (v.metadata as Record<string, any>)
+              : {};
+
+          await this.prisma.visit.update({
+            where: { id: v.id },
+            data: {
+              currentState: 'NO_SHOW',
+              completedAt: now,
+              cancelReason: reason,
+              metadata: {
+                ...existingMeta,
+                noShow: {
+                  markedAt: now.toISOString(),
+                  reason,
+                  automated: true,
+                  maxOverdueMinutes: limitMins,
+                },
+              },
+            },
+          });
+
+          if (v.appointmentId) {
+            await this.prisma.appointment
+              .update({
+                where: { id: v.appointmentId },
+                data: { status: 'NO_SHOW' },
+              })
+              .catch(() => null);
+          }
+
+          await this.prisma.outboxEvent.create({
+            data: {
+              type: 'VISIT_MISSED',
+              payload: {
+                visitId: v.id,
+                queueId: v.queueId,
+                tenantId: v.tenantId,
+                reason,
+              },
+            },
+          });
+
+          this.logger.log(
+            `[JIT Sweep] Auto-marked overdue visit ${v.id} as NO_SHOW for tenant ${tenantId} (${reason})`,
+          );
+        }
+      }
     } catch (e) {
       this.logger.warn(
         `Failed during JIT auto-sweep for tenant ${tenantId}: ${e}`,

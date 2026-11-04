@@ -2168,8 +2168,19 @@ export default function ServiceDeskToday() {
                     : 0;
                   const waitTimeMins = Math.floor(waitTimeMs / 60000);
                   const threshold = tenant?.reviewWaitThresholdMins || 15;
+                  const maxOverdueMins = v.service?.maxOverdueMinutes ?? 60;
                   const isStale = !isUpcoming && waitTimeMins > 1440; // > 24 hours
-                  const isUrgent = !isUpcoming && waitTimeMins > threshold && !isStale;
+                  const isOverdue =
+                    !isUpcoming &&
+                    maxOverdueMins > 0 &&
+                    waitTimeMins >= maxOverdueMins &&
+                    !isStale;
+                  const isDelayed =
+                    !isUpcoming &&
+                    waitTimeMins > threshold &&
+                    !isOverdue &&
+                    !isStale;
+                  const isUrgent = isOverdue || isDelayed;
                   const slotTime = v.scheduledTime
                     ? new Date(v.scheduledTime)
                     : null;
@@ -2349,9 +2360,13 @@ export default function ServiceDeskToday() {
                               >
                                 Mark No-Show
                               </button>
-                            ) : isUrgent ? (
+                            ) : isOverdue ? (
                               <span className="text-[10px] px-1 py-0.2 bg-rose-500 text-white rounded font-bold uppercase tracking-wider ml-0.5">
                                 Overdue
+                              </span>
+                            ) : isDelayed ? (
+                              <span className="text-[10px] px-1 py-0.2 bg-amber-500 text-white rounded font-bold uppercase tracking-wider ml-0.5">
+                                Delayed
                               </span>
                             ) : null}
                           </div>
@@ -2849,7 +2864,9 @@ export default function ServiceDeskToday() {
                   {/* 3. Schedule & People Ahead */}
                   <div className="text-sm text-on-surface dark:text-zinc-300 flex items-center justify-between gap-x-4 py-0.5">
                     <div>
-                      <span className="text-outline">Schedule: </span>
+                      <span className="text-outline">
+                        {isAppt ? "Schedule: " : "Arrived: "}
+                      </span>
                       <span className="font-semibold text-primary dark:text-sky-400 font-mono text-sm">
                         {isAppt
                           ? slotTimeRange
