@@ -91,7 +91,7 @@ export function AppProviders({ children }: { children: React.ReactNode }) {
               </SocketProvider>
             </LocationProvider>
           </AuthProvider>
-          <Toaster position="bottom-right" richColors closeButton />
+          <Toaster position="top-right" richColors closeButton />
           <MaintenanceOverlay />
         </ThemeProvider>
       </QueryClientProvider>

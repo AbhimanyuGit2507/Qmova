@@ -5,6 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { QueueGateway } from '../queue/queue.gateway';
 import { forwardRef, Inject } from '@nestjs/common';
+import { getPhoneLookupVariants } from '../utils/phone.util';
 
 @Injectable()
 export class MessagesService {
@@ -25,20 +26,11 @@ export class MessagesService {
     if (!token) throw new NotFoundException('Visit not found');
 
     const customerPhone = token.customer?.phone;
-    const cleanDigits = customerPhone ? customerPhone.replace(/\D/g, '') : null;
-    const lastDigits =
-      cleanDigits && cleanDigits.length >= 7
-        ? cleanDigits.slice(-9)
-        : cleanDigits;
+    const phoneVariants = customerPhone ? getPhoneLookupVariants(customerPhone) : [];
 
     const messageOrConditions: any[] = [{ visitId }];
-    if (customerPhone) messageOrConditions.push({ customerPhone });
-    if (cleanDigits) {
-      messageOrConditions.push({ customerPhone: cleanDigits });
-      messageOrConditions.push({ customerPhone: `+${cleanDigits}` });
-    }
-    if (lastDigits) {
-      messageOrConditions.push({ customerPhone: { contains: lastDigits } });
+    if (phoneVariants.length > 0) {
+      messageOrConditions.push({ customerPhone: { in: phoneVariants } });
     }
 
     const messages = await this.prisma.message.findMany({
@@ -52,13 +44,8 @@ export class MessagesService {
 
     // Also include automated messages sent via WhatsApp (ticket confirmation, reminders, status updates, OTP)
     const commConditions: any[] = [];
-    if (customerPhone) commConditions.push({ recipient: customerPhone });
-    if (cleanDigits) {
-      commConditions.push({ recipient: cleanDigits });
-      commConditions.push({ recipient: `+${cleanDigits}` });
-    }
-    if (lastDigits) {
-      commConditions.push({ recipient: { contains: lastDigits } });
+    if (phoneVariants.length > 0) {
+      commConditions.push({ recipient: { in: phoneVariants } });
     }
 
     let commLogs: any[] = [];
@@ -256,31 +243,37 @@ export class MessagesService {
 
   private async attachCustomerDetails(tenantId: string, convos: any[]) {
     if (convos.length === 0) return convos;
-    const phones = convos.map((c) => c.customerPhone);
-    const orConditions = phones.map((p) => ({
-      phone: { contains: p.replace(/\D/g, '').slice(-9) },
-    }));
+
+    const allVariants = new Set<string>();
+    const convoVariantMap = new Map<string, string[]>();
+
+    for (const c of convos) {
+      const variants = getPhoneLookupVariants(c.customerPhone);
+      convoVariantMap.set(c.customerPhone, variants);
+      variants.forEach((v) => allVariants.add(v));
+    }
 
     const [customers, sessions] = await Promise.all([
       this.prisma.customer.findMany({
-        where: { tenantId, OR: orConditions },
+        where: { tenantId, phone: { in: Array.from(allVariants) } },
         orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.chatSession.findMany({
-        where: { tenantId, phone: { in: phones } },
+        where: { tenantId, phone: { in: convos.map((c) => c.customerPhone) } },
       }),
     ]);
 
-    const exactCustomerMap = new Map<string, any>();
-    const cleanCustomerMap = new Map<string, any>();
+    const customerMap = new Map<string, any>();
     for (const c of customers) {
       if (c.phone) {
-        if (!exactCustomerMap.has(c.phone)) {
-          exactCustomerMap.set(c.phone, c);
+        if (!customerMap.has(c.phone)) {
+          customerMap.set(c.phone, c);
         }
-        const cleanPhone = c.phone.replace(/\D/g, '').slice(-9);
-        if (!cleanCustomerMap.has(cleanPhone)) {
-          cleanCustomerMap.set(cleanPhone, c);
+        const variants = getPhoneLookupVariants(c.phone);
+        for (const v of variants) {
+          if (!customerMap.has(v)) {
+            customerMap.set(v, c);
+          }
         }
       }
     }
@@ -291,10 +284,15 @@ export class MessagesService {
     }
 
     return convos.map((c) => {
-      const cleanPhone = c.customerPhone.replace(/\D/g, '').slice(-9);
-      const cust =
-        exactCustomerMap.get(c.customerPhone) ||
-        cleanCustomerMap.get(cleanPhone);
+      const variants = convoVariantMap.get(c.customerPhone) || [c.customerPhone];
+      let cust: any = null;
+      for (const v of variants) {
+        if (customerMap.has(v)) {
+          cust = customerMap.get(v);
+          break;
+        }
+      }
+
       const session = sessionMap.get(c.customerPhone);
       const isHumanPaused =
         session?.context && typeof session.context === 'object'
@@ -314,50 +312,28 @@ export class MessagesService {
   }
 
   async getInboxMessages(tenantId: string, phone: string) {
+    const phoneVariants = getPhoneLookupVariants(phone);
+
     // Reset unread count
     await this.prisma.customerConversation.updateMany({
-      where: { tenantId, customerPhone: phone },
+      where: { tenantId, customerPhone: { in: phoneVariants } },
       data: { unreadCount: 0 },
     });
-
-    const cleanDigits = phone ? phone.replace(/\D/g, '') : null;
-    const lastDigits =
-      cleanDigits && cleanDigits.length >= 7
-        ? cleanDigits.slice(-9)
-        : cleanDigits;
-
-    const messageOrConditions: any[] = [{ customerPhone: phone }];
-    if (cleanDigits) {
-      messageOrConditions.push({ customerPhone: cleanDigits });
-      messageOrConditions.push({ customerPhone: `+${cleanDigits}` });
-    }
-    if (lastDigits) {
-      messageOrConditions.push({ customerPhone: { contains: lastDigits } });
-    }
 
     const messages = await this.prisma.message.findMany({
       where: {
         tenantId,
         isDeleted: false,
-        OR: messageOrConditions,
+        customerPhone: { in: phoneVariants },
       },
       orderBy: { createdAt: 'asc' },
     });
-
-    const commConditions: any[] = [{ recipient: phone }];
-    if (cleanDigits) {
-      commConditions.push({ recipient: cleanDigits });
-      commConditions.push({ recipient: `+${cleanDigits}` });
-    }
-    if (lastDigits) {
-      commConditions.push({ recipient: { contains: lastDigits } });
-    }
 
     const commLogs = await this.prisma.communicationLog.findMany({
       where: {
         tenantId,
         channel: { in: ['whatsapp', 'WHATSAPP'] },
-        OR: commConditions,
+        recipient: { in: phoneVariants },
       },
       orderBy: { createdAt: 'asc' },
     });
@@ -533,20 +509,13 @@ export class MessagesService {
   }
 
   async getInboxDossier(tenantId: string, phone: string) {
-    const cleanDigits = phone ? phone.replace(/\D/g, '') : '';
-    const last9 = cleanDigits.length >= 7 ? cleanDigits.slice(-9) : cleanDigits;
+    const phoneVariants = getPhoneLookupVariants(phone);
 
-    // 1. Find Customer (match exact, cleanDigits, or last9)
+    // 1. Find Customer (match exact or phone variants)
     const customer = await this.prisma.customer.findFirst({
       where: {
         tenantId,
-        OR: [
-          { phone },
-          ...(cleanDigits
-            ? [{ phone: cleanDigits }, { phone: `+${cleanDigits}` }]
-            : []),
-          ...(last9 ? [{ phone: { contains: last9 } }] : []),
-        ],
+        phone: { in: phoneVariants },
       },
       include: {
         medicalProfile: true,
@@ -556,59 +525,49 @@ export class MessagesService {
 
     const customerId = customer?.id;
 
-    // 2. Query Visits
+    // 2. Query Visits: match strictly by customerId or matching customer.phone
     const visitOrConditions: any[] = [];
     if (customerId) visitOrConditions.push({ customerId });
-    if (last9) {
-      visitOrConditions.push({ customer: { phone: { contains: last9 } } });
-    }
+    visitOrConditions.push({ customer: { phone: { in: phoneVariants } } });
 
-    const visits =
-      visitOrConditions.length > 0
-        ? await this.prisma.visit.findMany({
-            where: {
-              tenantId,
-              OR: visitOrConditions,
-            },
-            include: {
-              service: true,
-              location: true,
-              queue: true,
-              staff: true,
-              bookingPayments: true,
-              visitInvoice: true,
-              reviewRequests: true,
-              visitSteps: { orderBy: { stepOrder: 'asc' } },
-            },
-            orderBy: { createdAt: 'desc' },
-            take: 50,
-          })
-        : [];
+    const visits = await this.prisma.visit.findMany({
+      where: {
+        tenantId,
+        OR: visitOrConditions,
+      },
+      include: {
+        service: true,
+        location: true,
+        queue: true,
+        staff: true,
+        bookingPayments: true,
+        visitInvoice: true,
+        reviewRequests: true,
+        visitSteps: { orderBy: { stepOrder: 'asc' } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
 
-    // 3. Query Appointments
+    // 3. Query Appointments: match strictly by customerId or matching customer.phone
     const aptOrConditions: any[] = [];
     if (customerId) aptOrConditions.push({ customerId });
-    if (last9) {
-      aptOrConditions.push({ customer: { phone: { contains: last9 } } });
-    }
+    aptOrConditions.push({ customer: { phone: { in: phoneVariants } } });
 
-    const appointments =
-      aptOrConditions.length > 0
-        ? await this.prisma.appointment.findMany({
-            where: {
-              tenantId,
-              OR: aptOrConditions,
-            },
-            include: {
-              service: true,
-              location: true,
-              staff: true,
-              bookingPayments: true,
-            },
-            orderBy: { scheduledStart: 'desc' },
-            take: 50,
-          })
-        : [];
+    const appointments = await this.prisma.appointment.findMany({
+      where: {
+        tenantId,
+        OR: aptOrConditions,
+      },
+      include: {
+        service: true,
+        location: true,
+        staff: true,
+        bookingPayments: true,
+      },
+      orderBy: { scheduledStart: 'desc' },
+      take: 50,
+    });
 
     // 4. Query ReviewRequests
     const reviewOrConditions: any[] = [];
@@ -636,22 +595,13 @@ export class MessagesService {
 
     // 5. Query CustomerConversation & Message count
     const conversation = await this.prisma.customerConversation.findFirst({
-      where: { tenantId, customerPhone: phone },
+      where: { tenantId, customerPhone: { in: phoneVariants } },
     });
 
     const messageCount = await this.prisma.message.count({
       where: {
         tenantId,
-        OR: [
-          { customerPhone: phone },
-          ...(cleanDigits
-            ? [
-                { customerPhone: cleanDigits },
-                { customerPhone: `+${cleanDigits}` },
-              ]
-            : []),
-          ...(last9 ? [{ customerPhone: { contains: last9 } }] : []),
-        ],
+        customerPhone: { in: phoneVariants },
       },
     });
 

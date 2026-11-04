@@ -560,11 +560,11 @@ export function CustomerDossierSidebar({
                   <History className="w-3 h-3" /> Total Visits
                 </div>
                 <div className="text-base font-black text-on-surface dark:text-white">
-                  {stats?.totalBookings || 0}
+                  {stats?.totalVisits || stats?.totalBookings || 0}
                 </div>
                 <div className="text-[10px] text-outline mt-0.5 truncate">
                   {stats?.completedCount !== undefined
-                    ? `${stats.completedCount} Attended • ${(stats?.noShowCount || 0) + (stats?.cancelledCount || 0)} Missed`
+                    ? `${stats.completedCount} Attended (${stats?.reliabilityRate ?? 0}%)`
                     : `${stats?.totalVisits || 0} Total`}
                 </div>
               </div>
@@ -578,7 +578,7 @@ export function CustomerDossierSidebar({
                   {formatCurrency(stats?.totalSpent, stats?.currency)}
                 </div>
                 <div className="text-[10px] text-outline mt-0.5 truncate">
-                  {stats?.reliabilityRate !== null ? `${stats.reliabilityRate}% Attended` : 'Verified Record'}
+                  {stats?.paidCount !== undefined ? `${stats.paidCount} Paid Visits` : 'Lifetime Spend'}
                 </div>
               </div>
 
@@ -721,8 +721,13 @@ export function CustomerDossierSidebar({
                             <div className="flex items-center justify-between text-[10px] text-outline mt-1.5 pt-1.5 border-t border-border/50 dark:border-dark-border/50">
                               <span className="truncate max-w-[130px]">{b.locationName}</span>
                               {b.amount > 0 ? (
-                                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                  Paid {formatCurrency(b.amount, b.currency)}
+                                <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                                  <span>{formatCurrency(b.amount, b.currency)}</span>
+                                  {b.paymentMethod && (
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-surface-container dark:bg-white/10 uppercase font-sans font-semibold text-outline">
+                                      {b.paymentMethod}
+                                    </span>
+                                  )}
                                 </span>
                               ) : (
                                 <span className="text-[10px] text-outline opacity-70">Free / Unpaid</span>

@@ -2,14 +2,14 @@ import {
   IsString,
   IsNotEmpty,
   IsOptional,
-  IsPhoneNumber,
   MaxLength,
   ValidateIf,
 } from 'class-validator';
 
 export class SendMessageDto {
-  @ValidateIf((o) => !o.media || (o.text !== undefined && o.text !== ''))
+  @ValidateIf((o) => !o.media)
   @IsNotEmpty({ message: 'Text or attachment is required' })
+  @IsOptional()
   @IsString()
   @MaxLength(2000)
   text?: string;
