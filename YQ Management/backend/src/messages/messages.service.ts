@@ -264,17 +264,24 @@ export class MessagesService {
     const [customers, sessions] = await Promise.all([
       this.prisma.customer.findMany({
         where: { tenantId, OR: orConditions },
+        orderBy: { updatedAt: 'desc' },
       }),
       this.prisma.chatSession.findMany({
         where: { tenantId, phone: { in: phones } },
       }),
     ]);
 
-    const customerMap = new Map();
+    const exactCustomerMap = new Map<string, any>();
+    const cleanCustomerMap = new Map<string, any>();
     for (const c of customers) {
       if (c.phone) {
+        if (!exactCustomerMap.has(c.phone)) {
+          exactCustomerMap.set(c.phone, c);
+        }
         const cleanPhone = c.phone.replace(/\D/g, '').slice(-9);
-        customerMap.set(cleanPhone, c);
+        if (!cleanCustomerMap.has(cleanPhone)) {
+          cleanCustomerMap.set(cleanPhone, c);
+        }
       }
     }
 
@@ -285,7 +292,9 @@ export class MessagesService {
 
     return convos.map((c) => {
       const cleanPhone = c.customerPhone.replace(/\D/g, '').slice(-9);
-      const cust = customerMap.get(cleanPhone);
+      const cust =
+        exactCustomerMap.get(c.customerPhone) ||
+        cleanCustomerMap.get(cleanPhone);
       const session = sessionMap.get(c.customerPhone);
       const isHumanPaused =
         session?.context && typeof session.context === 'object'
@@ -456,10 +465,16 @@ export class MessagesService {
   async sendInboxMessage(
     tenantId: string,
     phone: string,
-    text: string,
+    text?: string,
     media?: string,
     mediaType?: string,
+    fileName?: string,
   ) {
+    const cleanText = text?.trim() || '';
+    if (!cleanText && !media) {
+      throw new NotFoundException('Message must contain text or an attachment');
+    }
+
     // Upsert conversation to keep it active
     const conversation = await this.prisma.customerConversation.upsert({
       where: { tenantId_customerPhone: { tenantId, customerPhone: phone } },
@@ -473,10 +488,10 @@ export class MessagesService {
     });
 
     const bodyText = media
-      ? text
-        ? `[Media Attachment] ${text}`
+      ? cleanText
+        ? `[Media Attachment] ${cleanText}`
         : '[Media Attachment]'
-      : text;
+      : cleanText;
 
     const message = await this.prisma.message.create({
       data: {
@@ -494,12 +509,13 @@ export class MessagesService {
         phone,
         media,
         mediaType,
-        text,
+        cleanText,
+        fileName,
       );
     } else {
       await this.notificationsService.sendWhatsAppMessage(
         phone,
-        text,
+        cleanText,
         tenantId,
         message.id,
       );
@@ -535,6 +551,7 @@ export class MessagesService {
       include: {
         medicalProfile: true,
       },
+      orderBy: { updatedAt: 'desc' },
     });
 
     const customerId = customer?.id;
@@ -639,13 +656,31 @@ export class MessagesService {
     });
 
     // 6. Active Ticket Today
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-    const activeTicket = visits.find(
-      (v) =>
-        new Date(v.createdAt) >= todayStart &&
-        ['CREATED', 'WAITING', 'CALLED', 'IN_SERVICE'].includes(v.currentState),
-    );
+    const activeTicket = visits.find((v) => {
+      const isTerminal = [
+        'COMPLETED',
+        'CANCELLED',
+        'NO_SHOW',
+        'ABANDONED',
+        'EXPIRED',
+      ].includes(v.currentState);
+      if (isTerminal) return false;
+
+      // Actively waiting, called, in-service, or paying right now
+      if (
+        ['WAITING', 'CALLED', 'IN_SERVICE', 'PENDING_PAYMENT'].includes(
+          v.currentState,
+        )
+      ) {
+        return true;
+      }
+
+      // If CREATED or SCHEDULED, check if scheduled or created within the last 24h
+      const targetDate = v.scheduledTime || v.actualArrival || v.createdAt;
+      const hoursDiff =
+        Math.abs(Date.now() - new Date(targetDate).getTime()) / (1000 * 60 * 60);
+      return hoursDiff <= 24;
+    });
 
     // 7. Upcoming Appointments
     const now = new Date();
@@ -688,10 +723,15 @@ export class MessagesService {
         locationName: v.location?.name || v.queue?.name || 'Main Location',
         staffName: v.staff?.name || null,
         amount: totalPaid,
-        currency: successfulPayment?.currency || 'INR',
+        currency:
+          successfulPayment?.currency ||
+          (v.service as any)?.priceCurrency ||
+          (v.service as any)?.currency ||
+          'ZAR',
         rating,
         feedback,
         notes: v.notes,
+        cancelReason: v.cancelReason,
         rawVisit: v,
       });
     });
@@ -716,7 +756,7 @@ export class MessagesService {
         locationName: a.location?.name || 'Main Location',
         staffName: a.staff?.name || null,
         amount: totalPaid,
-        currency: payments[0]?.currency || 'INR',
+        currency: payments[0]?.currency || 'ZAR',
         rating: null,
         feedback: null,
         notes: a.customerNotes,
@@ -773,11 +813,24 @@ export class MessagesService {
       (v) => v.currentState === 'NO_SHOW',
     ).length;
 
+    // Distinguish walk-ins vs online/scheduled bookings using VisitSource enum
+    const walkInsCount = visits.filter(
+      (v) =>
+        !v.scheduledTime &&
+        !v.appointmentId &&
+        (v.source === 'WALK_IN' || v.source === 'RECEPTION'),
+    ).length;
+    const onlineVisitsCount = totalVisitsCount - walkInsCount;
+    const totalBookingsCount = onlineVisitsCount + appointments.length;
+
     const totalSpent = pastBookings.reduce(
       (sum, b) => sum + (b.amount || 0),
       0,
     );
-    const currency = pastBookings.find((b) => b.currency)?.currency || 'INR';
+    const currency =
+      pastBookings.find((b) => b.currency && b.currency !== 'INR')?.currency ||
+      pastBookings.find((b) => b.currency)?.currency ||
+      'ZAR';
 
     const ratedItems = pastBookings.filter(
       (b) => typeof b.rating === 'number' && b.rating > 0,
@@ -826,6 +879,9 @@ export class MessagesService {
         totalVisits: totalVisitsCount,
         totalAppointments: appointments.length,
         totalBookings: pastBookings.length,
+        walkInsCount,
+        onlineBookingsCount: totalBookingsCount,
+        completedCount: completedVisits,
         totalSpent,
         currency,
         avgRating,

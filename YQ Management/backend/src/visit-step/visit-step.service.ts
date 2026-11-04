@@ -137,6 +137,8 @@ export class VisitStepService {
       accompanyingGuests?: number;
       metadata?: Record<string, any>;
       formResponses?: Record<string, any>;
+      selectedItems?: any[];
+      orderSelections?: Record<string, number>;
     },
     tx?: Prisma.TransactionClient,
   ) {
@@ -177,9 +179,22 @@ export class VisitStepService {
     const stepsToCreate = rootSteps.map((template) => {
       const allocated = this.resolveAllocation(template, bookingContext);
 
-      let status = 'PENDING';
+      const isOrderPreSelected =
+        template.type === 'ORDER' &&
+        bookingContext?.selectedItems &&
+        bookingContext.selectedItems.length > 0;
+
+      const orderAmount = (isOrderPreSelected && bookingContext?.selectedItems)
+        ? bookingContext.selectedItems.reduce(
+            (sum: number, it: any) =>
+              sum + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)),
+            0,
+          )
+        : null;
+
+      let status = isOrderPreSelected ? 'DONE' : 'PENDING';
       let deferredUntil: Date | null = null;
-      if (template.deferredByDays || template.deferredByHours) {
+      if (!isOrderPreSelected && (template.deferredByDays || template.deferredByHours)) {
         status = 'DEFERRED';
         deferredUntil = new Date(
           Date.now() +
@@ -196,6 +211,9 @@ export class VisitStepService {
         name: template.name,
         type: template.type,
         status: status,
+        selectedItems: isOrderPreSelected ? (bookingContext.selectedItems as any) : null,
+        amountCharged: orderAmount,
+        completedAt: isOrderPreSelected ? new Date() : null,
         deferredUntil,
         serviceId: template.serviceId,
         queueId: template.queueId,

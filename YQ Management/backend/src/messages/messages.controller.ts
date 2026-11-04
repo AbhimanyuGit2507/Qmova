@@ -40,7 +40,7 @@ export class MessagesController {
   ) {
     return this.messagesService.sendMessageFromOperator(
       tokenId,
-      body.text,
+      body.text || '',
       req.user.tenantId,
     );
   }
@@ -101,6 +101,7 @@ export class MessagesController {
       body.text,
       body.media,
       body.mediaType,
+      body.fileName,
     );
   }
 

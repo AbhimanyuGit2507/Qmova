@@ -210,6 +210,7 @@ export default function InboxPage() {
   const [showEmojiPicker, setShowEmojiPicker] = useState(false);
   const [media, setMedia] = useState<string | null>(null);
   const [mediaType, setMediaType] = useState<string | null>(null);
+  const [mediaName, setMediaName] = useState<string | null>(null);
   const [mediaPreview, setMediaPreview] = useState<string | null>(null);
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
 
@@ -225,6 +226,7 @@ export default function InboxPage() {
   const [selectedCustomerIdForDrawer, setSelectedCustomerIdForDrawer] = useState<string | null>(null);
   const [selectedVisitForDrawer, setSelectedVisitForDrawer] = useState<AnyFixMe | null>(null);
   const [isInspectorOpen, setIsInspectorOpen] = useState(true);
+  const [dismissed24hWarnings, setDismissed24hWarnings] = useState<Record<string, boolean>>({});
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -451,7 +453,12 @@ export default function InboxPage() {
 
   // ── Send Message Mutation ──────────────────────────────────────────────────
   const sendMutation = useMutation({
-    mutationFn: (payload: { text: string; media?: string; mediaType?: string }) =>
+    mutationFn: (payload: {
+      text?: string;
+      media?: string;
+      mediaType?: string;
+      fileName?: string;
+    }) =>
       fetchApi(`/messages/inbox/${selectedPhone}`, {
         method: 'POST',
         body: JSON.stringify(payload),
@@ -470,9 +477,10 @@ export default function InboxPage() {
     if (!input.trim() && !media) return;
     if (sendMutation.isPending || !selectedPhone) return;
     sendMutation.mutate({
-      text: input.trim(),
+      text: input.trim() || undefined,
       media: media || undefined,
       mediaType: mediaType || undefined,
+      fileName: mediaName || undefined,
     });
   };
 
@@ -497,6 +505,7 @@ export default function InboxPage() {
       const base64 = reader.result as string;
       setMedia(base64);
       setMediaType(file.type);
+      setMediaName(file.name);
       if (file.type.startsWith('image/')) {
         setMediaPreview(base64);
       } else {
@@ -509,6 +518,7 @@ export default function InboxPage() {
   const removeMedia = () => {
     setMedia(null);
     setMediaType(null);
+    setMediaName(null);
     setMediaPreview(null);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -757,7 +767,16 @@ export default function InboxPage() {
                 const isUnread = (c.unreadCount || 0) > 0;
                 const lastMsg = c.lastMessage;
                 const isCustomerSender = lastMsg?.sender === 'CUSTOMER';
-                const isBotSender = lastMsg?.sender === 'SYSTEM' || lastMsg?.isAutomated;
+                const isBotSender =
+                  lastMsg?.sender === 'SYSTEM' || lastMsg?.isAutomated;
+                const dossierCache = queryClient.getQueryData<AnyFixMe>([
+                  'inbox-dossier',
+                  c.customerPhone,
+                ]);
+                const itemDisplayName =
+                  dossierCache?.customer?.name ||
+                  c.customerName ||
+                  c.customerPhone;
 
                 return (
                   <button
@@ -773,10 +792,10 @@ export default function InboxPage() {
                     <div className="relative shrink-0">
                       <div
                         className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-xs shadow-xs ${getAvatarColor(
-                          c.customerName || c.customerPhone
+                          itemDisplayName,
                         )}`}
                       >
-                        {getInitials(c.customerName || c.customerPhone)}
+                        {getInitials(itemDisplayName)}
                       </div>
                       {isUnread && (
                         <span className="absolute -top-0.5 -right-0.5 w-3 h-3 bg-primary border-2 border-surface dark:border-dark-card rounded-full" />
@@ -788,17 +807,19 @@ export default function InboxPage() {
                       <div className="flex items-center justify-between gap-1 mb-0.5">
                         <span
                           className={`text-xs font-semibold truncate ${
-                            isSelected ? 'text-primary dark:text-sky-400 font-bold' : 'text-on-surface dark:text-white'
+                            isSelected
+                              ? 'text-primary dark:text-sky-400 font-bold'
+                              : 'text-on-surface dark:text-white'
                           }`}
                         >
-                          {c.customerName || c.customerPhone}
+                          {itemDisplayName}
                         </span>
                         <span className="text-[10px] text-outline shrink-0 font-mono">
                           {formatRelativeTime(c.lastMessageAt || c.updatedAt)}
                         </span>
                       </div>
 
-                      {c.customerName && (
+                      {itemDisplayName !== c.customerPhone && (
                         <p className="text-[11px] text-outline font-mono truncate mb-1">
                           {c.customerPhone}
                         </p>
@@ -850,28 +871,60 @@ export default function InboxPage() {
                     <ArrowLeft className="w-5 h-5" />
                   </button>
 
-                  <div
-                    className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs ${getAvatarColor(
-                      currentConversation?.customerName || selectedPhone
-                    )}`}
-                  >
-                    {getInitials(currentConversation?.customerName || selectedPhone)}
-                  </div>
+                  {(() => {
+                    const dossierData = selectedPhone
+                      ? queryClient.getQueryData<AnyFixMe>([
+                          'inbox-dossier',
+                          selectedPhone,
+                        ])
+                      : null;
+                    const activeCustomerName =
+                      dossierData?.customer?.name ||
+                      currentConversation?.customerName ||
+                      selectedPhone;
+                    return (
+                      <>
+                        <div
+                          className={`w-9 h-9 rounded-full flex items-center justify-center text-white font-bold text-xs shrink-0 shadow-xs ${getAvatarColor(
+                            activeCustomerName,
+                          )}`}
+                        >
+                          {getInitials(activeCustomerName)}
+                        </div>
 
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2">
-                      <h3 className="font-bold text-sm text-on-surface dark:text-white truncate">
-                        {currentConversation?.customerName || selectedPhone}
-                      </h3>
-                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
-                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                        WhatsApp Cloud
-                      </span>
-                    </div>
-                    <p className="text-[11px] text-outline font-mono truncate">
-                      {selectedPhone}
-                    </p>
-                  </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3 className="font-bold text-sm text-on-surface dark:text-white truncate">
+                              {activeCustomerName}
+                            </h3>
+                            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                              WhatsApp Cloud
+                            </span>
+                            {is24hExpired && (
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setDismissed24hWarnings((prev) => ({
+                                    ...prev,
+                                    [selectedPhone]: !prev[selectedPhone],
+                                  }))
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
+                                title="Click to view/hide 24-hour window alert"
+                              >
+                                <ClockIcon className="w-3 h-3 text-amber-500 shrink-0" />
+                                <span>Window Expired ({Math.round(lastCustomerMsgAgeHours || 0)}h)</span>
+                              </button>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-outline font-mono truncate">
+                            {selectedPhone}
+                          </p>
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
@@ -927,6 +980,36 @@ export default function InboxPage() {
                   </button>
                 </div>
               </div>
+
+              {/* ── Sub-header 24-Hour WhatsApp Service Window Banner ────── */}
+              {is24hExpired && !dismissed24hWarnings[selectedPhone] && (
+                <div className="px-4 py-2.5 bg-amber-500/10 dark:bg-amber-500/15 border-b border-amber-500/20 flex items-center justify-between gap-3 text-xs shrink-0 animate-in fade-in duration-200">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <p className="text-[11px] text-amber-900 dark:text-amber-300 leading-snug">
+                      <span className="font-bold">24-hour care window expired:</span>{' '}
+                      Last customer message was{' '}
+                      <span className="font-mono font-semibold">
+                        {lastCustomerMsgAgeHours !== null ? `${Math.round(lastCustomerMsgAgeHours)}h` : ''} ago
+                      </span>
+                      . WhatsApp restricts free-form replies — wait for customer reply or initiate with an approved template.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setDismissed24hWarnings((prev) => ({
+                        ...prev,
+                        [selectedPhone]: true,
+                      }))
+                    }
+                    className="p-1 rounded-md text-amber-700 dark:text-amber-400 hover:bg-amber-500/20 transition-colors shrink-0 cursor-pointer"
+                    title="Dismiss alert"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              )}
 
               {/* Messages Scroll Area */}
               <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-4">
@@ -1064,23 +1147,6 @@ export default function InboxPage() {
               </div>
 
               {/* ── Input Composer Area ───────────────────────────────────── */}
-              {/* FE-04: 24h WhatsApp Messaging Window Warning ─────────────── */}
-              {is24hExpired && (
-                <div className="mx-3.5 mt-2 p-2.5 bg-amber-500/10 border border-amber-500/20 rounded-xl flex items-start gap-2 text-xs animate-in fade-in duration-300">
-                  <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                  <div>
-                    <p className="font-bold text-amber-700 dark:text-amber-300">24-hour window expired</p>
-                    <p className="text-[11px] text-amber-600/80 dark:text-amber-400/80 mt-0.5">
-                      Last customer message was{' '}
-                      <span className="font-mono font-semibold">
-                        {lastCustomerMsgAgeHours !== null ? `${Math.round(lastCustomerMsgAgeHours)}h` : ''} ago
-                      </span>
-                      . WhatsApp restricts free-form replies — use an approved template or wait for the customer to message again.
-                    </p>
-                  </div>
-                </div>
-              )}
-
               <div className="p-3.5 border-t border-border dark:border-dark-border bg-surface dark:bg-dark-card shrink-0 relative">
                 {/* Media Preview Box */}
                 {media && (
@@ -1098,8 +1164,10 @@ export default function InboxPage() {
                         <FileText className="w-6 h-6 text-on-surface-variant" />
                       </div>
                     )}
-                    <div className="flex flex-col">
-                      <span className="text-xs font-semibold text-on-surface dark:text-white">Attachment Ready</span>
+                    <div className="flex flex-col min-w-0 pr-4">
+                      <span className="text-xs font-semibold text-on-surface dark:text-white truncate max-w-[200px]" title={mediaName || 'Attachment'}>
+                        {mediaName || 'Attachment Ready'}
+                      </span>
                       <span className="text-[10px] text-outline font-mono">
                         {mediaType?.split('/')[1]?.toUpperCase() || 'FILE'}
                       </span>

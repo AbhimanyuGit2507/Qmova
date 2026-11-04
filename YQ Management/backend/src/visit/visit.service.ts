@@ -1290,8 +1290,9 @@ export class VisitService {
         };
         const serviceCurrency = (service.priceCurrency || 'zar').toLowerCase();
         const minStripeAmount = minAmountsInCents[serviceCurrency] || 50;
+        const menuTotalCents = Number((booking as any).menuTotal || 0);
         const totalBookingPrice = Math.round(
-          (service.basePrice ?? 0) * (1 + (booking.accompanyingGuests || 0)),
+          (service.basePrice ?? 0) * (1 + (booking.accompanyingGuests || 0)) + menuTotalCents,
         );
         const canChargeStripe = totalBookingPrice >= minStripeAmount;
 
@@ -1300,14 +1301,14 @@ export class VisitService {
           (bookingFlow?.isActive
             ? (bookingFlow.paymentTiming === 'BOOKING' ||
                 bookingFlow.paymentTiming === 'CHECKIN') &&
-              (service.basePrice ?? 0) > 0 &&
+              totalBookingPrice > 0 &&
               payMode !== 'COUNTER_ONLY' &&
               stripeActive &&
               canChargeStripe
             : (service.paymentMode === 'PREPAY' ||
                 service.paymentMode === 'OPTIONAL_PREPAY' ||
                 service.paymentMode === 'PAY_AT_SERVICE') &&
-              (service.basePrice ?? 0) > 0 &&
+              totalBookingPrice > 0 &&
               stripeActive &&
               canChargeStripe);
 
@@ -1409,6 +1410,9 @@ export class VisitService {
             metadata: {
               customerName: data.customerName,
               phone: data.phone,
+              selectedItems: (booking as any).selectedItems || undefined,
+              orderSelections: (booking as any).orderSelections || undefined,
+              menuTotal: (booking as any).menuTotal || undefined,
             },
           },
         });
@@ -1438,6 +1442,8 @@ export class VisitService {
               accompanyingGuests: visit.accompanyingGuests || 0,
               formResponses: (visit.formResponses as Record<string, any>) || undefined,
               metadata: (visit.metadata as Record<string, any>) || undefined,
+              selectedItems: (booking as any).selectedItems || undefined,
+              orderSelections: (booking as any).orderSelections || undefined,
             },
             tx,
           );

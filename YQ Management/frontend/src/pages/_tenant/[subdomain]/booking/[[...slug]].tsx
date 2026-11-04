@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'react-phone-number-input/style.css';
 import { useTheme } from '../../../../components/ThemeProvider';
-import { Sun, Moon, Calendar, CreditCard } from 'lucide-react';
+import { Sun, Moon, Calendar, CreditCard, Utensils, Plus, Minus } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 const QRCode = dynamic(() => import('react-qr-code'), { ssr: false });
@@ -44,6 +44,26 @@ interface Service {
   allowProviderSelection?: boolean;
   isOpenNow?: boolean;
   queues: Queue[];
+  basePrice?: number;
+  currency?: string;
+  priceCurrency?: string;
+  enableCatalog?: boolean;
+  catalog?: {
+    id: string;
+    name: string;
+    currency: string;
+    items: Array<{
+      id: string;
+      name: string;
+      description?: string;
+      unitPrice?: number;
+      category?: string;
+      imageUrl?: string;
+      maxQty?: number;
+      isAvailable?: boolean;
+      sortOrder?: number;
+    }>;
+  };
 }
 
 interface Queue {
@@ -177,13 +197,17 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   const [currentServiceIndex, setCurrentServiceIndex] = useState(0);
   const [enlargedQrTokenId, setEnlargedQrTokenId] = useState<string | null>(null);
   const [availableProviders, setAvailableProviders] = useState<Record<string, AnyFixMe[]>>({});
+  const [selectedMenuCategory, setSelectedMenuCategory] = useState<string>('ALL');
   const [serviceDetails, setServiceDetails] = useState<Record<string, {
     joinMode: 'immediate' | 'appointment',
     selectedDate: string,
     selectedSlot: string,
     providerId?: string,
     queueId?: string,
-    responses: Record<string, AnyFixMe>
+    responses: Record<string, AnyFixMe>,
+    orderSelections?: Record<string, number>,
+    selectedItems?: Array<any>,
+    menuTotal?: number,
   }>>({});
   
   const [availableSlots, setAvailableSlots] = useState<Record<string, string[]>>({});
@@ -234,6 +258,24 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
       }
     });
   }, [ipCountry, tenant]);
+
+  // Handle Stripe 3D Secure / wallet redirect return
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { redirect_status } = router.query;
+    if (redirect_status === 'succeeded' && typeof window !== 'undefined') {
+      const savedVisitsStr = sessionStorage.getItem('qmova_pending_visits');
+      if (savedVisitsStr) {
+        try {
+          const savedVisits = JSON.parse(savedVisitsStr);
+          sessionStorage.removeItem('qmova_pending_visits');
+          redirectToStatus(savedVisits);
+        } catch (e) {
+          console.error('Error handling redirect status:', e);
+        }
+      }
+    }
+  }, [router.isReady, router.query]);
 
   // Auto-select location/service/queue based on URL query params & Session Restore
   useEffect(() => {
@@ -721,6 +763,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
               : undefined,
           formResponses: enrichedResponses,
           accompanyingGuests,
+          selectedItems: d.selectedItems || [],
+          orderSelections: d.orderSelections || {},
+          menuTotal: d.menuTotal || 0,
         };
       });
 
@@ -746,6 +791,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
 
       if (requiresPayment) {
         setCreatedVisits(data);
+        if (typeof window !== 'undefined') {
+          sessionStorage.setItem('qmova_pending_visits', JSON.stringify(data));
+        }
         setStep(4.5);
         setLoading(false);
         return;
@@ -1303,6 +1351,190 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   </div>
                 )}
 
+                {/* Menu & Catering Selection */}
+                {currentService?.enableCatalog && currentService?.catalog?.items && currentService.catalog.items.length > 0 && (
+                  <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-zinc-800">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                          <Utensils className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-gray-900 dark:text-white uppercase tracking-wider">
+                            {currentService.catalog.name || 'Select Dishes & Menu'}
+                          </h3>
+                          <p className="text-xs text-gray-500 dark:text-zinc-400">
+                            Choose your starters, mains, desserts, and beverages
+                          </p>
+                        </div>
+                      </div>
+                      {(() => {
+                        const selCount = Object.values(currentDetails.orderSelections || {}).reduce((a, b) => a + (b || 0), 0);
+                        const menuTotal = currentDetails.menuTotal || 0;
+                        const cur = (currentService as any)?.priceCurrency || (currentService as any)?.currency || 'ZAR';
+                        const sym = cur.toUpperCase() === 'ZAR' ? 'R' : cur.toUpperCase() === 'EUR' ? '€' : cur.toUpperCase() === 'GBP' ? '£' : '$';
+                        if (selCount === 0) return null;
+                        return (
+                          <span className="shrink-0 text-xs font-mono font-bold px-2.5 py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                            {selCount} item{selCount > 1 ? 's' : ''} • +{sym}{(menuTotal / 100).toFixed(2)}
+                          </span>
+                        );
+                      })()}
+                    </div>
+
+                    {/* Category Filter Tabs */}
+                    {(() => {
+                      const items = currentService.catalog.items;
+                      const uniqueCats = Array.from(new Set(items.map((i: any) => i.category || 'General'))).filter(Boolean);
+                      if (uniqueCats.length <= 1 && uniqueCats.includes('General')) return null;
+
+                      const categories = ['ALL', ...uniqueCats];
+
+                      return (
+                        <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+                          {categories.map((cat) => {
+                            const isSelected = selectedMenuCategory === cat;
+                            const count = cat === 'ALL' ? items.length : items.filter((i: any) => (i.category || 'General') === cat).length;
+                            return (
+                              <button
+                                key={cat}
+                                type="button"
+                                onClick={() => setSelectedMenuCategory(cat)}
+                                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all whitespace-nowrap shrink-0 border ${
+                                  isSelected
+                                    ? 'border-transparent text-white shadow-sm'
+                                    : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 text-gray-600 dark:text-zinc-400 hover:border-gray-300'
+                                }`}
+                                style={isSelected ? { backgroundColor: primaryColor } : {}}
+                              >
+                                {cat === 'ALL' ? 'All Dishes' : cat} ({count})
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+
+                    {/* Catalog Items Grid */}
+                    {(() => {
+                      const allItems = currentService.catalog.items;
+                      const filteredItems = selectedMenuCategory === 'ALL'
+                        ? allItems
+                        : allItems.filter((i: any) => (i.category || 'General') === selectedMenuCategory);
+                      const cur = (currentService as any)?.priceCurrency || (currentService as any)?.currency || 'ZAR';
+                      const sym = cur.toUpperCase() === 'ZAR' ? 'R' : cur.toUpperCase() === 'EUR' ? '€' : cur.toUpperCase() === 'GBP' ? '£' : '$';
+
+                      const handleUpdateItemQty = (item: any, delta: number) => {
+                        const curSelections = { ...(currentDetails.orderSelections || {}) };
+                        const prevQty = curSelections[item.id] || 0;
+                        const newQty = Math.max(0, Math.min(item.maxQty || 20, prevQty + delta));
+                        if (newQty > 0) {
+                          curSelections[item.id] = newQty;
+                        } else {
+                          delete curSelections[item.id];
+                        }
+
+                        const selectedList = allItems
+                          .filter((i: any) => (curSelections[i.id] || 0) > 0)
+                          .map((i: any) => ({
+                            id: i.id,
+                            itemId: i.id,
+                            name: i.name,
+                            category: i.category,
+                            unitPrice: i.unitPrice || 0,
+                            price: i.unitPrice || 0,
+                            qty: curSelections[i.id],
+                            lineTotal: (i.unitPrice || 0) * curSelections[i.id],
+                          }));
+
+                        const menuTotal = selectedList.reduce((acc: number, it: any) => acc + it.lineTotal, 0);
+
+                        updateCurrentDetails({
+                          orderSelections: curSelections,
+                          selectedItems: selectedList,
+                          menuTotal,
+                        });
+                      };
+
+                      return (
+                        <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                          {filteredItems.map((item: any) => {
+                            const qty = (currentDetails.orderSelections || {})[item.id] || 0;
+                            const max = item.maxQty || 20;
+
+                            return (
+                              <div
+                                key={item.id}
+                                className={`p-3 rounded-xl border transition-all flex items-center justify-between gap-3 ${
+                                  qty > 0
+                                    ? 'bg-amber-50/40 dark:bg-amber-950/20 border-amber-300 dark:border-amber-800/60 shadow-xs'
+                                    : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 hover:border-gray-300'
+                                }`}
+                              >
+                                <div className="flex-1 min-w-0">
+                                  <div className="flex items-center gap-1.5 flex-wrap">
+                                    <span className="text-sm font-bold text-gray-900 dark:text-white">
+                                      {item.name}
+                                    </span>
+                                    {item.category && (
+                                      <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-gray-100 dark:bg-zinc-800 text-gray-600 dark:text-zinc-400">
+                                        {item.category}
+                                      </span>
+                                    )}
+                                  </div>
+                                  {item.description && (
+                                    <p className="text-xs text-gray-500 dark:text-zinc-400 truncate mt-0.5">
+                                      {item.description}
+                                    </p>
+                                  )}
+                                  <span className="text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400 mt-1 inline-block">
+                                    {sym}{((item.unitPrice || 0) / 100).toFixed(2)}
+                                  </span>
+                                </div>
+
+                                {/* Stepper / Add button */}
+                                <div className="shrink-0 flex items-center">
+                                  {qty === 0 ? (
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateItemQty(item, 1)}
+                                      className="px-3 py-1.5 rounded-lg text-xs font-bold border border-gray-200 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-800 hover:bg-gray-100 dark:hover:bg-zinc-700 text-gray-700 dark:text-zinc-200 flex items-center gap-1 transition-all"
+                                    >
+                                      <Plus className="w-3.5 h-3.5" />
+                                      Add
+                                    </button>
+                                  ) : (
+                                    <div className="flex items-center gap-1.5 bg-white dark:bg-zinc-800 rounded-lg p-1 border border-amber-200 dark:border-amber-800/80 shadow-xs">
+                                      <button
+                                        type="button"
+                                        onClick={() => handleUpdateItemQty(item, -1)}
+                                        className="w-7 h-7 rounded-md flex items-center justify-center text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700 transition-colors"
+                                      >
+                                        <Minus className="w-3.5 h-3.5" />
+                                      </button>
+                                      <span className="w-6 text-center text-xs font-bold font-mono text-gray-900 dark:text-white">
+                                        {qty}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={qty >= max}
+                                        onClick={() => handleUpdateItemQty(item, 1)}
+                                        className="w-7 h-7 rounded-md flex items-center justify-center text-gray-700 dark:text-zinc-200 hover:bg-gray-100 dark:hover:bg-zinc-700 disabled:opacity-30 transition-colors"
+                                      >
+                                        <Plus className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
+
                 {!currentService?.allowAppointments ? (
                   <div className="space-y-4 pt-4 border-t border-gray-200 dark:border-zinc-800">
                     <div className="bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 p-4 rounded-xl text-sm font-medium">
@@ -1542,6 +1774,22 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                           ) : (
                             <p className="text-sm text-amber-600 dark:text-amber-400 font-medium mt-1">Walk-in (Join Now)</p>
                           )}
+                          {details?.selectedItems && details.selectedItems.length > 0 && (
+                            <div className="mt-3 pt-2.5 border-t border-gray-200/60 dark:border-zinc-800/60 space-y-1">
+                              <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Catering & Menu Items</p>
+                              {details.selectedItems.map((item: any) => (
+                                <div key={item.id || item.itemId || item.name} className="flex items-center justify-between text-xs text-gray-700 dark:text-zinc-300">
+                                  <span className="truncate pr-2">
+                                    <span className="font-semibold text-gray-900 dark:text-white">{item.qty}x</span> {item.name}
+                                    {item.category && <span className="text-[10px] text-gray-400 ml-1">({item.category})</span>}
+                                  </span>
+                                  <span className="font-mono font-medium shrink-0">
+                                    {sSym}{((item.lineTotal || (item.unitPrice * item.qty)) / 100).toFixed(2)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -1558,7 +1806,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   const rawSubtotalCents = selectedServiceIds.reduce((total, sid) => {
                     const s = services.find(x => x.id === sid);
                     const base = s && (s as any).basePrice ? parseFloat((s as any).basePrice) : 0;
-                    return total + (base * totalGuests);
+                    const menuSum = serviceDetails[sid]?.menuTotal || 0;
+                    return total + (base * totalGuests) + menuSum;
                   }, 0);
 
                   if (rawSubtotalCents <= 0) return null;
@@ -1615,6 +1864,15 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                           </span>
                         </div>
 
+                        {selectedServiceIds.some(sid => (serviceDetails[sid]?.menuTotal || 0) > 0) && (
+                          <div className="flex justify-between text-gray-600 dark:text-zinc-400">
+                            <span>Dishes & Menu Subtotal</span>
+                            <span className="font-medium text-gray-900 dark:text-zinc-200 font-mono">
+                              {currSymbol}{(selectedServiceIds.reduce((acc, sid) => acc + (serviceDetails[sid]?.menuTotal || 0), 0) / 100).toFixed(2)}
+                            </span>
+                          </div>
+                        )}
+
                         {accompanyingGuests > 0 && (
                           <div className="flex justify-between text-gray-500 text-[11px]">
                             <span>Party Size</span>
@@ -1670,7 +1928,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       ? (flow.paymentTiming === 'BOOKING')
                       : ((s as any)?.paymentMode === 'PREPAY');
                     const base = s && isBookingPay && (s as any).basePrice ? parseFloat((s as any).basePrice) : 0;
-                    return total + (base * totalGuests);
+                    const menuSum = serviceDetails[sid]?.menuTotal || 0;
+                    return total + (base * totalGuests) + menuSum;
                   }, 0);
 
                   const defaultTaxRate = bookingCurrency.toUpperCase() === 'ZAR' ? 15 : bookingCurrency.toUpperCase() === 'GB' || bookingCurrency.toUpperCase() === 'GBP' ? 20 : bookingCurrency.toUpperCase() === 'EUR' ? 20 : bookingCurrency.toUpperCase() === 'INR' ? 18 : 0;
@@ -1788,7 +2047,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                         s && isBookingPay && (s as any).basePrice
                           ? parseFloat((s as any).basePrice)
                           : 0;
-                      return total + base * totalGuests;
+                      const menuSum = serviceDetails[sid]?.menuTotal || 0;
+                      return total + base * totalGuests + menuSum;
                     },
                     0,
                   );

@@ -168,6 +168,13 @@ export class TenantPaymentsService {
         },
       });
 
+      if (status === 'ENABLED' && account.connectedAccountId) {
+        // Asynchronously ensure Apple Pay and wallet domains are verified
+        this.registerPaymentMethodDomains(account.connectedAccountId).catch(
+          () => {},
+        );
+      }
+
       return {
         status,
         accountId: account.connectedAccountId,
@@ -261,10 +268,12 @@ export class TenantPaymentsService {
       } else if (visit.visitInvoice?.total && visit.visitInvoice.total > 0) {
         // 2. If an invoice with custom billable items was already compiled
         finalAmount = visit.visitInvoice.total;
-      } else if (visit.service?.basePrice) {
-        // 3. Upfront booking prepayment: base price in cents multiplied by total guests
+      } else if (visit.service?.basePrice || (visit.metadata as any)?.menuTotal) {
+        // 3. Upfront booking prepayment: base price in cents multiplied by total guests + menu items
         const partySize = 1 + (visit.accompanyingGuests || 0);
-        finalAmount = Math.round(visit.service.basePrice * partySize);
+        const base = Math.round((visit.service?.basePrice || 0) * partySize);
+        const menuTotal = Math.round(Number((visit.metadata as any)?.menuTotal || 0));
+        finalAmount = base + menuTotal;
       }
     } else if (metadata.appointmentId) {
       const appt = await this.prisma.appointment.findUnique({
@@ -1415,24 +1424,34 @@ export class TenantPaymentsService {
       throw new BadRequestException('Stripe is not configured on this server.');
     }
 
-    const webhookSecret =
-      process.env.STRIPE_WEBHOOK_SECRET ||
-      process.env.STRIPE_CONNECT_WEBHOOK_SECRET;
+    const secrets = [
+      process.env.STRIPE_CONNECT_WEBHOOK_SECRET,
+      process.env.STRIPE_WEBHOOK_SECRET,
+    ].filter(Boolean) as string[];
 
-    let event: Stripe.Event;
-    if (webhookSecret && signature) {
-      try {
-        event = this.stripe.webhooks.constructEvent(
-          rawBody,
-          signature,
-          webhookSecret,
-        );
-      } catch (err: any) {
+    let event: Stripe.Event | null = null;
+    let lastError: any = null;
+
+    if (secrets.length > 0 && signature) {
+      for (const secret of secrets) {
+        try {
+          event = this.stripe.webhooks.constructEvent(
+            rawBody,
+            signature,
+            secret,
+          );
+          if (event) break;
+        } catch (err: any) {
+          lastError = err;
+        }
+      }
+
+      if (!event) {
         this.logger.error(
-          `Stripe Webhook signature verification failed: ${err.message}`,
+          `Stripe Webhook signature verification failed: ${lastError?.message}`,
         );
         throw new BadRequestException(
-          `Webhook signature verification failed: ${err.message}`,
+          `Webhook signature verification failed: ${lastError?.message}`,
         );
       }
     } else {
@@ -1449,6 +1468,10 @@ export class TenantPaymentsService {
       this.logger.warn(
         'STRIPE_WEBHOOK_SECRET not configured; processed event without cryptographic verification in non-production environment.',
       );
+    }
+
+    if (!event) {
+      throw new BadRequestException('Failed to process webhook event.');
     }
 
     this.logger.log(
@@ -1558,8 +1581,50 @@ export class TenantPaymentsService {
       },
     });
 
+    if (isFullyEnabled) {
+      this.registerPaymentMethodDomains(account.id).catch(() => {});
+    }
+
     this.logger.log(
       `TenantPaymentAccount ${paymentAccount.id} updated via account.updated webhook. Charges: ${account.charges_enabled}, Payouts: ${account.payouts_enabled}`,
     );
+  }
+
+  /**
+   * Registers active domains on a connected account so Apple Pay, Google Pay,
+   * and wallet rails are active for Direct Charges.
+   */
+  async registerPaymentMethodDomains(
+    connectedAccountId: string,
+    subdomain?: string,
+  ) {
+    if (!this.stripe || !connectedAccountId) return;
+    const baseDomain =
+      process.env.NEXT_PUBLIC_DOMAIN_BASE || 'qmova.yqbuddy.com';
+    const domainsToRegister = [baseDomain];
+    if (subdomain && subdomain !== 'app' && subdomain !== 'api') {
+      domainsToRegister.push(`${subdomain}.${baseDomain}`);
+    }
+
+    for (const domain of domainsToRegister) {
+      try {
+        await this.stripe.paymentMethodDomains.create(
+          { domain_name: domain },
+          { stripeAccount: connectedAccountId },
+        );
+        this.logger.log(
+          `Registered payment method domain ${domain} for connected account ${connectedAccountId}`,
+        );
+      } catch (err: any) {
+        if (
+          err.raw?.code !== 'payment_method_domain_already_exists' &&
+          !err.message?.includes('already exists')
+        ) {
+          this.logger.debug(
+            `Payment method domain registration note for ${domain} (${connectedAccountId}): ${err.message}`,
+          );
+        }
+      }
+    }
   }
 }

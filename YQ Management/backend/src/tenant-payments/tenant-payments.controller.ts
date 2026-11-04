@@ -145,7 +145,11 @@ export class TenantPaymentsController {
     @Headers('stripe-signature') signature: string,
     @Req() req: any,
   ) {
-    const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body));
+    const rawBody =
+      req.rawBody ||
+      (Buffer.isBuffer(req.body)
+        ? req.body
+        : Buffer.from(req.body ? JSON.stringify(req.body) : ''));
     return this.tenantPaymentsService.handleStripeWebhook(signature, rawBody);
   }
 
@@ -154,7 +158,11 @@ export class TenantPaymentsController {
     @Headers('stripe-signature') signature: string,
     @Req() req: any,
   ) {
-    const rawBody = req.rawBody || Buffer.from(JSON.stringify(req.body));
+    const rawBody =
+      req.rawBody ||
+      (Buffer.isBuffer(req.body)
+        ? req.body
+        : Buffer.from(req.body ? JSON.stringify(req.body) : ''));
     return this.tenantPaymentsService.handleStripeWebhook(signature, rawBody);
   }
 

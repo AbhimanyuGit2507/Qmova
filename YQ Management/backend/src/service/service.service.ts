@@ -259,6 +259,30 @@ export class ServiceService {
         paymentMode: true,
         dateSelectionType: true,
         maxDaysInAdvance: true,
+        enableCatalog: true,
+        catalog: {
+          select: {
+            id: true,
+            name: true,
+            currency: true,
+            items: {
+              where: { isAvailable: true },
+              orderBy: { sortOrder: 'asc' },
+              select: {
+                id: true,
+                name: true,
+                description: true,
+                category: true,
+                unitPrice: true,
+                currency: true,
+                imageUrl: true,
+                maxQty: true,
+                isAvailable: true,
+                sortOrder: true,
+              },
+            },
+          },
+        },
         serviceFlow: {
           select: {
             isActive: true,

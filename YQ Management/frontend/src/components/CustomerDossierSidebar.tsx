@@ -167,16 +167,17 @@ export function CustomerDossierSidebar({
   const displayName = customer?.name || 'Anonymous Visitor';
   const initial = displayName.trim().charAt(0).toUpperCase() || 'U';
 
-  const formatCurrency = (amountCents?: number, curr: string = 'INR') => {
-    if (!amountCents || amountCents <= 0) return '—';
+  const formatCurrency = (amountCents?: number, curr: string = 'ZAR') => {
+    if (amountCents === undefined || amountCents === null || amountCents <= 0) return '—';
     try {
       return new Intl.NumberFormat(undefined, {
         style: 'currency',
-        currency: curr || 'INR',
-        maximumFractionDigits: 0,
+        currency: curr || 'ZAR',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
       }).format(amountCents / 100);
     } catch {
-      return `${curr} ${(amountCents / 100).toFixed(0)}`;
+      return `${curr || 'ZAR'} ${(amountCents / 100).toFixed(2)}`;
     }
   };
 
@@ -561,8 +562,10 @@ export function CustomerDossierSidebar({
                 <div className="text-base font-black text-on-surface dark:text-white">
                   {stats?.totalBookings || 0}
                 </div>
-                <div className="text-[10px] text-outline mt-0.5">
-                  {stats?.totalVisits || 0} Walk-ins • {stats?.totalAppointments || 0} Bookings
+                <div className="text-[10px] text-outline mt-0.5 truncate">
+                  {stats?.completedCount !== undefined
+                    ? `${stats.completedCount} Attended • ${(stats?.noShowCount || 0) + (stats?.cancelledCount || 0)} Missed`
+                    : `${stats?.totalVisits || 0} Total`}
                 </div>
               </div>
 
@@ -686,17 +689,24 @@ export function CustomerDossierSidebar({
                             }`}
                           >
                             <div className="flex items-start justify-between gap-1">
-                              <div>
-                                <span className="font-bold text-xs text-on-surface dark:text-white block">
-                                  {b.serviceName}
-                                </span>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {b.ticketNumber && (
+                                    <span className="font-mono font-bold text-[11px] px-1.5 py-0.5 rounded-md bg-primary/10 dark:bg-primary/20 text-primary dark:text-sky-400 shrink-0">
+                                      #{b.ticketNumber}
+                                    </span>
+                                  )}
+                                  <span className="font-bold text-xs text-on-surface dark:text-white truncate">
+                                    {b.serviceName}
+                                  </span>
+                                </div>
                                 <span className="text-[10px] text-outline flex items-center gap-1 mt-0.5">
-                                  <Clock className="w-2.5 h-2.5" />
+                                  <Clock className="w-2.5 h-2.5 shrink-0" />
                                   {formatDate(b.date)} • {formatTime(b.date)}
                                 </span>
                               </div>
                               <span
-                                className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase ${
+                                className={`px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase shrink-0 ${
                                   isCompleted
                                     ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
                                     : isCancelled
@@ -710,12 +720,21 @@ export function CustomerDossierSidebar({
 
                             <div className="flex items-center justify-between text-[10px] text-outline mt-1.5 pt-1.5 border-t border-border/50 dark:border-dark-border/50">
                               <span className="truncate max-w-[130px]">{b.locationName}</span>
-                              {b.amount > 0 && (
+                              {b.amount > 0 ? (
                                 <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
-                                  {formatCurrency(b.amount, b.currency)}
+                                  Paid {formatCurrency(b.amount, b.currency)}
                                 </span>
+                              ) : (
+                                <span className="text-[10px] text-outline opacity-70">Free / Unpaid</span>
                               )}
                             </div>
+
+                            {/* Show cancellation or no-show reason */}
+                            {b.cancelReason && (
+                              <p className="text-[10px] text-red-500/90 dark:text-red-400/90 mt-1 italic leading-tight">
+                                Note: {b.cancelReason}
+                              </p>
+                            )}
 
                             {/* Customer Rating & Feedback Quote */}
                             {b.rating && (

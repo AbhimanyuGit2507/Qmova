@@ -216,6 +216,16 @@ const CheckoutForm = ({
                 console.error('PaymentElement failed to load:', err);
                 setElementLoadError('Card processor unavailable. Please choose pay at counter.');
               }}
+              options={{
+                layout: {
+                  type: 'tabs',
+                  defaultCollapsed: false,
+                },
+                wallets: {
+                  applePay: 'auto',
+                  googlePay: 'auto',
+                },
+              }}
             />
           </div>
         </div>

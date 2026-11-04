@@ -4,13 +4,15 @@ import {
   IsOptional,
   IsPhoneNumber,
   MaxLength,
+  ValidateIf,
 } from 'class-validator';
 
 export class SendMessageDto {
+  @ValidateIf((o) => !o.media || (o.text !== undefined && o.text !== ''))
+  @IsNotEmpty({ message: 'Text or attachment is required' })
   @IsString()
-  @IsNotEmpty()
   @MaxLength(2000)
-  text: string;
+  text?: string;
 
   @IsOptional()
   @IsString()
@@ -23,4 +25,8 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   mediaType?: string;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
 }

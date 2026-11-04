@@ -143,6 +143,10 @@ export default function CustomerLiveStatus() {
   const [showCancelAppointmentConfirm, setShowCancelAppointmentConfirm] = useState(false);
   const [isCancellingAppointment, setIsCancellingAppointment] = useState(false);
 
+  // Order Catalog Step state
+  const [orderSelections, setOrderSelections] = useState<Record<string, number>>({});
+  const [isSubmittingOrder, setIsSubmittingOrder] = useState<boolean>(false);
+
   const handleCancelAppointment = async () => {
     setIsCancellingAppointment(true);
     try {
@@ -380,9 +384,6 @@ export default function CustomerLiveStatus() {
   const isOrderStep =
     (activeStep?.templateStep?.type === 'ORDER' || activeStep?.type === 'ORDER') &&
     activeStep.status === 'ACTIVE';
-
-  const [orderSelections, setOrderSelections] = useState<Record<string, number>>({});
-  const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
 
   const handleSubmitOrder = async (stepId: string) => {
     if (!accessToken) return;

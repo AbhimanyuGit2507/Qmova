@@ -118,7 +118,7 @@ export default function PublicPaymentPage() {
 
             <PaymentStep
               tenantId={tenant?.id}
-              amount={payment.amount * 100} // Cents
+              amount={payment.amount} // Already stored in integer cents
               currency={payment.currency.toLowerCase()}
               stripeAccountId={payment.tenantPaymentAccount?.connectedAccountId}
               onSuccess={handleSuccess}

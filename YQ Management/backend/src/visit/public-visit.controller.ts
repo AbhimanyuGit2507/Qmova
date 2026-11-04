@@ -394,7 +394,13 @@ export class PublicVisitController {
 
           if (allowsOffline) {
             const partySize = 1 + (primaryVisit.accompanyingGuests || 0);
-            const totalBasePrice = Math.round(service.basePrice * partySize);
+            const firstBooking = body.bookings?.[0] as any;
+            const menuItemsTotal = (firstBooking?.selectedItems || []).reduce(
+              (acc: number, it: any) =>
+                acc + (it.lineTotal || (it.unitPrice || 0) * (it.qty || 1)),
+              0,
+            );
+            const totalBasePrice = Math.round(service.basePrice * partySize) + menuItemsTotal;
             await this.prisma.bookingPayment.create({
               data: {
                 tenantId: primaryVisit.tenantId,

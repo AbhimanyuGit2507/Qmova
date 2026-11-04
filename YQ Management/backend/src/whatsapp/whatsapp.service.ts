@@ -2252,6 +2252,7 @@ export class WhatsappService implements OnModuleInit {
     base64: string,
     mediaType: string = 'image',
     caption: string = '',
+    fileName?: string,
   ) {
     if (!instanceName || !number || !base64) {
       return { success: false, error: 'Invalid parameters' };
@@ -2262,17 +2263,45 @@ export class WhatsappService implements OnModuleInit {
     if (!check.active) {
       return { success: false, error: 'Subscription inactive' };
     }
+
+    // Determine mediatype, mimetype, and filename
+    let mediatype = 'document';
+    let mimetype = mediaType || 'application/octet-stream';
+    let defaultFileName = 'file.bin';
+
+    if (mediaType.startsWith('image/') || mediaType === 'image') {
+      mediatype = 'image';
+      mimetype = mediaType === 'image' ? 'image/png' : mediaType;
+      defaultFileName = 'image.png';
+    } else if (mediaType.includes('pdf') || mediaType === 'document') {
+      mediatype = 'document';
+      mimetype = 'application/pdf';
+      defaultFileName = 'document.pdf';
+    } else if (mediaType.startsWith('video/')) {
+      mediatype = 'video';
+      mimetype = mediaType;
+      defaultFileName = 'video.mp4';
+    } else if (mediaType.startsWith('audio/')) {
+      mediatype = 'audio';
+      mimetype = mediaType;
+      defaultFileName = 'audio.mp3';
+    }
+
+    const finalFileName = fileName || defaultFileName;
+    const cleanBase64 = base64.includes(';base64,')
+      ? base64.split(';base64,')[1]
+      : base64;
+
     const result = await this.fetchEvo(
       `/message/sendMedia/${instanceName}`,
       'POST',
       {
         number: normalizedNumber,
-        mediatype: mediaType,
-        media: base64,
-        caption: caption,
-        mimetype:
-          mediaType === 'image' ? 'image/png' : 'application/octet-stream',
-        fileName: mediaType === 'image' ? 'image.png' : 'file.bin',
+        mediatype,
+        media: cleanBase64,
+        caption: caption || '',
+        mimetype,
+        fileName: finalFileName,
       },
     );
     if (result.error) {
@@ -2301,23 +2330,44 @@ export class WhatsappService implements OnModuleInit {
     base64: string,
     mediaType: string = 'image',
     caption: string = '',
+    fileName?: string,
   ) {
     if (!tenantId) return { success: false, error: 'Missing tenantId' };
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
     });
-    if (!tenant || !tenant.whatsappInstanceId || !tenant.whatsappConnected) {
+    if (!tenant || !tenant.whatsappConnected) {
       return {
         success: false,
         error: 'Tenant WhatsApp not configured or connected',
       };
     }
+
+    if (tenant.whatsappProvider === 'META_CLOUD') {
+      const normalizedNumber = number.replace(/\D/g, '');
+      return this.sendMetaCloudMediaMessage(
+        tenant,
+        normalizedNumber,
+        base64,
+        mediaType,
+        caption,
+      );
+    }
+
+    if (!tenant.whatsappInstanceId) {
+      return {
+        success: false,
+        error: 'Tenant WhatsApp instance not configured',
+      };
+    }
+
     return this.sendMediaMessage(
       tenant.whatsappInstanceId,
       number,
       base64,
       mediaType,
       caption,
+      fileName,
     );
   }
 
