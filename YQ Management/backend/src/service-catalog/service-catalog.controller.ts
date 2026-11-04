@@ -17,6 +17,8 @@ import { UpdateCatalogItemDto } from './dto/update-catalog-item.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
+import { PermissionsGuard } from '../auth/permissions.guard';
+import { RequirePagePermission } from '../auth/permissions.decorator';
 import { Role } from '@prisma/client';
 
 @Controller('service-catalog')
@@ -59,15 +61,17 @@ export class ServiceCatalogController {
     return this.catalogService.findCatalogById(req.user.tenantId, id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Post()
   createCatalog(@Req() req: any, @Body() dto: CreateCatalogDto) {
     return this.catalogService.createCatalog(req.user.tenantId, dto);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Patch(':id')
   updateCatalog(
     @Req() req: any,
@@ -77,15 +81,17 @@ export class ServiceCatalogController {
     return this.catalogService.updateCatalog(req.user.tenantId, id, dto);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Delete(':id')
   deleteCatalog(@Req() req: any, @Param('id') id: string) {
     return this.catalogService.deleteCatalog(req.user.tenantId, id);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Post(':id/items')
   createItem(
     @Req() req: any,
@@ -95,8 +101,9 @@ export class ServiceCatalogController {
     return this.catalogService.createCatalogItem(req.user.tenantId, id, dto);
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Patch(':id/items/:itemId')
   updateItem(
     @Req() req: any,
@@ -112,8 +119,9 @@ export class ServiceCatalogController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Delete(':id/items/:itemId')
   deleteItem(
     @Req() req: any,
@@ -127,8 +135,9 @@ export class ServiceCatalogController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Post(':id/items/reorder')
   reorderItems(
     @Req() req: any,
@@ -142,8 +151,9 @@ export class ServiceCatalogController {
     );
   }
 
-  @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER)
+  @UseGuards(JwtAuthGuard, RolesGuard, PermissionsGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN, Role.MANAGER, Role.STAFF)
+  @RequirePagePermission('settings-operations')
   @Post(':id/import')
   importItems(
     @Req() req: any,

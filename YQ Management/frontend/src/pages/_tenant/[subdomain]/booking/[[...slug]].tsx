@@ -1471,6 +1471,18 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                                     : 'bg-white dark:bg-zinc-900 border-gray-200 dark:border-zinc-800 hover:border-gray-300'
                                 }`}
                               >
+                                {item.imageUrl && (
+                                  <div className="w-16 h-16 rounded-xl overflow-hidden shrink-0 bg-gray-100 dark:bg-zinc-800 border border-gray-100 dark:border-zinc-800 relative">
+                                    <img
+                                      src={item.imageUrl}
+                                      alt={item.name}
+                                      className="w-full h-full object-cover"
+                                      onError={(e) => {
+                                        (e.currentTarget as HTMLElement).style.display = 'none';
+                                      }}
+                                    />
+                                  </div>
+                                )}
                                 <div className="flex-1 min-w-0">
                                   <div className="flex items-center gap-1.5 flex-wrap">
                                     <span className="text-sm font-bold text-gray-900 dark:text-white">

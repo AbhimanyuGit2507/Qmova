@@ -145,3 +145,4 @@ BEGIN
     WHERE "flowId" = '24aed71c-c809-41c7-ba60-19c5b2115871' AND type = 'ORDER';
   END IF;
 END $$;
+
