@@ -153,6 +153,31 @@ export async function middleware(req: NextRequest) {
       const restPath = bookingParts.slice(2).join('/');
       const targetPath = restPath ? `/booking/${restPath}` : '/booking';
 
+      // Verify that candidateTenant is indeed a registered tenant, not a location slug or rogue path
+      const backendUrl =
+        process.env.NEXT_PUBLIC_API_URL ||
+        process.env.NEXT_PUBLIC_BACKEND_URL ||
+        (process.env.NEXT_PUBLIC_DOMAIN_BASE
+          ? 'https://api.' + process.env.NEXT_PUBLIC_DOMAIN_BASE
+          : 'https://api.qmova.yqbuddy.com');
+
+      try {
+        const tenantCheckRes = await fetch(`${backendUrl}/tenant/public/${candidateTenant}`, {
+          method: 'GET',
+          headers: { Accept: 'application/json' },
+          next: { revalidate: 300 },
+        });
+
+        if (!tenantCheckRes.ok) {
+          // Candidate slug is not a valid tenant subdomain (e.g. location slug like 'uniworld-1')
+          // Do NOT create an invalid subdomain redirect that crashes PWA / CORS
+          return NextResponse.redirect(new URL('/', req.url));
+        }
+      } catch (err) {
+        // If lookup fails or network error occurs, fail-safe to home
+        return NextResponse.redirect(new URL('/', req.url));
+      }
+
       if (isLocal) {
         const port = req.nextUrl.port ? `:${req.nextUrl.port}` : '';
         const redirectUrl = new URL(`${req.nextUrl.protocol}//${candidateTenant}.localhost${port}${targetPath}`);

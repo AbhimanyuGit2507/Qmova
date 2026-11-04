@@ -8,7 +8,7 @@ import { io } from 'socket.io-client';
 import { motion, AnimatePresence } from 'framer-motion';
 import 'react-phone-number-input/style.css';
 import { useTheme } from '../../../../components/ThemeProvider';
-import { Sun, Moon, Calendar, CreditCard, Utensils, Plus, Minus } from 'lucide-react';
+import { Sun, Moon, Calendar, CreditCard, Utensils, Plus, Minus, Loader2, AlertCircle } from 'lucide-react';
 import dynamic from 'next/dynamic';
 import Image from 'next/image';
 const QRCode = dynamic(() => import('react-qr-code'), { ssr: false });
@@ -1924,8 +1924,16 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                 })()}
               </div>
 
+              {/* Error message banner on Step 4 */}
+              {errorMsg && (
+                <div className="p-3.5 bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl text-red-600 dark:text-red-400 text-xs font-medium flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  <span>{errorMsg}</span>
+                </div>
+              )}
+
               <div className="flex gap-3 pt-4">
-                <button type="button" onClick={handleBack} className="px-6 py-4 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors">
+                <button type="button" onClick={handleBack} disabled={loading} className="px-6 py-4 rounded-xl font-bold text-gray-700 bg-gray-100 hover:bg-gray-200 transition-colors disabled:opacity-50">
                   Back
                 </button>
                 {(() => {
@@ -1979,27 +1987,38 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       <div className="flex-1 flex flex-col gap-2">
                         <button
                           type="button"
+                          disabled={loading}
                           onClick={() => {
                             setIsPayAtCounter(false);
                             submitJoin(undefined, false);
                           }}
-                          className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2"
+                          className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.01] active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                           style={{ backgroundColor: primaryColor }}
                         >
-                          <CreditCard className="w-4 h-4" />
-                          <span>
-                            Pay Online • {currSymbol}
-                            {(finalTotalCents / 100).toFixed(2)}
-                          </span>
+                          {loading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                              <span>Processing...</span>
+                            </>
+                          ) : (
+                            <>
+                              <CreditCard className="w-4 h-4" />
+                              <span>
+                                Pay Online • {currSymbol}
+                                {(finalTotalCents / 100).toFixed(2)}
+                              </span>
+                            </>
+                          )}
                         </button>
                         {allowsPayAtCounter && (
                           <button
                             type="button"
+                            disabled={loading}
                             onClick={() => {
                               setIsPayAtCounter(true);
                               goToStep(5);
                             }}
-                            className="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white bg-transparent hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-1.5 border border-dashed border-gray-300 dark:border-zinc-700"
+                            className="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white bg-transparent hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-1.5 border border-dashed border-gray-300 dark:border-zinc-700 disabled:opacity-50"
                           >
                             Pay in Person at Counter Instead
                           </button>
@@ -2011,14 +2030,22 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   return (
                     <button
                       type="button"
+                      disabled={loading}
                       onClick={() => {
                         setIsPayAtCounter(true);
                         handleConfirm();
                       }}
-                      className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2"
+                      className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ backgroundColor: primaryColor }}
                     >
-                      Confirm Booking
+                      {loading ? (
+                        <>
+                          <Loader2 className="w-4 h-4 animate-spin" />
+                          <span>Confirming...</span>
+                        </>
+                      ) : (
+                        'Confirm Booking'
+                      )}
                     </button>
                   );
                 })()}
@@ -2037,6 +2064,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
             >
               <PaymentStep
                 tenantId={tenant?.id}
+                primaryColor={primaryColor}
                 amount={(() => {
                   const bookingCurrency =
                     (services.find((x) => x.id === selectedServiceIds[0]) as any)

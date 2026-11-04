@@ -48,8 +48,8 @@ CROSS JOIN (VALUES
 
   -- Loaded Sides & Starters
   ('item-ab-006', 'Loaded Bacon Cheddar Fries', 'Golden crinkle-cut fries smothered in warm aged cheddar sauce, smoky bacon crumbles, jalapeños & ranch', 'Sides & Starters', 5500, 'https://images.unsplash.com/photo-1585109649139-366815a0d713?w=500&auto=format&fit=crop&q=80', 6),
-  ('item-ab-007', 'Classic Skin-On French Fries', 'Crispy golden sea-salt french fries served hot with house dipping sauce', 'Sides & Starters', 3500, 'https://images.unsplash.com/photo-1576107232684-1279f3908594?w=500&auto=format&fit=crop&q=80', 7),
-  ('item-ab-008', 'Beer-Battered Onion Rings', 'Thick-cut jumbo onion rings in a crunchy beer batter with smoky comeback sauce', 'Sides & Starters', 4000, 'https://images.unsplash.com/photo-1639024471287-032f6644dd40?w=500&auto=format&fit=crop&q=80', 8),
+  ('item-ab-007', 'Classic Skin-On French Fries', 'Crispy golden sea-salt french fries served hot with house dipping sauce', 'Sides & Starters', 3500, 'https://images.unsplash.com/photo-1573080496219-bb080dd4f877?w=500&auto=format&fit=crop&q=80', 7),
+  ('item-ab-008', 'Beer-Battered Onion Rings', 'Thick-cut jumbo onion rings in a crunchy beer batter with smoky comeback sauce', 'Sides & Starters', 4000, 'https://images.unsplash.com/photo-1625938144755-652e08e359b7?w=500&auto=format&fit=crop&q=80', 8),
   ('item-ab-009', 'Nashville Hot Chicken Tenders [4 pcs]', 'Crispy hand-breaded chicken tenders tossed in spicy Nashville hot honey with ranch dip', 'Sides & Starters', 6500, 'https://images.unsplash.com/photo-1562967914-608f82629710?w=500&auto=format&fit=crop&q=80', 9),
   ('item-ab-010', 'Stadium Nachos Supreme', 'Warm tortilla chips layered with molten queso cheese, jalapeño slices, fresh salsa roja & sour cream', 'Sides & Starters', 6000, 'https://images.unsplash.com/photo-1513456852971-30c0b8199d4d?w=500&auto=format&fit=crop&q=80', 10),
 
@@ -62,7 +62,10 @@ CROSS JOIN (VALUES
   ('item-ab-014', 'Thick Hand-Spun Milkshake', 'Creamy hand-spun ice cream shake topped with whipped cream (Vanilla, Chocolate or Strawberry)', 'Beverages', 4500, 'https://images.unsplash.com/photo-1572490122747-3968b75cc699?w=500&auto=format&fit=crop&q=80', 14),
   ('item-ab-015', 'Chilled Draft Root Beer Float', 'Classic frosty draft root beer poured over a generous scoop of vanilla bean ice cream', 'Beverages', 4000, 'https://images.unsplash.com/photo-1541658016709-82535e94bc69?w=500&auto=format&fit=crop&q=80', 15),
   ('item-ab-016', 'Fresh Squeezed Stadium Lemonade', 'Ice-cold tart and sweet hand-squeezed lemonade with fresh lemon wheels and crushed ice', 'Beverages', 3000, 'https://images.unsplash.com/photo-1513558161293-cdaf765ed2fd?w=500&auto=format&fit=crop&q=80', 16),
-  ('item-ab-017', 'Fountain Soda [500ml]', 'Ice-cold fountain soft drink (Coca-Cola, Sprite, Fanta, or Coke Zero)', 'Beverages', 2500, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80', 17)
+  ('item-ab-017', 'Fountain Soda [500ml]', 'Ice-cold fountain soft drink (Coca-Cola, Sprite, Fanta, or Coke Zero)', 'Beverages', 2500, 'https://images.unsplash.com/photo-1622483767028-3f66f32aef97?w=500&auto=format&fit=crop&q=80', 17),
+
+  -- Sandwiches & Deli
+  ('item-ab-018', 'Classic Stadium Sandwich', 'Fresh toasted artisan bread, deli turkey, crisp bacon, lettuce, tomato & mayo', 'Burgers & Hot Dogs', 1000, 'https://images.unsplash.com/photo-1528735602780-2552fd46c7af?w=500&auto=format&fit=crop&q=80', 18)
 ) AS v(id, name, description, category, unitPrice, imageUrl, sortOrder)
 WHERE c."serviceId" = 'a6e2effe-33ef-461d-82df-e5d906d322cc';
 

@@ -93,24 +93,70 @@ async function fetchWithRetry(
   }
 }
 
-export function getBackendUrl() {
-  let baseUrl = process.env.NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_BACKEND_URL || (process.env.NEXT_PUBLIC_DOMAIN_BASE ? 'https://api.' + process.env.NEXT_PUBLIC_DOMAIN_BASE : 'https://api.qmova.com');
+export function getBackendUrl(): string {
   try {
     if (typeof window !== 'undefined') {
-      if (window.location.hostname.includes('localhost') || window.location.hostname.includes('127.0.0.1')) {
-        baseUrl = `${window.location.protocol}//localhost:3000`;
-      } else {
-        baseUrl = `${window.location.protocol}//api.${window.location.hostname}`;
+      const { hostname, protocol } = window.location;
+
+      // Local development
+      if (hostname.includes('localhost') || hostname.includes('127.0.0.1')) {
+        return `${protocol}//localhost:3000`;
       }
+
+      // Production base domain matching:
+      // API traffic must ALWAYS route to api.<baseDomain>, never api.<tenantSubdomain>.<baseDomain>
+      if (hostname.endsWith('qmova.yqbuddy.com')) {
+        return `${protocol}//api.qmova.yqbuddy.com`;
+      }
+      if (hostname.endsWith('qmova.com')) {
+        return `${protocol}//api.qmova.com`;
+      }
+
+      if (process.env.NEXT_PUBLIC_DOMAIN_BASE) {
+        const cleanBase = process.env.NEXT_PUBLIC_DOMAIN_BASE
+          .replace(/^https?:\/\//, '')
+          .split('/')[0]
+          .split(':')[0];
+        return `${protocol}//api.${cleanBase}`;
+      }
+
+      if (
+        process.env.NEXT_PUBLIC_API_URL &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('localhost') &&
+        !process.env.NEXT_PUBLIC_API_URL.includes('127.0.0.1')
+      ) {
+        return process.env.NEXT_PUBLIC_API_URL;
+      }
+
+      const parts = hostname.split('.');
+      if (parts.length >= 3) {
+        const base = parts.slice(1).join('.');
+        return `${protocol}//api.${base}`;
+      }
+      return `${protocol}//api.${hostname}`;
     }
-    
-    if (process.env.NEXT_PUBLIC_API_URL) {
-      baseUrl = process.env.NEXT_PUBLIC_API_URL;
+
+    // Server-side rendering (SSR) fallback
+    if (
+      process.env.NEXT_PUBLIC_API_URL &&
+      !process.env.NEXT_PUBLIC_API_URL.includes('localhost')
+    ) {
+      return process.env.NEXT_PUBLIC_API_URL;
+    }
+    if (process.env.NEXT_PUBLIC_BACKEND_URL) {
+      return process.env.NEXT_PUBLIC_BACKEND_URL;
+    }
+    if (process.env.NEXT_PUBLIC_DOMAIN_BASE) {
+      const cleanBase = process.env.NEXT_PUBLIC_DOMAIN_BASE
+        .replace(/^https?:\/\//, '')
+        .split('/')[0]
+        .split(':')[0];
+      return `https://api.${cleanBase}`;
     }
   } catch (e) {
-    // fallback to default
+    // fallback
   }
-  return baseUrl;
+  return 'https://api.qmova.yqbuddy.com';
 }
 
 export const fetchApi = async <T = AnyFixMe>(endpoint: string, options: RequestInit = {}): Promise<T | null> => {

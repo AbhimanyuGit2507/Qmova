@@ -183,8 +183,8 @@ export function ServiceCatalogManager({
     }
   };
 
-  const handleAddItem = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleAddItem = (e?: React.FormEvent | React.MouseEvent | React.KeyboardEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!newItemName.trim() || !catalog?.id) return;
     const priceInCents = Math.round(parseFloat(newItemPrice || '0') * 100);
 
@@ -201,8 +201,8 @@ export function ServiceCatalogManager({
     });
   };
 
-  const handleSaveEdit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSaveEdit = (e?: React.FormEvent | React.MouseEvent | React.KeyboardEvent) => {
+    if (e && e.preventDefault) e.preventDefault();
     if (!editingItem || !catalog?.id) return;
     const priceInCents = Math.round(parseFloat(editPrice || '0') * 100);
 
@@ -392,10 +392,15 @@ export function ServiceCatalogManager({
         className="hidden"
       />
 
-      {/* Add New Item Form */}
+      {/* Add New Item Container */}
       {isAddingItem && canManageCatalog && (
-        <form
-          onSubmit={handleAddItem}
+        <div
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault();
+              handleAddItem(e);
+            }
+          }}
           className="p-4 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200 dark:border-indigo-800 rounded-xl space-y-3 animate-in fade-in duration-150"
         >
           <div className="flex justify-between items-center">
@@ -540,7 +545,8 @@ export function ServiceCatalogManager({
               Cancel
             </button>
             <button
-              type="submit"
+              type="button"
+              onClick={handleAddItem}
               disabled={addItemMutation.isPending}
               className="px-4 py-1.5 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
             >
@@ -548,7 +554,7 @@ export function ServiceCatalogManager({
               Save Product
             </button>
           </div>
-        </form>
+        </div>
       )}
 
       {/* Hidden file input for Edit Item */}
@@ -563,8 +569,13 @@ export function ServiceCatalogManager({
       {/* Edit Item Modal / Overlay */}
       {editingItem && canManageCatalog && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs">
-          <form
-            onSubmit={handleSaveEdit}
+          <div
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                e.preventDefault();
+                handleSaveEdit(e);
+              }
+            }}
             className="w-full max-w-lg bg-white dark:bg-zinc-900 rounded-2xl border border-gray-200 dark:border-zinc-800 p-6 space-y-4 shadow-xl animate-in zoom-in-95 duration-150"
           >
             <div className="flex items-center justify-between pb-3 border-b border-gray-100 dark:border-zinc-800">
@@ -722,7 +733,8 @@ export function ServiceCatalogManager({
                 Cancel
               </button>
               <button
-                type="submit"
+                type="button"
+                onClick={handleSaveEdit}
                 disabled={updateItemMutation.isPending}
                 className="px-5 py-2 text-xs font-bold bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5 shadow-sm"
               >
@@ -730,7 +742,7 @@ export function ServiceCatalogManager({
                 Save Customizations
               </button>
             </div>
-          </form>
+          </div>
         </div>
       )}
 
