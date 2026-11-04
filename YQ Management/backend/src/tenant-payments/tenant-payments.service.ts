@@ -12,6 +12,7 @@ import { InvoiceService } from '../invoice/invoice.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { QueueGateway } from '../queue/queue.gateway';
 import { RedisService } from '../redis/redis.service';
+import { normalizePhoneZA } from '../utils/phone.util';
 import Stripe from 'stripe';
 
 @Injectable()
@@ -621,6 +622,39 @@ export class TenantPaymentsService {
     // Send WhatsApp receipt if requested/enabled
     if (extra.sendWhatsAppReceipt !== false) {
       await this.sendPaymentWhatsAppReceipt(updated.id, extra.description);
+    }
+
+    // Reset any active WhatsApp chat session for this customer so they cleanly return to step 0
+    try {
+      const targetCustomer =
+        (updated.visitId
+          ? (
+              await this.prisma.visit.findUnique({
+                where: { id: updated.visitId },
+                include: { customer: true },
+              })
+            )?.customer
+          : null) ||
+        (updated.appointmentId
+          ? (
+              await this.prisma.appointment.findUnique({
+                where: { id: updated.appointmentId },
+                include: { customer: true },
+              })
+            )?.customer
+          : null);
+
+      if (targetCustomer?.phone) {
+        const normalized = normalizePhoneZA(targetCustomer.phone);
+        await this.prisma.chatSession.updateMany({
+          where: { tenantId: payment.tenantId, phone: normalized },
+          data: { step: 0, context: {}, lastActive: new Date() },
+        });
+      }
+    } catch (sessionErr: any) {
+      this.logger.warn(
+        `Failed to reset chat session on payment completion: ${sessionErr.message}`,
+      );
     }
 
     return updated;

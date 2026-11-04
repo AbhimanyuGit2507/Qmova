@@ -2,6 +2,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ServiceService } from '../service/service.service';
 import { AppointmentService } from '../appointment/appointment.service';
 import { VisitService } from '../visit/visit.service';
+import { TenantPaymentsService } from '../tenant-payments/tenant-payments.service';
 import { normalizePhoneZA, phoneMatchCondition } from '../utils/phone.util';
 
 export class WhatsappChatbot {
@@ -12,6 +13,7 @@ export class WhatsappChatbot {
     private serviceService?: ServiceService,
     private appointmentService?: AppointmentService,
     private visitService?: VisitService,
+    private tenantPaymentsService?: TenantPaymentsService,
   ) {}
 
   async process(
@@ -181,17 +183,37 @@ export class WhatsappChatbot {
     }
 
     if (session.step === 12) {
-      await this.handleDateSelection(tenantId, phone, jid, session, text);
+      await this.handleModeSelection(tenantId, phone, jid, session, text);
       return { handled: true, isHumanPaused: false };
     }
 
     if (session.step === 13) {
-      await this.handleTimeSelection(tenantId, phone, jid, session, text);
+      await this.handleDateSelection(tenantId, phone, jid, session, text);
       return { handled: true, isHumanPaused: false };
     }
 
     if (session.step === 14) {
-      await this.handleFinalizeBooking(tenantId, phone, jid, session, text);
+      await this.handleTimeSelection(tenantId, phone, jid, session, text);
+      return { handled: true, isHumanPaused: false };
+    }
+
+    if (session.step === 15) {
+      await this.handleCatalogSelection(tenantId, phone, jid, session, text);
+      return { handled: true, isHumanPaused: false };
+    }
+
+    if (session.step === 16) {
+      await this.handleNameInput(tenantId, phone, jid, session, text);
+      return { handled: true, isHumanPaused: false };
+    }
+
+    if (session.step === 17) {
+      await this.handlePaymentMethodSelection(tenantId, phone, jid, session, text);
+      return { handled: true, isHumanPaused: false };
+    }
+
+    if (session.step === 18) {
+      await this.handlePendingPaymentState(tenantId, phone, jid, session, text);
       return { handled: true, isHumanPaused: false };
     }
 
@@ -238,7 +260,7 @@ export class WhatsappChatbot {
     if (quickReplies.human !== false) {
       msg += `${index++}. Chat with Human\n`;
     }
-    msg += `${index++}. Book an Appointment\n`;
+    msg += `${index++}. Book a Service / Join Line\n`;
     if (quickReplies.cancel !== false) {
       msg += `${index++}. Cancel Ticket\n`;
     }
@@ -742,14 +764,17 @@ export class WhatsappChatbot {
     session: any,
     text: string,
   ) {
-    const ctx = session.context;
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
     const locations = ctx.locations || [];
     const index = parseInt(text) - 1;
 
     if (isNaN(index) || index < 0 || index >= locations.length) {
       await this.sendMsg(
         jid,
-        'Invalid selection. Please reply with a valid number.',
+        'Invalid selection. Please reply with a valid number, or 0 to cancel.',
       );
       return;
     }
@@ -784,11 +809,18 @@ export class WhatsappChatbot {
 
     let msg = `Please select a service:\n\n`;
     services.forEach((s, index) => {
-      msg += `${index + 1}. ${s.name}\n`;
+      const priceStr =
+        s.basePrice && s.basePrice > 0
+          ? ` • R${(s.basePrice / 100).toFixed(2)}`
+          : '';
+      const durationStr = s.expectedDuration
+        ? ` • ${s.expectedDuration} mins`
+        : '';
+      msg += `${index + 1}. *${s.name}*${priceStr}${durationStr}\n`;
     });
     msg += `\nReply with a number, or '0' to cancel.`;
 
-    await this.updateSession(session.id, undefined, {
+    await this.updateSession(session.id, 11, {
       services: services.map((s) => s.id),
     });
 
@@ -802,10 +834,6 @@ export class WhatsappChatbot {
     session: any,
     text: string,
   ) {
-    const ctx = session.context;
-    // To safely merge, we should retrieve the latest session first, but we have session here.
-    // Wait, promptServices used updateMany which doesn't merge context, it overwrites it.
-    // I need to retrieve session again or merge properly.
     const currentSession = await this.prisma.chatSession.findUnique({
       where: { id: session.id },
     });
@@ -816,7 +844,7 @@ export class WhatsappChatbot {
     if (isNaN(index) || index < 0 || index >= services.length) {
       await this.sendMsg(
         jid,
-        'Invalid selection. Please reply with a valid number.',
+        'Invalid selection. Please reply with a valid number, or 0 to cancel.',
       );
       return;
     }
@@ -825,10 +853,125 @@ export class WhatsappChatbot {
 
     const service = await this.prisma.service.findUnique({
       where: { id: serviceId },
+      include: { location: true, queues: true },
+    });
+
+    if (!service) {
+      await this.sendMsg(jid, "Service not found. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const allowAppointments = Boolean(service.allowAppointments);
+    const allowWalkIns =
+      Boolean(service.queues && service.queues.length > 0) || !allowAppointments;
+
+    if (allowWalkIns && allowAppointments) {
+      // Prompt mode selection (Step 12)
+      let msg = `How would you like to join *${service.name}*?\n\n`;
+      msg += `1. 🚶 *Walk-in (Join Queue Now)*\n`;
+      msg += `2. 📅 *Schedule Appointment for Later*\n\n`;
+      msg += `Reply *1* or *2*, or '0' to cancel.`;
+
+      await this.updateSession(session.id, 12, {
+        serviceId,
+        services: undefined,
+      });
+
+      await this.sendMsg(jid, msg);
+    } else if (allowAppointments && !allowWalkIns) {
+      // Appointment only
+      await this.updateSession(session.id, undefined, {
+        serviceId,
+        mode: 'APPOINTMENT',
+        services: undefined,
+      });
+      await this.promptDates(service, jid, session);
+    } else {
+      // Walk-in only (or fallback)
+      await this.updateSession(session.id, undefined, {
+        serviceId,
+        mode: 'WALK_IN',
+        services: undefined,
+      });
+      await this.checkAndPromptCatalogOrName(
+        tenantId,
+        phone,
+        jid,
+        session,
+        serviceId,
+        'WALK_IN',
+      );
+    }
+  }
+
+  private async handleModeSelection(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+    text: string,
+  ) {
+    const input = text.trim();
+    if (input === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
+    const serviceId = ctx.serviceId;
+
+    if (!serviceId) {
+      await this.sendMsg(jid, "Session expired. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const service = await this.prisma.service.findUnique({
+      where: { id: serviceId },
       include: { location: true },
     });
-    const timezone = service?.location?.timezone || 'UTC';
 
+    if (!service) {
+      await this.sendMsg(jid, "Service not found. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    if (input === '1') {
+      // Walk-in
+      await this.updateSession(session.id, undefined, { mode: 'WALK_IN' });
+      await this.checkAndPromptCatalogOrName(
+        tenantId,
+        phone,
+        jid,
+        session,
+        serviceId,
+        'WALK_IN',
+      );
+    } else if (input === '2') {
+      // Appointment
+      await this.updateSession(session.id, undefined, { mode: 'APPOINTMENT' });
+      await this.promptDates(service, jid, session);
+    } else {
+      await this.sendMsg(
+        jid,
+        'Invalid option. Please reply *1* for Walk-in or *2* for Appointment, or *0* to cancel.',
+      );
+    }
+  }
+
+  private async promptDates(service: any, jid: string, session: any) {
+    if (!this.serviceService) {
+      await this.sendMsg(jid, 'Booking service unavailable at this moment.');
+      return;
+    }
+
+    const timezone = service?.location?.timezone || 'UTC';
     const formatter = new Intl.DateTimeFormat('en-CA', {
       timeZone: timezone,
       year: 'numeric',
@@ -838,25 +981,18 @@ export class WhatsappChatbot {
     const now = new Date();
     const todayStr = formatter.format(now);
 
-    // Tomorrow
     const tomorrowDate = new Date(now.getTime() + 24 * 60 * 60 * 1000);
     const tomorrowStr = formatter.format(tomorrowDate);
 
-    // Prompt date (dynamically finding dates with available slots)
     const availableDates: string[] = [];
     const maxDaysToCheck = 14;
     let daysChecked = 0;
     const dateToCheck = new Date(now);
 
-    if (!this.serviceService) {
-      await this.sendMsg(jid, 'Booking service unavailable at this moment.');
-      return;
-    }
-
     while (availableDates.length < 3 && daysChecked < maxDaysToCheck) {
       const dateStr = formatter.format(dateToCheck);
       const slots = await this.serviceService.getAvailableSlots(
-        serviceId,
+        service.id,
         dateStr,
       );
 
@@ -871,11 +1007,8 @@ export class WhatsappChatbot {
         }
       }
 
-      if (hasAvailable) {
-        // Prevent duplicate push if same formatted date happens twice during daylight savings transitions
-        if (!availableDates.includes(dateStr)) {
-          availableDates.push(dateStr);
-        }
+      if (hasAvailable && !availableDates.includes(dateStr)) {
+        availableDates.push(dateStr);
       }
 
       dateToCheck.setDate(dateToCheck.getDate() + 1);
@@ -885,8 +1018,9 @@ export class WhatsappChatbot {
     if (availableDates.length === 0) {
       await this.sendMsg(
         jid,
-        'No available dates found in the next 14 days. Please try again later.',
+        'No available dates found in the next 14 days. Please try again later.\n\nReply 0 for main menu.',
       );
+      await this.updateSession(session.id, 0, {});
       return;
     }
 
@@ -910,10 +1044,9 @@ export class WhatsappChatbot {
     });
     msg += `\nReply with a number, or '0' to cancel.`;
 
-    await this.updateSession(session.id, 12, {
-      serviceId,
+    await this.updateSession(session.id, 13, {
+      serviceId: service.id,
       dates: availableDates,
-      services: undefined,
     });
 
     await this.sendMsg(jid, msg);
@@ -926,14 +1059,24 @@ export class WhatsappChatbot {
     session: any,
     text: string,
   ) {
-    const ctx = session.context;
+    const raw = text.trim();
+    if (raw === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
     const dates = ctx.dates || [];
-    const index = parseInt(text) - 1;
+    const index = parseInt(raw) - 1;
 
     if (isNaN(index) || index < 0 || index >= dates.length) {
       await this.sendMsg(
         jid,
-        'Invalid selection. Please reply with 1, 2, or 3.',
+        `Invalid selection. Please reply with a number from 1 to ${dates.length}, or '0' to cancel.`,
       );
       return;
     }
@@ -956,9 +1099,7 @@ export class WhatsappChatbot {
       return;
     }
 
-    // List next 5 slots starting from now if today
     const now = new Date();
-    // Use .time instead of .start
     const futureSlots = slots
       .filter((s) => new Date(s.time) > now && s.available)
       .slice(0, 5);
@@ -966,7 +1107,7 @@ export class WhatsappChatbot {
     if (futureSlots.length === 0) {
       await this.sendMsg(
         jid,
-        `No more slots available today. Please reply '0' to start over.`,
+        `No more slots available today on ${date}. Please reply '0' to start over.`,
       );
       return;
     }
@@ -977,7 +1118,7 @@ export class WhatsappChatbot {
     });
     msg += `\nReply with a number, or '0' to cancel.`;
 
-    await this.updateSession(session.id, 13, {
+    await this.updateSession(session.id, 14, {
       date,
       slots: futureSlots,
       dates: undefined,
@@ -993,108 +1134,708 @@ export class WhatsappChatbot {
     session: any,
     text: string,
   ) {
-    const ctx = session.context;
+    const raw = text.trim();
+    if (raw === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
     const slots = ctx.slots || [];
-    const index = parseInt(text) - 1;
+    const index = parseInt(raw) - 1;
 
     if (isNaN(index) || index < 0 || index >= slots.length) {
       await this.sendMsg(
         jid,
-        'Invalid selection. Please reply with a valid number.',
+        'Invalid selection. Please reply with a valid number, or 0 to cancel.',
       );
       return;
     }
 
     const selectedSlot = slots[index];
 
-    await this.updateSession(session.id, 14, {
+    await this.updateSession(session.id, undefined, {
       selectedSlot,
       slots: undefined,
     });
 
-    await this.sendMsg(
+    await this.checkAndPromptCatalogOrName(
+      tenantId,
+      phone,
       jid,
-      'Great! Finally, please reply with your full name to confirm the booking.',
+      session,
+      ctx.serviceId,
+      'APPOINTMENT',
+      selectedSlot,
     );
   }
 
-  private async handleFinalizeBooking(
+  private async checkAndPromptCatalogOrName(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+    serviceId: string,
+    mode: 'WALK_IN' | 'APPOINTMENT',
+    selectedSlot?: any,
+  ) {
+    const catalogItems = await this.prisma.serviceCatalogItem.findMany({
+      where: {
+        catalog: { serviceId },
+        isAvailable: true,
+      },
+      orderBy: [{ category: 'asc' }, { sortOrder: 'asc' }, { name: 'asc' }],
+    });
+
+    if (catalogItems.length > 0) {
+      let msg = `🍽️ *Menu & Add-ons (Optional)*\n\n`;
+      let currentCat = '';
+      catalogItems.forEach((item, idx) => {
+        if (item.category && item.category !== currentCat) {
+          currentCat = item.category;
+          msg += `*— ${currentCat} —*\n`;
+        }
+        const price = (item.unitPrice / 100).toFixed(2);
+        msg += `${idx + 1}. ${item.name} — *R${price}*\n`;
+      });
+      msg += `\nReply with item numbers separated by commas (e.g. *1, 3* or *2*), or reply *0* to skip.\nReply *00* to cancel.`;
+
+      await this.updateSession(session.id, 15, {
+        serviceId,
+        mode,
+        selectedSlot,
+        catalogItems: catalogItems.map((it) => ({
+          id: it.id,
+          name: it.name,
+          category: it.category,
+          priceCents: it.unitPrice,
+        })),
+      });
+
+      await this.sendMsg(jid, msg);
+    } else {
+      await this.updateSession(session.id, 16, {
+        serviceId,
+        mode,
+        selectedSlot,
+        selectedItems: [],
+        menuTotal: 0,
+      });
+      await this.promptNameInput(tenantId, phone, jid, session);
+    }
+  }
+
+  private async handleCatalogSelection(
     tenantId: string,
     phone: string,
     jid: string,
     session: any,
     text: string,
   ) {
-    const ctx = session.context;
-    const name = text.trim();
-
-    if (!name || name.length < 2) {
-      await this.sendMsg(jid, 'Please provide a valid name.');
+    const raw = text.trim();
+    if (raw === '00') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
       return;
     }
 
-    if (!this.appointmentService) {
-      await this.sendMsg(jid, 'Booking service unavailable at this moment.');
-      return;
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
+    const catalogItems: any[] = ctx.catalogItems || [];
+
+    let selectedItems: any[] = [];
+    let menuTotal = 0;
+
+    if (
+      raw !== '0' &&
+      raw.toUpperCase() !== 'SKIP' &&
+      raw.toUpperCase() !== 'NONE'
+    ) {
+      const parts = raw
+        .split(/[,\s]+/)
+        .map((p) => parseInt(p.trim()))
+        .filter((n) => !isNaN(n));
+      const chosenIndexes = Array.from(new Set(parts));
+
+      const validItems: any[] = [];
+      for (const num of chosenIndexes) {
+        const itemIdx = num - 1;
+        if (itemIdx >= 0 && itemIdx < catalogItems.length) {
+          validItems.push(catalogItems[itemIdx]);
+        }
+      }
+
+      if (validItems.length === 0 && chosenIndexes.length > 0) {
+        await this.sendMsg(
+          jid,
+          'Invalid selection. Please reply with valid item numbers (e.g. *1, 3*), or reply *0* to skip:',
+        );
+        return;
+      }
+
+      selectedItems = validItems.map((v) => ({
+        id: v.id,
+        name: v.name,
+        category: v.category,
+        priceCents: v.priceCents,
+        quantity: 1,
+      }));
+      menuTotal = selectedItems.reduce(
+        (acc, it) => acc + (it.priceCents || 0),
+        0,
+      );
     }
 
-    // Find or create customer
-    let customer = await this.prisma.customer.findFirst({
+    await this.updateSession(session.id, 16, {
+      selectedItems,
+      menuTotal,
+      catalogItems: undefined,
+    });
+
+    await this.promptNameInput(tenantId, phone, jid, session);
+  }
+
+  private async promptNameInput(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+  ) {
+    const existingCustomer = await this.prisma.customer.findFirst({
       where: { tenantId, phone: phoneMatchCondition(phone) },
     });
 
-    if (!customer) {
-      customer = await this.prisma.customer.create({
-        data: { tenantId, name, phone: normalizePhoneZA(phone) },
-      });
+    if (
+      existingCustomer?.name &&
+      existingCustomer.name !== 'Walk-in' &&
+      existingCustomer.name !== 'Guest'
+    ) {
+      let msg = `👤 Confirm booking for *${existingCustomer.name}*?\n\n`;
+      msg += `Reply *1* to confirm, or reply with your full name if different:\nReply '0' to cancel.`;
+      await this.sendMsg(jid, msg);
     } else {
-      if (!customer.name || customer.name === 'Walk-in') {
-        await this.prisma.customer.update({
-          where: { id: customer.id },
-          data: { name },
-        });
+      let msg = `👤 Please reply with your *Full Name* to confirm your booking:\n\nReply '0' to cancel.`;
+      await this.sendMsg(jid, msg);
+    }
+  }
+
+  private async handleNameInput(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+    text: string,
+  ) {
+    const raw = text.trim();
+    if (raw === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    let customerName = raw;
+    if (raw === '1' || raw.toUpperCase() === 'YES') {
+      const existing = await this.prisma.customer.findFirst({
+        where: { tenantId, phone: phoneMatchCondition(phone) },
+      });
+      if (existing?.name) {
+        customerName = existing.name;
       }
     }
 
-    const start = new Date(ctx.selectedSlot.time);
-
-    // Fetch service for expected duration
-    let durationMins = 30;
-    if (ctx.serviceId) {
-      const srv = await this.prisma.service.findUnique({
-        where: { id: ctx.serviceId },
-      });
-      if (srv && srv.expectedDuration) durationMins = srv.expectedDuration;
+    if (!customerName || customerName.length < 2) {
+      await this.sendMsg(
+        jid,
+        'Please reply with a valid name (at least 2 letters):',
+      );
+      return;
     }
-    const end = new Date(start.getTime() + durationMins * 60000);
+
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
+
+    const serviceId = ctx.serviceId;
+    const mode = ctx.mode || 'WALK_IN';
+    const selectedSlot = ctx.selectedSlot;
+    const selectedItems = ctx.selectedItems || [];
+    const menuTotal = ctx.menuTotal || 0;
+
+    const service = await this.prisma.service.findUnique({
+      where: { id: serviceId },
+      include: { location: true },
+    });
+
+    if (!service) {
+      await this.sendMsg(jid, "Service not found. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const basePrice = service.basePrice || 0;
+    const totalAmount = Math.round(basePrice + menuTotal);
+
+    await this.updateSession(session.id, undefined, { customerName });
+
+    // Payment & Confirmation Routing
+    if (totalAmount === 0) {
+      // Free Booking: Finalize immediately
+      await this.finalizeBookingExecution(tenantId, phone, jid, session, {
+        service,
+        mode,
+        selectedSlot,
+        selectedItems,
+        menuTotal: 0,
+        customerName,
+        totalAmount: 0,
+        payAtCounter: true,
+      });
+      return;
+    }
+
+    // Paid Booking: Check payment options
+    const bookingFlow = await this.prisma.serviceFlow.findUnique({
+      where: { serviceId: service.id },
+    });
+    const tenantRecord = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { paymentAccount: true },
+    });
+
+    const stripeActive = Boolean(
+      tenantRecord?.paymentAccount?.chargesEnabled &&
+        tenantRecord?.paymentAccount?.connectedAccountId,
+    );
+
+    const checkinPayMode = bookingFlow?.checkinPayMode || 'BOTH';
+
+    if (!stripeActive || checkinPayMode === 'COUNTER_ONLY') {
+      await this.finalizeBookingExecution(tenantId, phone, jid, session, {
+        service,
+        mode,
+        selectedSlot,
+        selectedItems,
+        menuTotal,
+        customerName,
+        totalAmount,
+        payAtCounter: true,
+      });
+      return;
+    }
+
+    if (checkinPayMode === 'STRIPE_ONLY') {
+      await this.initiateStripePaymentFlow(tenantRecord, phone, jid, session, {
+        service,
+        mode,
+        selectedSlot,
+        selectedItems,
+        menuTotal,
+        customerName,
+        totalAmount,
+      });
+      return;
+    }
+
+    // Default: BOTH allowed. Prompt customer to select payment method (Step 17)
+    let summaryMsg = `💳 *Payment Required: Total R${(totalAmount / 100).toFixed(2)}*\n\n`;
+    if (basePrice > 0) {
+      summaryMsg += `💼 Service: *${service.name}* (R${(basePrice / 100).toFixed(2)})\n`;
+    }
+    if (selectedItems.length > 0) {
+      summaryMsg += `🛒 Menu & Add-ons:\n`;
+      selectedItems.forEach((it: any) => {
+        summaryMsg += `• 1x ${it.name} (R${(it.priceCents / 100).toFixed(2)})\n`;
+      });
+    }
+    summaryMsg += `\nHow would you like to pay?\n`;
+    summaryMsg += `1. 💳 *Pay Online with Card (Stripe)*\n`;
+    summaryMsg += `2. 💵 *Pay at Counter upon arrival*\n\n`;
+    summaryMsg += `Reply *1* or *2*, or '0' to cancel.`;
+
+    await this.updateSession(session.id, 17, {
+      totalAmount,
+      basePrice,
+    });
+
+    await this.sendMsg(jid, summaryMsg);
+  }
+
+  private async handlePaymentMethodSelection(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+    text: string,
+  ) {
+    const raw = text.trim();
+    if (raw === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
+
+    const service = await this.prisma.service.findUnique({
+      where: { id: ctx.serviceId },
+      include: { location: true },
+    });
+
+    if (!service) {
+      await this.sendMsg(jid, "Service not found. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const tenantRecord = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      include: { paymentAccount: true },
+    });
+
+    const bookingData = {
+      service,
+      mode: (ctx.mode as 'WALK_IN' | 'APPOINTMENT') || 'WALK_IN',
+      selectedSlot: ctx.selectedSlot,
+      selectedItems: ctx.selectedItems || [],
+      menuTotal: ctx.menuTotal || 0,
+      customerName: ctx.customerName || 'Customer',
+      totalAmount: ctx.totalAmount || 0,
+    };
+
+    if (
+      raw === '2' ||
+      raw.toUpperCase().includes('COUNTER') ||
+      raw.toUpperCase().includes('CASH')
+    ) {
+      await this.finalizeBookingExecution(tenantId, phone, jid, session, {
+        ...bookingData,
+        payAtCounter: true,
+      });
+    } else if (
+      raw === '1' ||
+      raw.toUpperCase().includes('ONLINE') ||
+      raw.toUpperCase().includes('CARD') ||
+      raw.toUpperCase().includes('STRIPE')
+    ) {
+      await this.initiateStripePaymentFlow(
+        tenantRecord,
+        phone,
+        jid,
+        session,
+        bookingData,
+      );
+    } else {
+      await this.sendMsg(
+        jid,
+        'Invalid choice. Reply *1* to Pay Online with Card (Stripe) or *2* to Pay at Counter, or *0* to cancel.',
+      );
+    }
+  }
+
+  private async initiateStripePaymentFlow(
+    tenant: any,
+    phone: string,
+    jid: string,
+    session: any,
+    data: {
+      service: any;
+      mode: 'WALK_IN' | 'APPOINTMENT';
+      selectedSlot?: any;
+      selectedItems: any[];
+      menuTotal: number;
+      customerName: string;
+      totalAmount: number;
+    },
+  ) {
+    if (!this.visitService || !this.tenantPaymentsService) {
+      await this.sendMsg(
+        jid,
+        "Payment service temporarily unavailable. Please approach the desk or reply '0' for main menu.",
+      );
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
 
     try {
-      await this.appointmentService.create({
-        tenantId,
-        customerId: customer.id,
-        locationId: ctx.locationId,
-        serviceId: ctx.serviceId,
-        scheduledStart: start,
-        scheduledEnd: end,
-        bookingSource: 'WHATSAPP',
+      const createdVisits = await this.visitService.joinMultiple({
+        customerName: data.customerName,
+        phone,
+        skipOtp: true,
+        payAtCounter: false,
+        bookings: [
+          {
+            serviceId: data.service.id,
+            scheduledFor:
+              data.mode === 'APPOINTMENT'
+                ? data.selectedSlot?.time
+                : undefined,
+            menuTotal: data.menuTotal,
+            selectedItems: data.selectedItems,
+            orderSelections: data.selectedItems,
+          },
+        ],
       });
 
-      const formattedTime = start.toLocaleString([], {
-        dateStyle: 'medium',
-        timeStyle: 'short',
+      const provisionalVisit = createdVisits[0];
+      if (!provisionalVisit) {
+        throw new Error('Could not create provisional ticket');
+      }
+
+      // If appointment mode, link an appointment record if not already linked
+      if (data.mode === 'APPOINTMENT' && data.selectedSlot?.time) {
+        const start = new Date(data.selectedSlot.time);
+        const durationMins = data.service.expectedDuration || 30;
+        const end = new Date(start.getTime() + durationMins * 60000);
+
+        const appt = await this.prisma.appointment.create({
+          data: {
+            tenantId: tenant.id,
+            customerId: provisionalVisit.customerId,
+            locationId: data.service.locationId,
+            serviceId: data.service.id,
+            scheduledStart: start,
+            scheduledEnd: end,
+            bookingSource: 'WHATSAPP',
+            status: 'SCHEDULED',
+            requiresPayment: true,
+            paymentStatus: 'PENDING',
+          },
+        });
+
+        await this.prisma.visit.update({
+          where: { id: provisionalVisit.id },
+          data: { appointmentId: appt.id },
+        });
+      }
+
+      const paymentResult =
+        await this.tenantPaymentsService.createPaymentIntent(
+          tenant.id,
+          data.totalAmount,
+          {
+            visitId: provisionalVisit.id,
+            description: `WhatsApp Booking: ${data.service.name}`,
+          },
+        );
+
+      const domainBase =
+        process.env.DOMAIN_BASE ||
+        (process.env.APP_URL
+          ? new URL(process.env.APP_URL).host
+          : 'qmova.yqbuddy.com');
+      const tenantSubdomain = tenant.subdomain || 'superadmin';
+      const paymentUrl = `https://${tenantSubdomain}.${domainBase}/pay/${paymentResult.paymentId}`;
+
+      let msg = `💳 *Card Payment Required for Ticket #${provisionalVisit.displayId}*\n\n`;
+      msg += `👤 Customer: *${data.customerName}*\n`;
+      msg += `💼 Service: *${data.service.name}*\n`;
+      if (data.selectedItems.length > 0) {
+        msg += `🛒 Items: ${data.selectedItems.map((i: any) => i.name).join(', ')}\n`;
+      }
+      msg += `💰 Total Amount: *R${(data.totalAmount / 100).toFixed(2)}*\n\n`;
+      msg += `👉 *Tap below to complete your payment securely with Card:*\n`;
+      msg += `🔗 ${paymentUrl}\n\n`;
+      msg += `⚡ *Once completed, your ticket will confirm instantly and your live tracker will be delivered here automatically.*\n\n`;
+      msg += `Reply '0' if you wish to cancel.`;
+
+      await this.updateSession(session.id, 18, {
+        pendingPaymentId: paymentResult.paymentId,
+        provisionalVisitId: provisionalVisit.id,
+        paymentUrl,
+        displayId: provisionalVisit.displayId,
       });
+
+      await this.sendMsg(jid, msg);
+    } catch (err: any) {
       await this.sendMsg(
         jid,
-        `✅ Booking Confirmed!\n\nName: ${name}\nTime: ${formattedTime}\n\nWe look forward to seeing you. Reply '0' for the main menu.`,
-      );
-    } catch (e) {
-      await this.sendMsg(
-        jid,
-        'Sorry, there was an error confirming your booking. Please try again later.',
+        `⚠️ Could not generate card payment link: ${err?.message || 'Unknown error'}. You can choose Pay at Counter or reply '0' to start over.`,
       );
     }
+  }
 
-    await this.updateSession(session.id, 0, {});
+  private async handlePendingPaymentState(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+    text: string,
+  ) {
+    const raw = text.trim();
+    if (raw === '0' || raw.toUpperCase() === 'CANCEL') {
+      await this.sendMsg(
+        jid,
+        "Payment session cancelled. Reply '0' for the main menu.",
+      );
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    const currentSession = await this.prisma.chatSession.findUnique({
+      where: { id: session.id },
+    });
+    const ctx = (currentSession?.context as any) || {};
+    const visitId = ctx.provisionalVisitId;
+
+    if (visitId) {
+      const visit = await this.prisma.visit.findUnique({
+        where: { id: visitId },
+      });
+      if (visit && visit.currentState !== 'PENDING_PAYMENT') {
+        await this.updateSession(session.id, 0, {});
+        await this.sendMsg(
+          jid,
+          `✅ Your payment has been received and ticket *#${visit.displayId}* is confirmed!\n\nReply '1' to view your live queue position or '0' for main menu.`,
+        );
+        return;
+      }
+    }
+
+    const paymentUrl = ctx.paymentUrl;
+    let msg = `⏳ We are waiting for your card payment for Ticket *#${ctx.displayId || ''}*.\n\n`;
+    if (paymentUrl) {
+      msg += `Pay online securely here:\n🔗 ${paymentUrl}\n\n`;
+    }
+    msg += `Once paid, your ticket confirms automatically. Reply '0' to cancel.`;
+    await this.sendMsg(jid, msg);
+  }
+
+  private async finalizeBookingExecution(
+    tenantId: string,
+    phone: string,
+    jid: string,
+    session: any,
+    data: {
+      service: any;
+      mode: 'WALK_IN' | 'APPOINTMENT';
+      selectedSlot?: any;
+      selectedItems: any[];
+      menuTotal: number;
+      customerName: string;
+      totalAmount: number;
+      payAtCounter: boolean;
+    },
+  ) {
+    if (!this.visitService) {
+      await this.sendMsg(jid, 'Booking service unavailable at this moment.');
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
+    try {
+      const createdVisits = await this.visitService.joinMultiple({
+        customerName: data.customerName,
+        phone,
+        skipOtp: true,
+        payAtCounter: true,
+        bookings: [
+          {
+            serviceId: data.service.id,
+            scheduledFor:
+              data.mode === 'APPOINTMENT'
+                ? data.selectedSlot?.time
+                : undefined,
+            menuTotal: data.menuTotal,
+            selectedItems: data.selectedItems,
+            orderSelections: data.selectedItems,
+          },
+        ],
+      });
+
+      const visit = createdVisits[0];
+      if (!visit) {
+        throw new Error('Failed to create ticket');
+      }
+
+      // If appointment mode, link an appointment record
+      if (data.mode === 'APPOINTMENT' && data.selectedSlot?.time) {
+        const start = new Date(data.selectedSlot.time);
+        const durationMins = data.service.expectedDuration || 30;
+        const end = new Date(start.getTime() + durationMins * 60000);
+
+        const appt = await this.prisma.appointment.create({
+          data: {
+            tenantId,
+            customerId: visit.customerId,
+            locationId: data.service.locationId,
+            serviceId: data.service.id,
+            scheduledStart: start,
+            scheduledEnd: end,
+            bookingSource: 'WHATSAPP',
+            status: 'SCHEDULED',
+            requiresPayment: data.totalAmount > 0,
+            paymentStatus: data.totalAmount > 0 ? 'PENDING' : 'NOT_REQUIRED',
+          },
+        });
+
+        await this.prisma.visit.update({
+          where: { id: visit.id },
+          data: { appointmentId: appt.id },
+        });
+      }
+
+      const domainBase =
+        process.env.DOMAIN_BASE ||
+        (process.env.APP_URL
+          ? new URL(process.env.APP_URL).host
+          : 'qmova.yqbuddy.com');
+      const trackerUrl = `https://${domainBase}/customer/status/${visit.id}`;
+
+      let msg = '';
+      if (data.mode === 'WALK_IN') {
+        msg = `✅ *Walk-In Confirmed!*\n\n`;
+        msg += `🎫 Ticket Number: *${visit.displayId}*\n`;
+        msg += `👤 Name: *${data.customerName}*\n`;
+        msg += `💼 Service: *${data.service.name}*\n`;
+        if (data.selectedItems.length > 0) {
+          msg += `🛒 Items: ${data.selectedItems.map((i: any) => i.name).join(', ')}\n`;
+        }
+        if (data.totalAmount > 0) {
+          msg += `💰 Amount Due: *R${(data.totalAmount / 100).toFixed(2)}* (Pay at counter)\n`;
+        }
+        msg += `\n📲 *Live Ticket & Stage Tracker:*\n🔗 ${trackerUrl}\n\n`;
+        msg += `You have joined the queue. You will be notified here when your turn arrives.\n\nReply '0' for the main menu.`;
+      } else {
+        const timeStr = data.selectedSlot?.time
+          ? new Date(data.selectedSlot.time).toLocaleString([], {
+              dateStyle: 'medium',
+              timeStyle: 'short',
+            })
+          : 'Scheduled';
+        msg = `✅ *Appointment Confirmed!*\n\n`;
+        msg += `🎫 Ticket Reference: *${visit.displayId}*\n`;
+        msg += `👤 Name: *${data.customerName}*\n`;
+        msg += `📅 Date & Time: *${timeStr}*\n`;
+        msg += `💼 Service: *${data.service.name}*\n`;
+        if (data.selectedItems.length > 0) {
+          msg += `🛒 Items: ${data.selectedItems.map((i: any) => i.name).join(', ')}\n`;
+        }
+        if (data.totalAmount > 0) {
+          msg += `💰 Amount Due: *R${(data.totalAmount / 100).toFixed(2)}* (Pay at counter)\n`;
+        }
+        msg += `\n📲 *Live Ticket Tracker:*\n🔗 ${trackerUrl}\n\n`;
+        msg += `We look forward to seeing you! Reply '0' for the main menu.`;
+      }
+
+      await this.sendMsg(jid, msg);
+      await this.updateSession(session.id, 0, {});
+    } catch (err: any) {
+      await this.sendMsg(
+        jid,
+        `⚠️ Error creating booking: ${err?.message || 'Could not complete'}. Reply '0' to start over.`,
+      );
+      await this.updateSession(session.id, 0, {});
+    }
   }
 
   private async handleReviewRating(

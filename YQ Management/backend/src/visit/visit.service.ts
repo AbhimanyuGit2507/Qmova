@@ -1235,6 +1235,7 @@ export class VisitService {
     otp?: string;
     language?: string;
     payAtCounter?: boolean;
+    skipOtp?: boolean;
     bookings: {
       serviceId: string;
       queueId?: string;
@@ -1243,6 +1244,9 @@ export class VisitService {
       formResponses?: any;
       accompanyingGuests?: number;
       itinerary?: any;
+      menuTotal?: number;
+      selectedItems?: any[];
+      orderSelections?: any[];
     }[];
   }) {
     if (!data.bookings || data.bookings.length === 0) {
@@ -1289,7 +1293,8 @@ export class VisitService {
             stripeActive);
 
       // OTP is required ONLY for bookings that do NOT involve upfront Stripe card authorization
-      if (!isOnlineStripeBooking && tenant?.whatsappConnected && data.phone) {
+      // Internal chatbot bookings provide skipOtp=true since the WhatsApp session proves caller ownership
+      if (!data.skipOtp && !isOnlineStripeBooking && tenant?.whatsappConnected && data.phone) {
         if (!data.otp) {
           throw new BadRequestException('OTP is required');
         }
