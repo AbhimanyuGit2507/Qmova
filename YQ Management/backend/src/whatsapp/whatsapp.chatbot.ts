@@ -40,57 +40,86 @@ export class WhatsappChatbot {
       update: { lastActive: new Date() },
     });
 
-    // Auto-expire sessions older than 24 hours back to initial step 0
-    const SESSION_TIMEOUT_MS = 24 * 60 * 60 * 1000;
-    if (
-      session.lastActive &&
-      Date.now() - new Date(session.lastActive).getTime() > SESSION_TIMEOUT_MS &&
-      session.step !== 0
-    ) {
-      await this.prisma.chatSession.update({
-        where: { id: session.id },
-        data: { step: 0, context: {}, lastActive: new Date() },
-      });
-      session.step = 0;
-      (session as any).context = {};
-    }
+    try {
+      // 1. Auto-expire in-progress booking sessions older than 30 minutes
+      const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+      if (
+        session.lastActive &&
+        Date.now() - new Date(session.lastActive).getTime() > INACTIVITY_TIMEOUT_MS &&
+        session.step > 0
+      ) {
+        await this.prisma.chatSession.update({
+          where: { id: session.id },
+          data: { step: 0, context: {}, lastActive: new Date() },
+        });
+        session.step = 0;
+        (session as any).context = {};
+      }
 
-    const isGreeting = ['HI', 'HELLO', 'HEY', 'START', 'MENU', '0'].includes(
-      upperText,
-    );
-    const isTransactionalReply = [
-      'OK',
-      'OKAY',
-      'THANKS',
-      'THANK YOU',
-      '👍',
-    ].includes(upperText);
+      // 2. Auto-expire human mode after 12 hours of inactivity so conversations don't remain muted forever
+      const HUMAN_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+      if (
+        session.lastActive &&
+        Date.now() - new Date(session.lastActive).getTime() > HUMAN_TIMEOUT_MS &&
+        (session.context as any)?.isHumanPaused
+      ) {
+        await this.prisma.chatSession.update({
+          where: { id: session.id },
+          data: {
+            context: {
+              ...((session.context as object) || {}),
+              isHumanPaused: false,
+            },
+            lastActive: new Date(),
+          },
+        });
+        (session.context as any).isHumanPaused = false;
+      }
 
-    // If human mode is active, block the bot from auto-replying unless they say MENU
-    if (session.context && (session.context as any).isHumanPaused) {
+      const isGreeting = [
+        'HI',
+        'HELLO',
+        'HEY',
+        'START',
+        'MENU',
+        '0',
+        'RESET',
+        'CANCEL',
+        'BOT',
+      ].includes(upperText);
+      const isTransactionalReply = [
+        'OK',
+        'OKAY',
+        'THANKS',
+        'THANK YOU',
+        '👍',
+      ].includes(upperText);
+
+      // If human mode is active, block the bot from auto-replying unless they say MENU / HI / BOT / 0
+      if (session.context && (session.context as any).isHumanPaused) {
+        if (isGreeting) {
+          // User wants to exit human mode and go back to bot
+          await this.updateSession(session.id, 0, {});
+          await this.sendMenu(jid, config);
+          return { handled: true, isHumanPaused: false };
+        }
+        // Return that it's paused so the service can log it
+        return { handled: true, isHumanPaused: true };
+      }
+
+      if (isTransactionalReply) {
+        // Just ignore it entirely to not annoy the customer when they say Thanks to automated alerts
+        return { handled: true, isHumanPaused: false };
+      }
+
       if (isGreeting) {
-        // User wants to exit human mode and go back to bot
-        await this.updateSession(session.id, 0, {});
+        await this.prisma.chatSession.update({
+          where: { id: session.id },
+          data: { step: 0, context: {} },
+        });
         await this.sendMenu(jid, config);
         return { handled: true, isHumanPaused: false };
       }
-      // Return that it's paused so the service can log it
-      return { handled: true, isHumanPaused: true };
-    }
-
-    if (isTransactionalReply) {
-      // Just ignore it entirely to not annoy the customer when they say Thanks to automated alerts
-      return { handled: true, isHumanPaused: false };
-    }
-
-    if (isGreeting) {
-      await this.prisma.chatSession.update({
-        where: { id: session.id },
-        data: { step: 0, context: {} },
-      });
-      await this.sendMenu(jid, config);
-      return { handled: true, isHumanPaused: false };
-    }
 
     // Process Menu Options
     if (session.step === 0) {
@@ -238,7 +267,28 @@ export class WhatsappChatbot {
 
     await this.sendMenu(jid, config);
     return { handled: true, isHumanPaused: false };
+  } catch (err: any) {
+    console.error(
+      `[WhatsappChatbot] Error processing message from ${phone}:`,
+      err,
+    );
+    // Auto-heal session: reset step to 0 and clear corrupted context
+    try {
+      await this.prisma.chatSession.update({
+        where: { id: session.id },
+        data: { step: 0, context: {}, lastActive: new Date() },
+      });
+      await this.sendMsg(
+        jid,
+        `Sorry, I encountered a temporary issue. Here is the main menu:\n\n`,
+      );
+      await this.sendMenu(jid, config);
+    } catch (healErr) {
+      console.error(`[WhatsappChatbot] Failed to auto-heal session:`, healErr);
+    }
+    return { handled: true, isHumanPaused: false };
   }
+}
 
   private async sendMenu(jid: string, config: any) {
     const botName = config?.botName || 'Assistant';
@@ -764,12 +814,19 @@ export class WhatsappChatbot {
     session: any,
     text: string,
   ) {
+    const raw = text.trim();
+    if (raw === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
     const currentSession = await this.prisma.chatSession.findUnique({
       where: { id: session.id },
     });
     const ctx = (currentSession?.context as any) || {};
     const locations = ctx.locations || [];
-    const index = parseInt(text) - 1;
+    const index = parseInt(raw) - 1;
 
     if (isNaN(index) || index < 0 || index >= locations.length) {
       await this.sendMsg(
@@ -834,12 +891,19 @@ export class WhatsappChatbot {
     session: any,
     text: string,
   ) {
+    const raw = text.trim();
+    if (raw === '0') {
+      await this.sendMsg(jid, "Booking cancelled. Reply '0' for the main menu.");
+      await this.updateSession(session.id, 0, {});
+      return;
+    }
+
     const currentSession = await this.prisma.chatSession.findUnique({
       where: { id: session.id },
     });
     const currentCtx = (currentSession?.context as any) || {};
     const services = currentCtx.services || [];
-    const index = parseInt(text) - 1;
+    const index = parseInt(raw) - 1;
 
     if (isNaN(index) || index < 0 || index >= services.length) {
       await this.sendMsg(
