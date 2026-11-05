@@ -627,33 +627,66 @@ export class VisitCron {
   }
 
   /**
-   * Auto-expire abandoned PENDING_PAYMENT visits older than 30 minutes.
-   * Prevents unpaid bookings from lingering or reserving slots indefinitely.
+   * Auto-expire abandoned PENDING_PAYMENT visits and uncompleted checkout payments older than 15 minutes.
+   * Prevents unpaid bookings from lingering, cluttering tenant reports, or reserving slots indefinitely.
+   * Preserves customer contact leads for CRM.
    */
   @Cron(CronExpression.EVERY_5_MINUTES)
   async handlePendingPaymentExpiration() {
-    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
     try {
       const expiredVisits = await this.prisma.visit.findMany({
         where: {
           currentState: 'PENDING_PAYMENT',
-          createdAt: { lt: thirtyMinutesAgo },
+          createdAt: { lt: fifteenMinutesAgo },
         },
         select: { id: true, tenantId: true },
       });
 
-      if (expiredVisits.length > 0) {
+      const expiredVisitIds = expiredVisits.map((v) => v.id);
+
+      if (expiredVisitIds.length > 0) {
         this.logger.log(
-          `Auto-expiring ${expiredVisits.length} abandoned PENDING_PAYMENT visits.`,
+          `Auto-expiring ${expiredVisitIds.length} abandoned PENDING_PAYMENT visits.`,
         );
         await this.prisma.visit.updateMany({
-          where: { id: { in: expiredVisits.map((v) => v.id) } },
+          where: { id: { in: expiredVisitIds } },
           data: {
             currentState: 'CANCELLED',
             cancelReason: 'Payment timed out / abandoned checkout',
             completedAt: new Date(),
           },
         });
+
+        // Also cancel any associated pending booking payments
+        await this.prisma.bookingPayment.updateMany({
+          where: {
+            visitId: { in: expiredVisitIds },
+            status: 'PENDING',
+          },
+          data: {
+            status: 'CANCELLED',
+            refundReason: 'Payment timed out / abandoned checkout',
+          },
+        });
+      }
+
+      // Sweep any other orphaned PENDING booking payments older than 15 minutes
+      const sweptPayments = await this.prisma.bookingPayment.updateMany({
+        where: {
+          status: 'PENDING',
+          createdAt: { lt: fifteenMinutesAgo },
+        },
+        data: {
+          status: 'CANCELLED',
+          refundReason: 'Checkout abandoned by customer',
+        },
+      });
+
+      if (sweptPayments.count > 0) {
+        this.logger.log(
+          `Auto-cancelled ${sweptPayments.count} stale orphaned PENDING payments.`,
+        );
       }
     } catch (err: any) {
       this.logger.error(

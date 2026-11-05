@@ -477,6 +477,37 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   const logoUrl = isBrandingEnabled ? tenant?.branding?.logoUrl : null;
   const baseUrl = typeof window !== 'undefined' ? (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000') : 'http://localhost:3000';
 
+  // Instantly signal abandoned checkout on tab close or page navigation
+  useEffect(() => {
+    if (step !== 4.5) return;
+    const pendingIds = createdVisits
+      .filter((v: any) => v.currentState === 'PENDING_PAYMENT')
+      .map((v: any) => v.id);
+
+    if (pendingIds.length === 0) return;
+
+    const handleUnload = () => {
+      const payload = JSON.stringify({ visitIds: pendingIds });
+      const blob = new Blob([payload], { type: 'application/json' });
+      const apiEndpoint = `${baseUrl}/public-visit/abandon-pending-payment`;
+      if (navigator.sendBeacon) {
+        navigator.sendBeacon(apiEndpoint, blob);
+      } else {
+        fetch(apiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: payload,
+          keepalive: true,
+        }).catch(() => {});
+      }
+    };
+
+    window.addEventListener('pagehide', handleUnload);
+    return () => {
+      window.removeEventListener('pagehide', handleUnload);
+    };
+  }, [step, createdVisits, baseUrl]);
+
   // Helper for contact details
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
 

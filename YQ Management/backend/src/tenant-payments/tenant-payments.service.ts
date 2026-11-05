@@ -1084,6 +1084,85 @@ export class TenantPaymentsService {
   }
 
   /**
+   * Sweeps stale/abandoned online booking payments (PENDING > 15 minutes ago or linked
+   * to cancelled/completed visits), marks them CANCELLED so they don't clutter the tenant's ledger,
+   * cancels the Stripe PaymentIntent, but preserves the customer lead for CRM.
+   */
+  async autoSweepAbandonedPayments(tenantId?: string): Promise<number> {
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+    try {
+      const stalePayments = await this.prisma.bookingPayment.findMany({
+        where: {
+          ...(tenantId ? { tenantId } : {}),
+          status: 'PENDING',
+          OR: [
+            { createdAt: { lt: fifteenMinutesAgo } },
+            {
+              visit: {
+                currentState: { in: ['CANCELLED', 'NO_SHOW', 'COMPLETED'] },
+              },
+            },
+          ],
+        },
+        include: {
+          paymentAccount: true,
+          visit: true,
+        },
+      });
+
+      if (stalePayments.length === 0) return 0;
+
+      for (const p of stalePayments) {
+        // Cancel Stripe PaymentIntent if present
+        if (
+          p.stripePaymentIntentId &&
+          p.paymentAccount?.connectedAccountId &&
+          this.stripe
+        ) {
+          try {
+            await this.stripe.paymentIntents.cancel(
+              p.stripePaymentIntentId,
+              { cancellation_reason: 'abandoned' },
+              { stripeAccount: p.paymentAccount.connectedAccountId },
+            );
+          } catch (stripeErr: any) {
+            // Ignore if already cancelled or succeeded
+          }
+        }
+
+        await this.prisma.bookingPayment.update({
+          where: { id: p.id },
+          data: {
+            status: 'CANCELLED',
+            refundReason: 'Abandoned checkout - session expired',
+          },
+        });
+
+        if (p.visit && p.visit.currentState === 'PENDING_PAYMENT') {
+          await this.prisma.visit.update({
+            where: { id: p.visit.id },
+            data: {
+              currentState: 'CANCELLED',
+              cancelReason: 'Payment abandoned by customer',
+              completedAt: new Date(),
+            },
+          });
+        }
+      }
+
+      this.logger.log(
+        `autoSweepAbandonedPayments: swept ${stalePayments.length} stale pending payment records.`,
+      );
+      return stalePayments.length;
+    } catch (err: any) {
+      this.logger.warn(
+        `autoSweepAbandonedPayments error: ${err?.message || err}`,
+      );
+      return 0;
+    }
+  }
+
+  /**
    * Comprehensive list of booking payment records for the tenant, with full service, location,
    * customer, visitInvoice, staff recorder details, and aggregates.
    */
@@ -1102,10 +1181,16 @@ export class TenantPaymentsService {
       offset?: number;
     },
   ) {
+    // Just-in-time hygiene sweep for abandoned checkouts
+    await this.autoSweepAbandonedPayments(tenantId);
+
     const where: any = { tenantId };
 
     if (query.status && query.status !== 'all') {
       where.status = query.status;
+    } else {
+      // By default, exclude CANCELLED (abandoned checkouts) so tenant only sees real transactions & active receivables
+      where.status = { notIn: ['CANCELLED'] };
     }
 
     if (query.method && query.method !== 'all') {

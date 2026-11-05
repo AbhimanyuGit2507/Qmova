@@ -172,25 +172,46 @@ export class TasksService {
 
   /**
    * Cleanup abandoned upfront payment visits every 15 minutes.
-   * If a visit is in PENDING_PAYMENT state for more than 30 minutes, we assume
-   * the user abandoned the checkout and delete the ghost token.
+   * If a visit is in PENDING_PAYMENT state for more than 15 minutes, we assume
+   * the user abandoned the checkout. Mark payments and visits as CANCELLED,
+   * releasing the slots and preventing ghost receivables while preserving customer leads.
    */
   @Cron('*/15 * * * *')
   async handleAbandonedPaymentsCleanup() {
-    const thirtyMinutesAgo = new Date();
-    thirtyMinutesAgo.setMinutes(thirtyMinutesAgo.getMinutes() - 30);
+    const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
 
     try {
-      const result = await this.prisma.visit.deleteMany({
+      const expiredVisits = await this.prisma.visit.findMany({
         where: {
           currentState: 'PENDING_PAYMENT',
-          createdAt: { lt: thirtyMinutesAgo },
+          createdAt: { lt: fifteenMinutesAgo },
         },
+        select: { id: true },
       });
 
-      if (result.count > 0) {
+      const visitIds = expiredVisits.map((v) => v.id);
+
+      if (visitIds.length > 0) {
+        await this.prisma.$transaction(async (tx) => {
+          await tx.bookingPayment.updateMany({
+            where: { visitId: { in: visitIds }, status: 'PENDING' },
+            data: {
+              status: 'CANCELLED',
+              refundReason: 'Checkout abandoned by customer',
+            },
+          });
+          await tx.visit.updateMany({
+            where: { id: { in: visitIds }, currentState: 'PENDING_PAYMENT' },
+            data: {
+              currentState: 'CANCELLED',
+              cancelReason: 'Payment abandoned by customer',
+              completedAt: new Date(),
+            },
+          });
+        });
+
         this.logger.log(
-          `Cleaned up ${result.count} abandoned PENDING_PAYMENT visits.`,
+          `Cleaned up ${visitIds.length} abandoned PENDING_PAYMENT checkouts.`,
         );
       }
     } catch (err) {

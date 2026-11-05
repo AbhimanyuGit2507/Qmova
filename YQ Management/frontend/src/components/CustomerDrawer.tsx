@@ -342,9 +342,14 @@ export function CustomerDrawer({ isOpen, onClose, customerId, onOpenPayments }: 
                               <div className="flex items-center gap-1 shrink-0">
                                 {(() => {
                                   const paid = v.bookingPayments?.find((p: any) => p.status === 'SUCCEEDED');
+                                  const isVisitActive = ['WAITING', 'CALLED', 'CHECKED_IN', 'IN_SERVICE', 'SCHEDULED'].includes(v.currentState);
                                   const due =
-                                    v.currentState === 'PENDING_PAYMENT' ||
-                                    v.bookingPayments?.some((p: any) => p.status === 'PENDING');
+                                    isVisitActive &&
+                                    !paid &&
+                                    (Boolean((v as any).isPayAtCounter) ||
+                                      v.bookingPayments?.some(
+                                        (p: any) => p.status === 'PENDING' && p.method !== 'CARD'
+                                      ));
                                   const currency = paid?.currency || v.service?.priceCurrency || 'ZAR';
 
                                   return (

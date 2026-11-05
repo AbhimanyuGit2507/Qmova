@@ -1341,11 +1341,12 @@ export default function RecordsPage() {
                       onChange={(e) => setPaymentStatusFilter(e.target.value)}
                       className="bg-transparent text-xs font-semibold text-on-surface dark:text-zinc-200 outline-none cursor-pointer pr-1"
                     >
-                      <option value="all" className="dark:bg-zinc-900">All Statuses</option>
+                      <option value="all" className="dark:bg-zinc-900">All (Settled & Active)</option>
                       <option value="SUCCEEDED" className="dark:bg-zinc-900">✓ Succeeded</option>
-                      <option value="PENDING" className="dark:bg-zinc-900">⏳ Pending</option>
+                      <option value="PENDING" className="dark:bg-zinc-900">⏳ Pending Counter</option>
                       <option value="REFUNDED" className="dark:bg-zinc-900">↩ Refunded</option>
                       <option value="FAILED" className="dark:bg-zinc-900">✕ Failed</option>
+                      <option value="CANCELLED" className="dark:bg-zinc-900">⊘ Abandoned Checkouts</option>
                     </select>
                   </div>
 
@@ -1685,6 +1686,7 @@ export default function RecordsPage() {
                       const isRefunded = payment.status === 'REFUNDED';
                       const isPending = payment.status === 'PENDING';
                       const isFailed = payment.status === 'FAILED';
+                      const isCancelled = payment.status === 'CANCELLED';
                       const isSucceeded = payment.status === 'SUCCEEDED' || payment.status === 'PAID';
 
                       const methodLabel =
@@ -1804,7 +1806,7 @@ export default function RecordsPage() {
                                 className={`font-mono font-bold text-base ${
                                   isRefunded
                                     ? 'text-red-500 line-through'
-                                    : isFailed
+                                    : isFailed || isCancelled
                                     ? 'text-zinc-400 line-through'
                                     : 'text-on-surface dark:text-white'
                                 }`}
@@ -1829,13 +1831,15 @@ export default function RecordsPage() {
                                   ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/25'
                                   : isFailed
                                   ? 'bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/25'
+                                  : isCancelled
+                                  ? 'bg-zinc-500/10 text-zinc-500 dark:text-zinc-400 border border-zinc-500/25'
                                   : 'bg-zinc-500/10 text-zinc-600 dark:text-zinc-300 border border-zinc-500/25'
                               }`}
                             >
                               {isSucceeded && <CheckCircle className="w-3 h-3" />}
                               {isRefunded && <RefreshCw className="w-3 h-3" />}
                               {isFailed && <AlertCircle className="w-3 h-3" />}
-                              {payment.status}
+                              {isCancelled ? 'Abandoned' : payment.status}
                             </span>
                           </td>
 

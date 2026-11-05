@@ -558,40 +558,48 @@ export class PublicVisitController {
     @Body() body: { visitIds?: string[]; token?: string },
   ) {
     const visitIds = body.visitIds || [];
-    let visitsToDelete: string[] = [];
+    let visitsToAbandon: string[] = [];
 
     if (visitIds.length > 0) {
       const visits = await this.prisma.visit.findMany({
         where: { id: { in: visitIds }, currentState: 'PENDING_PAYMENT' },
         select: { id: true },
       });
-      visitsToDelete = visits.map((v) => v.id);
+      visitsToAbandon = visits.map((v) => v.id);
     } else if (body.token) {
       const v = await this.prisma.visit.findUnique({
         where: { accessToken: body.token },
         select: { id: true, currentState: true },
       });
       if (v && v.currentState === 'PENDING_PAYMENT') {
-        visitsToDelete = [v.id];
+        visitsToAbandon = [v.id];
       }
     }
 
-    if (visitsToDelete.length === 0) {
+    if (visitsToAbandon.length === 0) {
       return { success: true, count: 0 };
     }
 
     await this.prisma.$transaction(async (tx) => {
-      await tx.bookingPayment.deleteMany({
-        where: { visitId: { in: visitsToDelete }, status: 'PENDING' },
+      // Mark pending booking payments as CANCELLED so they don't linger as false PENDING entries
+      await tx.bookingPayment.updateMany({
+        where: { visitId: { in: visitsToAbandon }, status: 'PENDING' },
+        data: {
+          status: 'CANCELLED',
+          refundReason: 'Checkout abandoned by customer',
+        },
       });
-      await tx.visitStep.deleteMany({
-        where: { visitId: { in: visitsToDelete } },
-      });
-      await tx.visit.deleteMany({
-        where: { id: { in: visitsToDelete }, currentState: 'PENDING_PAYMENT' },
+      // Mark provisional visits as CANCELLED with explicit cancelReason
+      await tx.visit.updateMany({
+        where: { id: { in: visitsToAbandon }, currentState: 'PENDING_PAYMENT' },
+        data: {
+          currentState: 'CANCELLED',
+          cancelReason: 'Payment abandoned by customer',
+          completedAt: new Date(),
+        },
       });
     });
 
-    return { success: true, count: visitsToDelete.length };
+    return { success: true, count: visitsToAbandon.length };
   }
 }

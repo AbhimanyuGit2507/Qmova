@@ -260,7 +260,6 @@ describe('VisitService - Temporal Booking & Queue Hygiene Engine', () => {
                     'CALLED',
                     'CHECKED_IN',
                     'ON_HOLD',
-                    'PENDING_PAYMENT',
                   ],
                 },
                 OR: expect.any(Array),

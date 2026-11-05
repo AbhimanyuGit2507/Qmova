@@ -505,7 +505,6 @@ export class VisitService {
               'CALLED',
               'CHECKED_IN',
               'ON_HOLD',
-              'PENDING_PAYMENT',
             ],
           },
           OR: [
@@ -527,6 +526,30 @@ export class VisitService {
     } else {
       if (scope === 'history') {
         where.currentState = { in: ['COMPLETED', 'NO_SHOW', 'CANCELLED'] };
+      } else if (scope === 'records' || scope === 'analytics') {
+        where.currentState = { notIn: ['PENDING_PAYMENT'] };
+      }
+
+      // Do not clutter operational history or records with abandoned checkout carts
+      if (scope === 'history' || scope === 'records' || scope === 'analytics') {
+        where.NOT = [
+          ...(Array.isArray(where.NOT)
+            ? where.NOT
+            : where.NOT
+            ? [where.NOT]
+            : []),
+          { currentState: 'PENDING_PAYMENT' },
+          {
+            currentState: 'CANCELLED',
+            cancelReason: {
+              in: [
+                'Payment abandoned by customer',
+                'Payment timed out / abandoned checkout',
+                'Checkout abandoned by customer',
+              ],
+            },
+          },
+        ];
       }
 
       const tz = tzParam || 'UTC';
