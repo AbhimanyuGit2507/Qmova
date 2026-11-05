@@ -41,8 +41,9 @@ export class WhatsappChatbot {
     });
 
     try {
-      // 1. Auto-expire in-progress booking sessions older than 30 minutes
-      const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000;
+      // 1. Auto-expire in-progress booking sessions (configurable, default 30 minutes)
+      const timeoutMinutes = Number(config.sessionTimeoutMinutes) || 30;
+      const INACTIVITY_TIMEOUT_MS = timeoutMinutes * 60 * 1000;
       if (
         session.lastActive &&
         Date.now() - new Date(session.lastActive).getTime() > INACTIVITY_TIMEOUT_MS &&
@@ -56,8 +57,9 @@ export class WhatsappChatbot {
         (session as any).context = {};
       }
 
-      // 2. Auto-expire human mode after 12 hours of inactivity so conversations don't remain muted forever
-      const HUMAN_TIMEOUT_MS = 12 * 60 * 60 * 1000;
+      // 2. Auto-expire human mode (configurable, default 12 hours) so conversations don't remain muted forever
+      const handoverHours = Number(config.humanHandoverHours) || 12;
+      const HUMAN_TIMEOUT_MS = handoverHours * 60 * 60 * 1000;
       if (
         session.lastActive &&
         Date.now() - new Date(session.lastActive).getTime() > HUMAN_TIMEOUT_MS &&
@@ -128,7 +130,12 @@ export class WhatsappChatbot {
         config.quickReplies?.status !== false ? (index++).toString() : null;
       const humanOption =
         config.quickReplies?.human !== false ? (index++).toString() : null;
-      const bookOption = (index++).toString();
+      const bookOption =
+        config.quickReplies?.booking !== false ? (index++).toString() : null;
+      const checkinOption =
+        config.quickReplies?.checkin ? (index++).toString() : null;
+      const payOption =
+        config.quickReplies?.pay ? (index++).toString() : null;
       const cancelOption =
         config.quickReplies?.cancel !== false ? (index++).toString() : null;
 
@@ -143,6 +150,7 @@ export class WhatsappChatbot {
       }
 
       if (
+        (checkinOption && upperText === checkinOption) ||
         upperText.includes('CHECKIN') ||
         upperText.includes('CHECK IN') ||
         upperText === 'CHECK-IN' ||
@@ -153,6 +161,7 @@ export class WhatsappChatbot {
       }
 
       if (
+        (payOption && upperText === payOption) ||
         upperText === 'PAY' ||
         upperText.includes('PAY ONLINE') ||
         upperText.includes('PAYMENT') ||
@@ -191,10 +200,11 @@ export class WhatsappChatbot {
       }
 
       if (
-        upperText === bookOption ||
-        upperText.includes('BOOK') ||
-        upperText.includes('APPOINTMENT') ||
-        upperText === 'book_new'
+        bookOption &&
+        (upperText === bookOption ||
+          upperText.includes('BOOK') ||
+          upperText.includes('APPOINTMENT') ||
+          upperText === 'book_new')
       ) {
         await this.handleBookingStart(tenantId, phone, jid, session);
         return { handled: true, isHumanPaused: false };
@@ -310,7 +320,15 @@ export class WhatsappChatbot {
     if (quickReplies.human !== false) {
       msg += `${index++}. Chat with Human\n`;
     }
-    msg += `${index++}. Book a Service / Join Line\n`;
+    if (quickReplies.booking !== false) {
+      msg += `${index++}. Book a Service / Join Line\n`;
+    }
+    if (quickReplies.checkin) {
+      msg += `${index++}. Appointment Check-In\n`;
+    }
+    if (quickReplies.pay) {
+      msg += `${index++}. Pay Outstanding Balance\n`;
+    }
     if (quickReplies.cancel !== false) {
       msg += `${index++}. Cancel Ticket\n`;
     }
@@ -1478,9 +1496,12 @@ export class WhatsappChatbot {
         tenantRecord?.paymentAccount?.connectedAccountId,
     );
 
-    const checkinPayMode = bookingFlow?.checkinPayMode || 'BOTH';
+    // Check tenant WhatsApp payment settings from chatbotConfig
+    const paymentConfig = (tenantRecord?.chatbotConfig as any)?.payments || {};
+    const paymentsEnabled = paymentConfig.enabled !== false;
+    const configuredPayMode = paymentConfig.mode || bookingFlow?.checkinPayMode || 'BOTH';
 
-    if (!stripeActive || checkinPayMode === 'COUNTER_ONLY') {
+    if (!paymentsEnabled || !stripeActive || configuredPayMode === 'COUNTER_ONLY') {
       await this.finalizeBookingExecution(tenantId, phone, jid, session, {
         service,
         mode,
@@ -1494,7 +1515,7 @@ export class WhatsappChatbot {
       return;
     }
 
-    if (checkinPayMode === 'STRIPE_ONLY') {
+    if (configuredPayMode === 'STRIPE_ONLY') {
       await this.initiateStripePaymentFlow(tenantRecord, phone, jid, session, {
         service,
         mode,
