@@ -467,12 +467,44 @@ function AppointmentCard({
       status !== "MISSED");
   const displayColors = isCurrentlyOngoing ? STATUS_COLORS.IN_PROGRESS : colors;
 
+  // Accent border color by status
+  const accentBorderColor =
+    isCurrentlyOngoing
+      ? "border-l-amber-500"
+      : status === "COMPLETED"
+      ? "border-l-zinc-400"
+      : status === "CONFIRMED"
+      ? "border-l-indigo-500"
+      : status === "CHECKED_IN"
+      ? "border-l-emerald-500"
+      : status === "PENDING_APPROVAL"
+      ? "border-l-rose-500"
+      : status === "CANCELLED"
+      ? "border-l-zinc-300"
+      : "border-l-sky-500";
+
+  // Completed visit: actual time taken
+  const isCompletedVisit =
+    apt._type === "Visit" && apt.serviceStart && (apt.completedAt || apt.serviceEnd);
+  const actualDurationMins = isCompletedVisit
+    ? Math.round(
+        (new Date(apt.completedAt || apt.serviceEnd).getTime() -
+          new Date(apt.serviceStart).getTime()) /
+          60000,
+      )
+    : null;
+
+  // Upcoming countdown (within 2 hours)
+  const minsUntil = Math.round((startTime.getTime() - now.getTime()) / 60000);
+  const showCountdown = minsUntil > 0 && minsUntil <= 120 && status !== "COMPLETED" && status !== "CANCELLED";
+
   return (
     <button
       className={`absolute rounded-xl p-2.5 flex flex-col justify-between items-start transition-all
         focus:outline-none focus:ring-2 focus:ring-indigo-400
         hover:shadow-lg hover:scale-[1.01] hover:z-30
-        ${displayColors.bg} border ${displayColors.border}
+        ${displayColors.bg} border-y border-r ${displayColors.border}
+        border-l-4 ${accentBorderColor}
         ${isDraggable ? "cursor-move" : "cursor-pointer"}
         ${status === "COMPLETED" ? "opacity-60 bg-zinc-100 dark:bg-zinc-900/60 grayscale" : ""}
       `}
@@ -493,7 +525,7 @@ function AppointmentCard({
     >
       <div className="flex items-center gap-1.5 w-full overflow-hidden">
         <div
-          className={`w-1.5 h-1.5 rounded-full shrink-0 ${displayColors.dot}`}
+          className={`w-1.5 h-1.5 rounded-full shrink-0 ${displayColors.dot} ${isCurrentlyOngoing ? "animate-pulse" : ""}`}
         />
         <span
           className={`text-[10px] font-bold uppercase tracking-widest truncate ${displayColors.text} opacity-70`}
@@ -512,19 +544,31 @@ function AppointmentCard({
       >
         {name}
       </span>
-      <div className="flex flex-col w-full text-left mt-0.5">
-        <span
-          className={`text-[9px] font-medium truncate w-full opacity-75 ${displayColors.text}`}
-        >
-          {timeStr}
-        </span>
-        {apt.service?.name && (
+      <div className="flex items-end justify-between w-full mt-0.5 gap-1">
+        <div className="flex flex-col text-left min-w-0">
           <span
-            className={`text-[9px] truncate w-full opacity-60 ${displayColors.text}`}
+            className={`text-[9px] font-medium truncate w-full opacity-75 ${displayColors.text}`}
           >
-            {apt.service.name}
+            {timeStr}
           </span>
-        )}
+          {apt.service?.name && widthPct > 8 && (
+            <span
+              className={`text-[9px] truncate w-full opacity-60 ${displayColors.text}`}
+            >
+              {apt.service.name}
+            </span>
+          )}
+        </div>
+        {/* Bottom-right badge: completed duration OR upcoming countdown */}
+        {actualDurationMins !== null ? (
+          <span className="text-[9px] font-bold text-emerald-600 dark:text-emerald-400 shrink-0 whitespace-nowrap">
+            ✓ {actualDurationMins}min
+          </span>
+        ) : showCountdown ? (
+          <span className="text-[9px] font-bold text-primary shrink-0 whitespace-nowrap">
+            in {minsUntil}min
+          </span>
+        ) : null}
       </div>
     </button>
   );
