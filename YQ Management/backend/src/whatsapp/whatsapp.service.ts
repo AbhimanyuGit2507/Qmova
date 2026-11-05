@@ -947,6 +947,62 @@ export class WhatsappService implements OnModuleInit {
     }
   }
 
+  extractMessageText(message: any): string {
+    if (!message) return '';
+    if (message.conversation) return message.conversation;
+    if (message.extendedTextMessage?.text)
+      return message.extendedTextMessage.text;
+    if (message.buttonsResponseMessage?.selectedButtonId)
+      return message.buttonsResponseMessage.selectedButtonId;
+    if (message.listResponseMessage?.title)
+      return message.listResponseMessage.title;
+    if (message.imageMessage)
+      return message.imageMessage.caption || '[Image]';
+    if (message.audioMessage) return '[Audio]';
+    if (message.videoMessage)
+      return message.videoMessage.caption || '[Video]';
+    if (message.documentMessage)
+      return message.documentMessage.fileName || '[Document]';
+    if (message.stickerMessage) return '[Sticker]';
+    return '';
+  }
+
+  async findChatMessages(
+    instanceName: string,
+    remoteJid: string,
+    limit = 100,
+  ): Promise<any[]> {
+    if (!instanceName || !remoteJid) return [];
+    try {
+      const result = await this.fetchEvo(
+        `/chat/findMessages/${instanceName}`,
+        'POST',
+        {
+          where: {
+            key: {
+              remoteJid,
+            },
+          },
+          limit,
+        },
+        12000,
+      );
+
+      if (result.error || !result.data) {
+        return [];
+      }
+
+      const records =
+        result.data?.messages?.records ||
+        result.data?.records ||
+        (Array.isArray(result.data) ? result.data : []);
+      return records;
+    } catch (e) {
+      this.logger.warn(`Failed to fetch chat messages for ${remoteJid}: ${e}`);
+      return [];
+    }
+  }
+
   async generatePairingCode(tenantId: string, phoneNumber: string) {
     if (!phoneNumber)
       throw new HttpException(
@@ -1514,12 +1570,12 @@ export class WhatsappService implements OnModuleInit {
 
       const message = payload.data.message;
       const jid = payload.data.key?.remoteJid;
-      const fromMe = payload.data.key?.fromMe;
+      const fromMe = !!payload.data.key?.fromMe;
       const messageId = payload.data.key?.id;
       const pushName = payload.data.pushName;
 
-      if (fromMe || !jid || jid.includes('@g.us')) {
-        this.logger.debug(`Ignoring outgoing or group message from ${jid}`);
+      if (!jid || jid.includes('@g.us') || jid.includes('@broadcast') || jid.includes('status@broadcast')) {
+        this.logger.debug(`Ignoring non-direct or group message from ${jid}`);
         return { ignored: true };
       }
 
@@ -1547,35 +1603,13 @@ export class WhatsappService implements OnModuleInit {
         return { ignored: true };
       }
 
-      let text = '';
-      if (message?.conversation) text = message.conversation;
-      else if (message?.extendedTextMessage?.text)
-        text = message.extendedTextMessage.text;
-      else if (message?.buttonsResponseMessage?.selectedButtonId)
-        text = message.buttonsResponseMessage.selectedButtonId;
-      else if (message?.listResponseMessage?.title)
-        text = message.listResponseMessage.title;
-      else if (message?.imageMessage)
-        text = message.imageMessage.caption || '[Image]';
-      else if (message?.audioMessage) text = '[Audio]';
-      else if (message?.videoMessage)
-        text = message.videoMessage.caption || '[Video]';
-      else if (message?.documentMessage)
-        text = message.documentMessage.fileName || '[Document]';
-      else if (message?.stickerMessage) text = '[Sticker]';
-
-      if (!text || !text.trim()) {
+      const rawText = (this.extractMessageText(message) || '').trim();
+      if (!rawText) {
         this.logger.debug(
           `Empty message or unsupported media type from ${phone}`,
         );
         return { ignored: true };
       }
-
-      // Preserve original casing for the chatbot's fuzzy matching
-      const rawText = text.trim();
-      this.logger.log(
-        `Received message from ${phone} on instance ${instanceName}: ${rawText}`,
-      );
 
       const tenant = await this.prisma.tenant.findFirst({
         where: { whatsappInstanceId: instanceName },
@@ -1590,6 +1624,116 @@ export class WhatsappService implements OnModuleInit {
         this.logger.warn(`No tenant found for instance ${instanceName}`);
         return { ignored: true };
       }
+
+      // ── Handle Outgoing (fromMe: true) Messages Sent from WhatsApp Phone / Web / API ──
+      if (fromMe) {
+        this.logger.log(
+          `[Outbound Webhook] Outgoing WhatsApp message to ${phone} on ${instanceName}: ${rawText.slice(0, 60)}`,
+        );
+
+        // 1. Check if message already exists by whatsappId
+        if (messageId) {
+          const existing = await this.prisma.message.findFirst({
+            where: { tenantId: tenant.id, whatsappId: messageId },
+          });
+          if (existing) {
+            this.logger.debug(
+              `Outgoing message ${messageId} already exists in DB, skipping duplicate.`,
+            );
+            return { ignored: true, reason: 'already_persisted' };
+          }
+        }
+
+        // 2. Prevent race duplicate with recently sent manager/system messages (within 15s)
+        const recentThreshold = new Date(Date.now() - 15000);
+        const recentSysMsg = await this.prisma.message.findFirst({
+          where: {
+            tenantId: tenant.id,
+            customerPhone: phone,
+            body: rawText,
+            createdAt: { gte: recentThreshold },
+          },
+        });
+
+        if (recentSysMsg) {
+          if (!recentSysMsg.whatsappId && messageId) {
+            await this.prisma.message.update({
+              where: { id: recentSysMsg.id },
+              data: { whatsappId: messageId },
+            });
+          }
+          return { ignored: true, reason: 'recently_dispatched_by_system' };
+        }
+
+        // 3. Message was sent directly by human staff on WhatsApp phone / web: persist to DB
+        const conversation = await this.prisma.customerConversation.upsert({
+          where: {
+            tenantId_customerPhone: {
+              tenantId: tenant.id,
+              customerPhone: phone,
+            },
+          },
+          update: {
+            lastMessageAt: new Date(),
+            status: 'OPEN',
+          },
+          create: {
+            tenantId: tenant.id,
+            customerPhone: phone,
+            status: 'OPEN',
+            unreadCount: 0,
+          },
+        });
+
+        const msgTimestamp = payload.data.messageTimestamp
+          ? new Date(Number(payload.data.messageTimestamp) * 1000)
+          : new Date();
+
+        await this.prisma.message.create({
+          data: {
+            tenantId: tenant.id,
+            customerPhone: phone,
+            conversationId: conversation.id,
+            body: rawText,
+            sender: 'MANAGER',
+            isRead: true,
+            whatsappId: messageId || undefined,
+            createdAt: msgTimestamp,
+          },
+        });
+
+        this.queueGateway.broadcastTenantUpdate(tenant.id, 'NEW_INBOX_MESSAGE', {
+          phone,
+          conversationId: conversation.id,
+        });
+
+        // 4. Automatically pause bot session for this customer so human conversation isn't interrupted
+        try {
+          const session = await this.prisma.chatSession.findUnique({
+            where: { tenantId_phone: { tenantId: tenant.id, phone } },
+          });
+          if (session) {
+            const currentContext = (session.context as any) || {};
+            await this.prisma.chatSession.update({
+              where: { id: session.id },
+              data: {
+                lastActive: new Date(),
+                context: { ...currentContext, isHumanPaused: true },
+              },
+            });
+          }
+        } catch (sessionErr) {
+          this.logger.warn(
+            `Failed to auto-pause bot on outgoing staff message: ${sessionErr}`,
+          );
+        }
+
+        return { handled: true, action: 'outgoing_staff_message_logged' };
+      }
+
+      this.logger.log(
+        `Received message from ${phone} on instance ${instanceName}: ${rawText}`,
+      );
 
       const sub = tenant.subscriptions;
       let isActive = false;

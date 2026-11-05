@@ -5,7 +5,7 @@ import { RedisService } from '../redis/redis.service';
 import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { QueueGateway } from '../queue/queue.gateway';
 import { forwardRef, Inject } from '@nestjs/common';
-import { getPhoneLookupVariants } from '../utils/phone.util';
+import { getPhoneLookupVariants, formatWhatsAppJid } from '../utils/phone.util';
 
 @Injectable()
 export class MessagesService {
@@ -311,8 +311,143 @@ export class MessagesService {
     });
   }
 
-  async getInboxMessages(tenantId: string, phone: string) {
+  /**
+   * Synchronizes recent chat messages (both inbound and outbound sent from phone/web)
+   * from Evolution API into the database for full conversational fidelity.
+   */
+  async syncEvolutionChatHistory(
+    tenantId: string,
+    phone: string,
+    forceSync = false,
+  ): Promise<number> {
+    const rawDigits = phone.replace(/\D/g, '');
+    if (!rawDigits) return 0;
+
+    const lockKey = `inbox_sync:${tenantId}:${rawDigits}`;
+    if (!forceSync) {
+      try {
+        const alreadySynced = await this.redisService.client.get(lockKey);
+        if (alreadySynced) return 0;
+      } catch (err) {
+        // Continue if Redis check fails
+      }
+    }
+
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { id: true, whatsappInstanceId: true, whatsappConnected: true },
+    });
+
+    if (!tenant?.whatsappInstanceId || !tenant.whatsappConnected) {
+      return 0;
+    }
+
+    // Set 30-second debounce in Redis to avoid re-syncing on every 6s poll
+    try {
+      await this.redisService.client.set(lockKey, '1', 'EX', 30);
+    } catch (e) {
+      // Non-critical
+    }
+
+    const remoteJid = formatWhatsAppJid(phone);
+    if (!remoteJid) return 0;
+
+    const records = await this.whatsappService.findChatMessages(
+      tenant.whatsappInstanceId,
+      remoteJid,
+      100,
+    );
+
+    if (!records || records.length === 0) {
+      return 0;
+    }
+
+    const recordIds = records
+      .map((r: any) => r.key?.id)
+      .filter((id: any): id is string => typeof id === 'string' && !!id);
+
+    if (recordIds.length === 0) return 0;
+
+    const existingMessages = await this.prisma.message.findMany({
+      where: {
+        tenantId,
+        whatsappId: { in: recordIds },
+      },
+      select: { whatsappId: true },
+    });
+
+    const existingSet = new Set(existingMessages.map((m) => m.whatsappId));
+    let syncedCount = 0;
+
+    // Ensure conversation exists
+    const conversation = await this.prisma.customerConversation.upsert({
+      where: {
+        tenantId_customerPhone: {
+          tenantId,
+          customerPhone: phone,
+        },
+      },
+      update: { status: 'OPEN' },
+      create: {
+        tenantId,
+        customerPhone: phone,
+        status: 'OPEN',
+        unreadCount: 0,
+      },
+    });
+
+    for (const rec of records) {
+      const msgId = rec.key?.id;
+      if (!msgId || existingSet.has(msgId)) continue;
+
+      const text = this.whatsappService.extractMessageText(rec.message)?.trim();
+      if (!text) continue;
+
+      const fromMe = !!rec.key?.fromMe;
+      const msgTimestamp = rec.messageTimestamp
+        ? new Date(Number(rec.messageTimestamp) * 1000)
+        : new Date();
+
+      try {
+        await this.prisma.message.create({
+          data: {
+            tenantId,
+            customerPhone: phone,
+            conversationId: conversation.id,
+            body: text,
+            sender: fromMe ? 'MANAGER' : 'CUSTOMER',
+            isRead: true,
+            whatsappId: msgId,
+            createdAt: msgTimestamp,
+          },
+        });
+        existingSet.add(msgId);
+        syncedCount++;
+      } catch (insertErr) {
+        // Skip duplicate or constraint collisions safely
+      }
+    }
+
+    if (syncedCount > 0) {
+      // Update lastMessageAt on the conversation
+      await this.prisma.customerConversation.update({
+        where: { id: conversation.id },
+        data: { lastMessageAt: new Date() },
+      });
+    }
+
+    return syncedCount;
+  }
+
+  async getInboxMessages(tenantId: string, phone: string, forceSync = false) {
     const phoneVariants = getPhoneLookupVariants(phone);
+
+    // Auto-sync missing history from WhatsApp Evolution API (cached/debounced 30s)
+    try {
+      await this.syncEvolutionChatHistory(tenantId, phone, forceSync);
+    } catch (syncErr) {
+      // Non-blocking fallback
+    }
 
     // Reset unread count
     await this.prisma.customerConversation.updateMany({

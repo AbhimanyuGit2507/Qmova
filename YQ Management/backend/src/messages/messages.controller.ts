@@ -89,6 +89,19 @@ export class MessagesController {
     return this.messagesService.getInboxMessages(req.user.tenantId, phone);
   }
 
+  @Post('inbox/:phone/sync')
+  async syncInboxChat(
+    @Req() req: AuthenticatedRequest,
+    @Param('phone') phone: string,
+  ) {
+    const count = await this.messagesService.syncEvolutionChatHistory(
+      req.user.tenantId,
+      phone,
+      true, // forceSync
+    );
+    return { success: true, count };
+  }
+
   @Post('inbox/:phone')
   async sendInboxMessage(
     @Req() req: AuthenticatedRequest,

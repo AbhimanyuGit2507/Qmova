@@ -75,3 +75,24 @@ export function normalizePhoneZA(raw: string): string {
 export function phoneMatchCondition(phone: string): { in: string[] } {
   return { in: getPhoneLookupVariants(phone) };
 }
+
+/**
+ * Normalizes a phone number into a canonical WhatsApp remoteJID format (`[country_code][number]@s.whatsapp.net`).
+ * Automatically handles South Africa (+27) and India (+91) conventions.
+ */
+export function formatWhatsAppJid(rawPhone: string): string {
+  const digits = rawPhone.replace(/\D/g, '');
+  if (!digits) return '';
+
+  // South Africa local format (0XXXXXXXXX -> 27XXXXXXXXX)
+  if (digits.startsWith('0') && digits.length === 10) {
+    return `27${digits.slice(1)}@s.whatsapp.net`;
+  }
+
+  // India local format (10 digits without leading 0 -> 91XXXXXXXXXX)
+  if (digits.length === 10 && !digits.startsWith('0')) {
+    return `91${digits}@s.whatsapp.net`;
+  }
+
+  return `${digits}@s.whatsapp.net`;
+}

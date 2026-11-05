@@ -451,6 +451,24 @@ export default function InboxPage() {
     onError: () => toast.error('Failed to toggle bot mode'),
   });
 
+  // ── Sync Chat History from WhatsApp Evolution API ──────────────────────────
+  const syncChatMutation = useMutation({
+    mutationFn: () =>
+      fetchApi<{ success: boolean; count: number }>(`/messages/inbox/${selectedPhone}/sync`, {
+        method: 'POST',
+      }),
+    onSuccess: (data) => {
+      if (data?.count && data.count > 0) {
+        toast.success(`Synchronized ${data.count} WhatsApp message${data.count === 1 ? '' : 's'}`);
+      } else {
+        toast.info('WhatsApp chat history is up to date');
+      }
+      refetchMessages();
+      refetchConversations();
+    },
+    onError: () => toast.error('Failed to sync WhatsApp history'),
+  });
+
   // ── Send Message Mutation ──────────────────────────────────────────────────
   const sendMutation = useMutation({
     mutationFn: (payload: {
@@ -928,6 +946,17 @@ export default function InboxPage() {
                 </div>
 
                 <div className="flex items-center gap-1.5 shrink-0">
+                  {/* Sync WhatsApp History from Evolution API */}
+                  <button
+                    onClick={() => syncChatMutation.mutate()}
+                    disabled={syncChatMutation.isPending}
+                    title="Sync complete WhatsApp chat history (including messages sent from phone)"
+                    className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer border bg-surface-container dark:bg-white/5 border-border dark:border-white/10 hover:bg-surface-container-high dark:hover:bg-white/10 text-on-surface dark:text-zinc-200"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 ${syncChatMutation.isPending ? 'animate-spin text-primary' : ''}`} />
+                    <span>Sync Chat</span>
+                  </button>
+
                   {/* FE-03: Bot / Human mode toggle */}
                   <button
                     onClick={() => toggleBotMutation.mutate()}
@@ -1031,7 +1060,11 @@ export default function InboxPage() {
                   </div>
                 ) : (
                   safeMessages.map((m: AnyFixMe, index: number) => {
-                    const isOperator = m.sender === 'MANAGER';
+                    const isOperator =
+                      m.sender === 'MANAGER' ||
+                      m.sender === 'OPERATOR' ||
+                      m.sender === 'STAFF' ||
+                      m.sender === 'AGENT';
                     const isSystem = m.sender === 'SYSTEM';
                     const isOurSide = isOperator || isSystem;
                     const autoBadge = getAutomatedBadge(m.automatedType, m.body);
