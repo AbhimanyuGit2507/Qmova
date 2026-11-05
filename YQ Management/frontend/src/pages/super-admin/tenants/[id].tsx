@@ -201,6 +201,31 @@ export default function SuperAdminTenantDetail() {
     onError: () => toast.error('Failed to cancel plan'),
   });
 
+  const extendSubscriptionMutation = useMutation({
+    mutationFn: (days: number) =>
+      fetchApi(`/super-admin/tenants/${id}/extend-subscription`, {
+        method: 'POST',
+        body: JSON.stringify({ days }),
+      }),
+    onSuccess: () => {
+      toast.success('Subscription extended successfully');
+      queryClient.invalidateQueries({ queryKey: ['super-admin-tenant', id] });
+    },
+    onError: () => toast.error('Failed to extend subscription'),
+  });
+
+  const syncLimitsMutation = useMutation({
+    mutationFn: () =>
+      fetchApi(`/super-admin/tenants/${id}/sync-limits`, {
+        method: 'POST',
+      }),
+    onSuccess: () => {
+      toast.success('Workspace limits synchronized with plan!');
+      queryClient.invalidateQueries({ queryKey: ['super-admin-tenant', id] });
+    },
+    onError: () => toast.error('Failed to sync limits'),
+  });
+
   const deleteTenantMutation = useMutation({
     mutationFn: (tenantId: string) => fetchApi(`/super-admin/tenants/${tenantId}`, { method: 'DELETE' }),
     onSuccess: () => { toast.success('Business removed'); router.push('/super-admin/tenants'); },
@@ -476,56 +501,180 @@ export default function SuperAdminTenantDetail() {
         )}
 
         {/* ── SUBSCRIPTION ── */}
-        {activeTab === 'subscription' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center flex-wrap gap-3">
-                <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-indigo-500" />Subscription & Invoicing</h2>
-                <div className="flex gap-2">
-                  <button onClick={() => setShowAssignPlanModal(true)} className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-medium transition-colors">Force Assign Plan</button>
-                  {(tenant.subscriptionStatus === 'ACTIVE' || tenant.subscriptionStatus === 'TRIAL') && (
-                    <button onClick={handleCancelPlan} disabled={cancelPlanMutation.isPending} className="px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50">Revoke Access</button>
-                  )}
+        {activeTab === 'subscription' && (() => {
+          const currentSub = tenant.subscription || tenant.subscriptions;
+          const isFree = Boolean(currentSub?.isComplimentary || (currentSub?.metadata as any)?.isFree || currentSub?.plan?.price === 0);
+          const effectiveEnd = currentSub?.nextBillingDate || currentSub?.renewalDate || currentSub?.currentPeriodEnd;
+          const daysRemaining = effectiveEnd ? Math.max(0, Math.ceil((new Date(effectiveEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
+
+          return (
+            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {/* Active Subscription & License Overview Card */}
+              <div className="bg-gradient-to-br from-indigo-950/80 via-zinc-900/90 to-black border border-indigo-500/30 rounded-3xl p-8 relative overflow-hidden shadow-2xl">
+                <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                
+                <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-8">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-4">
+                      <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider ${
+                        tenant.subscriptionStatus === 'ACTIVE' ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' :
+                        tenant.subscriptionStatus === 'TRIAL' ? 'bg-amber-500/20 text-amber-400 border border-amber-500/30' :
+                        'bg-rose-500/20 text-rose-400 border border-rose-500/30'
+                      }`}>
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                        {tenant.subscriptionStatus}
+                      </span>
+
+                      {currentSub && (
+                        <span className="px-3 py-1 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-wider border border-white/15">
+                          {isFree ? 'Complimentary Access' : `${currentSub.billingInterval || 'Monthly'} Billing`}
+                        </span>
+                      )}
+                    </div>
+
+                    <h3 className="text-3xl font-black text-white tracking-tight flex items-center gap-3">
+                      {currentSub?.plan?.name || 'No Active Plan'}
+                      {currentSub?.plan?.name?.toLowerCase().includes('enterprise') && (
+                        <Crown className="w-7 h-7 text-amber-400 drop-shadow-[0_0_12px_rgba(251,191,36,0.5)]" />
+                      )}
+                    </h3>
+
+                    <p className="text-zinc-300 text-sm mt-2 max-w-xl leading-relaxed">
+                      {currentSub ? (
+                        <>
+                          {isFree ? 'Granted with complimentary enterprise access. ' : `Standard paid subscription at ${currentSub.plan?.currency || 'ZAR'} ${Number((currentSub.plan?.price || 0) / 100).toFixed(2)} / ${currentSub.billingInterval || 'mo'}. `}
+                          {effectiveEnd && (
+                            <span>Active through <strong className="text-white">{format(new Date(effectiveEnd), 'MMMM d, yyyy')}</strong> ({daysRemaining} days remaining).</span>
+                          )}
+                        </>
+                      ) : (
+                        'Tenant currently has no active subscription assigned. Select a plan below.'
+                      )}
+                    </p>
+
+                    {/* Date details row */}
+                    {currentSub && (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-white/10 text-xs">
+                        <div>
+                          <span className="text-zinc-400 block mb-1">Period Started</span>
+                          <span className="font-semibold text-white">
+                            {currentSub.currentPeriodStart ? format(new Date(currentSub.currentPeriodStart), 'MMM d, yyyy') : '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block mb-1">Effective Expiry / Renewal</span>
+                          <span className="font-semibold text-emerald-400">
+                            {effectiveEnd ? format(new Date(effectiveEnd), 'MMM d, yyyy') : '-'}
+                          </span>
+                        </div>
+                        <div>
+                          <span className="text-zinc-400 block mb-1">License Classification</span>
+                          <span className="font-semibold text-indigo-300">
+                            {isFree ? 'Complimentary VIP / Internal' : 'Standard Commercial'}
+                          </span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Quick Action Controls */}
+                  <div className="flex flex-col gap-2.5 shrink-0 min-w-[220px]">
+                    <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Quick Extensions</div>
+                    <div className="flex gap-2">
+                      <button
+                        onClick={() => extendSubscriptionMutation.mutate(30)}
+                        disabled={extendSubscriptionMutation.isPending || !currentSub}
+                        className="flex-1 px-3 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all border border-white/15"
+                      >
+                        +30 Days
+                      </button>
+                      <button
+                        onClick={() => extendSubscriptionMutation.mutate(90)}
+                        disabled={extendSubscriptionMutation.isPending || !currentSub}
+                        className="flex-1 px-3 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all border border-white/15"
+                      >
+                        +90 Days
+                      </button>
+                      <button
+                        onClick={() => extendSubscriptionMutation.mutate(365)}
+                        disabled={extendSubscriptionMutation.isPending || !currentSub}
+                        className="flex-1 px-3 py-2 bg-white/10 hover:bg-white/20 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all border border-white/15"
+                      >
+                        +1 Year
+                      </button>
+                    </div>
+
+                    <div className="flex gap-2 mt-2">
+                      <button
+                        onClick={() => syncLimitsMutation.mutate()}
+                        disabled={syncLimitsMutation.isPending || !currentSub}
+                        className="flex-1 px-3 py-2 bg-indigo-500/20 hover:bg-indigo-500/30 text-indigo-300 rounded-xl text-xs font-bold transition-all border border-indigo-500/30 flex items-center justify-center gap-1.5"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 ${syncLimitsMutation.isPending ? 'animate-spin' : ''}`} />
+                        Sync Limits
+                      </button>
+                      <button
+                        onClick={() => setShowAssignPlanModal(true)}
+                        className="flex-1 px-3 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition-all shadow-md shadow-indigo-500/20"
+                      >
+                        Force Assign
+                      </button>
+                    </div>
+
+                    {(tenant.subscriptionStatus === 'ACTIVE' || tenant.subscriptionStatus === 'TRIAL') && (
+                      <button 
+                        onClick={handleCancelPlan} 
+                        disabled={cancelPlanMutation.isPending} 
+                        className="w-full mt-1 px-3 py-1.5 text-xs text-rose-400 hover:text-rose-300 hover:bg-rose-500/10 rounded-lg transition-colors border border-rose-500/20 font-medium disabled:opacity-50"
+                      >
+                        Revoke License Access
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-400">
-                <thead className="bg-gray-50 dark:bg-white/5 text-xs font-bold uppercase tracking-wider border-b border-gray-200 dark:border-white/10 text-gray-900 dark:text-zinc-200">
-                  <tr>
-                    <th className="px-6 py-4">Transaction ID</th>
-                    <th className="px-6 py-4">Amount</th>
-                    <th className="px-6 py-4">Status</th>
-                    <th className="px-6 py-4">Date</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                  {(!tenant.transactions || tenant.transactions.length === 0) ? (
-                    <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 dark:text-zinc-500">No payment history found.</td></tr>
-                  ) : tenant.transactions.map((tx: any) => (
-                    <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{tx.id}</td>
-                      <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                          ['COMPLETE','SUCCEEDED'].includes(tx.status) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                          ['PENDING','PROCESSING'].includes(tx.status) ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
-                          'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400'
-                        }`}>
-                          {['COMPLETE','SUCCEEDED'].includes(tx.status) && <CheckCircle2 className="w-3 h-3" />}
-                          {['PENDING','PROCESSING'].includes(tx.status) && <Clock className="w-3 h-3" />}
-                          {['CANCELLED','FAILED','ERROR'].includes(tx.status) && <XCircle className="w-3 h-3" />}
-                          {tx.status}
-                        </span>
-                      </td>
-                      <td className="px-6 py-4 text-gray-500 text-sm">{tx.createdAt ? format(new Date(tx.createdAt), 'MMM d, yyyy h:mm a') : '-'}</td>
+
+              {/* Transactions & Invoices Table */}
+              <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+                <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center flex-wrap gap-3">
+                  <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-indigo-500" />Transaction History & Invoicing</h2>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-400">
+                  <thead className="bg-gray-50 dark:bg-white/5 text-xs font-bold uppercase tracking-wider border-b border-gray-200 dark:border-white/10 text-gray-900 dark:text-zinc-200">
+                    <tr>
+                      <th className="px-6 py-4">Transaction ID</th>
+                      <th className="px-6 py-4">Amount</th>
+                      <th className="px-6 py-4">Status</th>
+                      <th className="px-6 py-4">Date</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                    {(!tenant.transactions || tenant.transactions.length === 0) ? (
+                      <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 dark:text-zinc-500">
+                        {isFree ? 'No billing transactions recorded — tenant is active under a complimentary license.' : 'No payment history found.'}
+                      </td></tr>
+                    ) : tenant.transactions.map((tx: any) => (
+                      <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{tx.id}</td>
+                        <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                            ['COMPLETE','SUCCEEDED'].includes(tx.status) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
+                            ['PENDING','PROCESSING'].includes(tx.status) ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
+                            'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400'
+                          }`}>{tx.status}</span>
+                        </td>
+                        <td className="px-6 py-4 text-gray-500 text-sm">{tx.createdAt ? format(new Date(tx.createdAt), 'MMM d, yyyy h:mm a') : '-'}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
               </div>
             </div>
-          </div>
-        )}
+          );
+        })()}
 
         {/* ── SETTINGS ── */}
         {activeTab === 'settings' && (
@@ -841,47 +990,115 @@ export default function SuperAdminTenantDetail() {
       {/* ── ASSIGN PLAN MODAL ── */}
       {showAssignPlanModal && (
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-md bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-6">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-white">Assign Plan</h2>
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white">Assign Subscription Plan</h2>
+                <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">Provision immediate tier entitlements and duration</p>
+              </div>
               <button onClick={() => setShowAssignPlanModal(false)} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors"><XCircle className="w-5 h-5" /></button>
             </div>
-            <div className="space-y-4 mb-8">
+            
+            <div className="space-y-5 mb-8">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Select Plan</label>
+                <label className="block text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5">Select Target Plan</label>
                 {plansLoading ? <div className="h-12 bg-gray-100 dark:bg-zinc-800 rounded-xl animate-pulse" /> : (
-                  <select value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
+                  <select value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium">
                     <option value="">-- Choose a plan --</option>
-                    {plans?.map((plan: any) => <option key={plan.id} value={plan.id}>{plan.name} ({plan.currency} {plan.price})</option>)}
+                    {plans?.map((plan: any) => (
+                      <option key={plan.id} value={plan.id}>
+                        {plan.name} — {plan.currency} {Number((plan.price || 0) / 100).toFixed(2)} / {plan.billingInterval || 'month'}
+                      </option>
+                    ))}
                   </select>
                 )}
               </div>
+
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Billing Interval</label>
-                <select value={billingInterval} onChange={e => setBillingInterval(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none">
-                  <option value="MONTHLY">Monthly</option>
-                  <option value="YEARLY">Yearly</option>
-                  <option value="CUSTOM">Custom Expiry</option>
-                </select>
-              </div>
-              {billingInterval === 'CUSTOM' && (
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-1">Custom Expiry Date</label>
-                  <input type="date" value={customEndDate} onChange={e => setCustomEndDate(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none" />
+                <label className="block text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-2">Duration Presets</label>
+                <div className="grid grid-cols-4 gap-2 mb-2">
+                  {[
+                    { label: '30 Days', interval: 'MONTHLY', days: 30 },
+                    { label: '90 Days', interval: 'CUSTOM', days: 90 },
+                    { label: '1 Year', interval: 'YEARLY', days: 365 },
+                    { label: 'Lifetime', interval: 'CUSTOM', days: 36500 },
+                  ].map(preset => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => {
+                        setBillingInterval(preset.interval);
+                        const targetDate = new Date(Date.now() + preset.days * 24 * 60 * 60 * 1000);
+                        setCustomEndDate(targetDate.toISOString().split('T')[0]);
+                      }}
+                      className="px-3 py-2 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 text-gray-800 dark:text-zinc-200 rounded-xl text-xs font-semibold transition-colors border border-gray-200 dark:border-white/5"
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
                 </div>
-              )}
-              <label className="flex items-center gap-2 cursor-pointer">
-                <input type="checkbox" checked={isFree} onChange={e => setIsFree(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
-                <span className="text-sm font-medium text-gray-700 dark:text-zinc-300">Grant for Free (skip billing)</span>
-              </label>
+
+                <div className="grid grid-cols-2 gap-3 mt-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Billing Interval Mode</label>
+                    <select value={billingInterval} onChange={e => setBillingInterval(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs">
+                      <option value="MONTHLY">Monthly (30 Days)</option>
+                      <option value="YEARLY">Yearly (365 Days)</option>
+                      <option value="CUSTOM">Custom Specific Date</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Expiry / Renewal Date</label>
+                    <input 
+                      type="date" 
+                      value={customEndDate || (() => {
+                        const days = billingInterval === 'YEARLY' ? 365 : 30;
+                        return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+                      })()} 
+                      onChange={e => {
+                        setBillingInterval('CUSTOM');
+                        setCustomEndDate(e.target.value);
+                      }} 
+                      className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs" 
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl">
+                <label className="flex items-start gap-3 cursor-pointer">
+                  <input type="checkbox" checked={isFree} onChange={e => setIsFree(e.target.checked)} className="w-4 h-4 mt-0.5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                  <div>
+                    <span className="text-sm font-semibold text-gray-900 dark:text-white block">Grant as Free / Complimentary License</span>
+                    <span className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5 block">
+                      Waives payment mandates and activates full tier limits for internal, VIP, or trial accounts without auto-billing.
+                    </span>
+                  </div>
+                </label>
+              </div>
             </div>
-            <div className="flex justify-end gap-3">
-              <button onClick={() => setShowAssignPlanModal(false)} className="px-4 py-2 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl font-medium transition-colors">Cancel</button>
+
+            <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-white/10">
+              <button onClick={() => setShowAssignPlanModal(false)} className="px-5 py-2.5 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl font-medium transition-colors text-sm">Cancel</button>
               <button
-                onClick={() => { if (selectedPlanId) assignPlanMutation.mutate({ planId: selectedPlanId, billingInterval, customEndDate, isFree }); }}
-                disabled={!selectedPlanId || assignPlanMutation.isPending || (billingInterval === 'CUSTOM' && !customEndDate)}
-                className="px-6 py-2 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-medium transition-colors"
+                onClick={() => { 
+                  if (selectedPlanId) {
+                    const finalEndDate = customEndDate || (billingInterval === 'YEARLY' 
+                      ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
+                      : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
+                    );
+                    assignPlanMutation.mutate({ 
+                      planId: selectedPlanId, 
+                      billingInterval, 
+                      customEndDate: finalEndDate, 
+                      isFree 
+                    }); 
+                  }
+                }}
+                disabled={!selectedPlanId || assignPlanMutation.isPending}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl font-semibold transition-all shadow-md shadow-indigo-600/20 text-sm flex items-center gap-2"
               >
+                {assignPlanMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle2 className="w-4 h-4" />}
                 {assignPlanMutation.isPending ? 'Assigning...' : 'Confirm Assignment'}
               </button>
             </div>

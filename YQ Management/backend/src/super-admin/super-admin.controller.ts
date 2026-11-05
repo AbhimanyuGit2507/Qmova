@@ -207,6 +207,23 @@ export class SuperAdminController {
     return this.superAdminService.cancelTenantPlan(tenantId);
   }
 
+  @Post('tenants/:id/extend-subscription')
+  async extendSubscription(
+    @Req() req: any,
+    @Param('id') tenantId: string,
+    @Body() body: { days: number },
+  ) {
+    this.checkSuperAdmin(req);
+    const days = Number(body?.days) || 30;
+    return this.superAdminService.extendSubscription(tenantId, days);
+  }
+
+  @Post('tenants/:id/sync-limits')
+  async syncLimits(@Req() req: any, @Param('id') tenantId: string) {
+    this.checkSuperAdmin(req);
+    return this.superAdminService.syncTenantLimits(tenantId);
+  }
+
   @Post('plans/:id/duplicate')
   async duplicatePlan(
     @Req() req: any,

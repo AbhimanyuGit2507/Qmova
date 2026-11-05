@@ -33,10 +33,10 @@ const billingDateFormatter = new Intl.DateTimeFormat('en-US', {
   year: 'numeric',
 });
 
-function formatBillingDate(value?: string | Date | null) {
-  if (!value) return 'Unknown';
+function formatBillingDate(value?: string | Date | null): string | null {
+  if (!value) return null;
   const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return 'Unknown';
+  if (Number.isNaN(date.getTime())) return null;
   return billingDateFormatter.format(date);
 }
 
@@ -47,6 +47,7 @@ export default function BillingSettings() {
   const [paymentData, setPaymentData] = useState<OzowPaymentData | null>(null);
   const [billingInterval, setBillingInterval] = useState('monthly');
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [checkoutPlan, setCheckoutPlan] = useState<AnyFixMe>(null);
   const [enterpriseForm, setEnterpriseForm] = useState({ name: '', companyName: '', email: '', phone: '', message: '' });
   const ozowFields = useMemo<Array<keyof OzowPaymentData>>(
@@ -62,6 +63,13 @@ export default function BillingSettings() {
   const { data: currentSub, isLoading: isSubLoading } = useQuery({
     queryKey: ['current-subscription'],
     queryFn: () => fetchApi('/billing/subscriptions/current'),
+  });
+
+  // Fetch Workspace Billing & Transaction History
+  const { data: workspaceBilling, isLoading: isWorkspaceBillingLoading } = useQuery({
+    queryKey: ['workspace-billing'],
+    queryFn: () => fetchApi('/billing/workspace'),
+    enabled: showHistoryModal,
   });
 
   // Fetch Active Plans
@@ -208,6 +216,21 @@ export default function BillingSettings() {
   const isPaid = (currentSub?.status === 'ACTIVE' || isTrialActive) && !isExpired;
   const isPastDue = currentSub?.status === 'PAST_DUE';
   const isPendingPayment = currentSub?.status === 'PENDING_PAYMENT';
+
+  const isComplimentary = Boolean(
+    currentSub?.isComplimentary ||
+    (currentSub?.metadata as any)?.isFree ||
+    currentSub?.plan?.price === 0
+  );
+  const isEnterpriseTier = Boolean(
+    currentSub?.plan?.name?.toLowerCase().includes('enterprise')
+  );
+  const rawRenewalDate =
+    currentSub?.effectiveRenewalDate ||
+    currentSub?.nextBillingDate ||
+    currentSub?.renewalDate ||
+    currentSub?.currentPeriodEnd;
+  const formattedRenewalDate = formatBillingDate(rawRenewalDate);
   
   let trialDaysLeft = 0;
   if (isTrialActive && currentSub?.trialEndDate) {
@@ -353,17 +376,25 @@ export default function BillingSettings() {
               <div className="flex-1">
                 <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-primary/30 bg-primary/15 text-white text-xs font-bold uppercase tracking-widest mb-6 shadow-sm backdrop-blur-md">
                   <span className="w-2 h-2 rounded-full shadow-[0_0_8px_currentColor] bg-primary"></span>
-                  {isTrial ? '14-Day Trial Active' : 'Active Subscription'}
+                  {isTrial 
+                    ? '14-Day Trial Active' 
+                    : isComplimentary
+                    ? 'Complimentary Enterprise License'
+                    : `${(currentSub?.billingInterval || 'Monthly').toUpperCase()} Subscription Active`}
                 </div>
                 
                 <h2 className="text-4xl md:text-5xl lg:text-6xl font-black text-white tracking-tight mb-4 flex items-center gap-4">
                   {currentSub?.plan?.name || 'Starter Plan'}
-                  {currentSub?.plan?.name?.toLowerCase().includes('pro') && <Crown className="w-10 h-10 text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.4)]" />}
+                  {(currentSub?.plan?.name?.toLowerCase().includes('pro') || isEnterpriseTier) && <Crown className="w-10 h-10 text-amber-400 drop-shadow-[0_0_15px_rgba(251,191,36,0.4)]" />}
                 </h2>
                 <p className="text-zinc-300 text-lg md:text-xl font-medium max-w-xl leading-relaxed">
                   {isTrial 
-                    ? `You have ${trialDaysLeft} days remaining in your free trial to explore all premium features.` 
-                    : `Your subscription is active and will auto-renew on ${formatBillingDate(currentSub?.nextBillingDate)}.`}
+                    ? `You have ${trialDaysLeft} days remaining in your free trial${formattedRenewalDate ? ` (valid through ${formattedRenewalDate})` : ''} to explore all premium features.` 
+                    : isComplimentary
+                    ? `Your subscription is active with complimentary enterprise access${formattedRenewalDate ? ` through ${formattedRenewalDate}` : ''}.`
+                    : currentSub?.cancellationDate
+                    ? `Your subscription is active${formattedRenewalDate ? ` through ${formattedRenewalDate}` : ''} and will not renew.`
+                    : `Your subscription is active${formattedRenewalDate ? ` and will auto-renew on ${formattedRenewalDate}` : ''}.`}
                 </p>
 
                 <div className="flex flex-wrap items-center gap-4 mt-10">
@@ -377,18 +408,24 @@ export default function BillingSettings() {
                     </button>
                   )}
                   {!currentSub?.cancellationDate && !isTrial && (
-                    <button 
-                      onClick={() => setCancelConfirmModal({
-                        isOpen: true,
-                        immediate: false,
-                        title: 'Cancel Subscription',
-                        description: 'Are you sure you want to cancel your subscription? You will retain access until the end of your billing cycle.',
-                        confirmText: 'Cancel Subscription',
-                      })}
-                      className="px-6 h-14 text-zinc-400 hover:text-white hover:bg-white/5 rounded-2xl transition-all text-sm font-semibold"
-                    >
-                      Cancel Subscription
-                    </button>
+                    isComplimentary ? (
+                      <div className="px-5 h-14 bg-white/5 border border-white/15 rounded-2xl flex items-center gap-2.5 text-xs font-semibold text-zinc-300 backdrop-blur-md shadow-sm">
+                        <Shield className="w-4 h-4 text-emerald-400" /> Managed Organization License
+                      </div>
+                    ) : (
+                      <button 
+                        onClick={() => setCancelConfirmModal({
+                          isOpen: true,
+                          immediate: false,
+                          title: 'Cancel Subscription',
+                          description: 'Are you sure you want to cancel your subscription? You will retain access until the end of your billing cycle.',
+                          confirmText: 'Cancel Subscription',
+                        })}
+                        className="px-6 h-14 text-zinc-400 hover:text-white hover:bg-white/5 rounded-2xl transition-all text-sm font-semibold"
+                      >
+                        Cancel Subscription
+                      </button>
+                    )
                   )}
                   {isTrial && (
                     <button
@@ -602,30 +639,58 @@ export default function BillingSettings() {
           {/* Upgrade & Payment Info Row */}
           <div id="upgrade-section" className="grid grid-cols-1 lg:grid-cols-3 gap-8 mt-4">
             
-            <div className="lg:col-span-2 bg-gradient-to-br from-indigo-950/80 to-purple-950/60 border border-indigo-500/30 rounded-[2.5rem] p-10 flex flex-col md:flex-row items-center justify-between gap-10 relative overflow-hidden group shadow-2xl">
-              <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[conic-gradient(from_0deg_at_50%_50%,rgba(99,102,241,0.1)_0deg,rgba(168,85,247,0.1)_180deg,rgba(99,102,241,0.1)_360deg)] animate-[spin_10s_linear_infinite] pointer-events-none"></div>
-              
-              <div className="relative z-10 flex-1 text-center md:text-left">
-                <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest mb-4 border border-white/20 backdrop-blur-md shadow-lg">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" /> Ready to scale?
+            {isEnterpriseTier ? (
+              <div className="lg:col-span-2 bg-gradient-to-br from-emerald-950/80 via-zinc-900/90 to-black border border-emerald-500/30 rounded-[2.5rem] p-10 flex flex-col md:flex-row items-center justify-between gap-10 relative overflow-hidden group shadow-2xl">
+                <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+                <div className="absolute -top-24 -right-24 w-72 h-72 bg-emerald-500/10 rounded-full blur-3xl pointer-events-none"></div>
+                
+                <div className="relative z-10 flex-1 text-center md:text-left">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-emerald-500/15 text-emerald-400 text-xs font-bold uppercase tracking-widest mb-4 border border-emerald-500/30 backdrop-blur-md shadow-lg">
+                    <Crown className="w-3.5 h-3.5 text-amber-400" /> Enterprise Fleet Operations
+                  </div>
+                  <h3 className="text-3xl font-black text-white mb-3 tracking-tight">
+                    Enterprise Tier Active
+                  </h3>
+                  <p className="text-zinc-300 text-base font-medium leading-relaxed max-w-md mx-auto md:mx-0">
+                    Your workspace is equipped with unlimited queues, high-throughput WhatsApp conduits, custom branding, and dedicated priority support.
+                  </p>
                 </div>
-                <h3 className="text-3xl font-black text-white mb-3 tracking-tight">
-                  {currentSub?.plan?.name?.toLowerCase().includes('standard') ? 'Upgrade to Premium' : 'Need more power?'}
-                </h3>
-                <p className="text-indigo-100/80 text-base font-medium leading-relaxed max-w-md mx-auto md:mx-0">
-                  Unlock unlimited queues, advanced analytics, custom white-labeling, and dedicated support for your growing business.
-                </p>
-              </div>
 
-              <div className="relative z-10 shrink-0 w-full md:w-auto">
-                <button onClick={() => setIsPlanModalOpen(true)} 
-                  className="w-full md:w-auto px-8 h-14 bg-white hover:bg-indigo-50 text-indigo-900 rounded-2xl font-bold transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 text-base hover:-translate-y-0.5 active:translate-y-0"
-                >
-                  View Upgrade Options <ArrowRight className="w-5 h-5" />
-                </button>
+                <div className="relative z-10 shrink-0 w-full md:w-auto">
+                  <button 
+                    onClick={() => setShowEnterpriseModal(true)} 
+                    className="w-full md:w-auto px-8 h-14 bg-white hover:bg-emerald-50 text-zinc-950 rounded-2xl font-bold transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 text-base hover:-translate-y-0.5 active:translate-y-0"
+                  >
+                    <Sparkles className="w-5 h-5 text-emerald-600" /> Dedicated Concierge
+                  </button>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="lg:col-span-2 bg-gradient-to-br from-indigo-950/80 to-purple-950/60 border border-indigo-500/30 rounded-[2.5rem] p-10 flex flex-col md:flex-row items-center justify-between gap-10 relative overflow-hidden group shadow-2xl">
+                <div className="absolute top-0 left-0 w-full h-full bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-5"></div>
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[120%] h-[120%] bg-[conic-gradient(from_0deg_at_50%_50%,rgba(99,102,241,0.1)_0deg,rgba(168,85,247,0.1)_180deg,rgba(99,102,241,0.1)_360deg)] animate-[spin_10s_linear_infinite] pointer-events-none"></div>
+                
+                <div className="relative z-10 flex-1 text-center md:text-left">
+                  <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-widest mb-4 border border-white/20 backdrop-blur-md shadow-lg">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" /> Ready to scale?
+                  </div>
+                  <h3 className="text-3xl font-black text-white mb-3 tracking-tight">
+                    {currentSub?.plan?.name?.toLowerCase().includes('standard') ? 'Upgrade to Premium' : 'Need more power?'}
+                  </h3>
+                  <p className="text-indigo-100/80 text-base font-medium leading-relaxed max-w-md mx-auto md:mx-0">
+                    Unlock unlimited queues, advanced analytics, custom white-labeling, and dedicated support for your growing business.
+                  </p>
+                </div>
+
+                <div className="relative z-10 shrink-0 w-full md:w-auto">
+                  <button onClick={() => setIsPlanModalOpen(true)} 
+                    className="w-full md:w-auto px-8 h-14 bg-white hover:bg-indigo-50 text-indigo-900 rounded-2xl font-bold transition-all shadow-xl shadow-white/10 flex items-center justify-center gap-3 text-base hover:-translate-y-0.5 active:translate-y-0"
+                  >
+                    View Upgrade Options <ArrowRight className="w-5 h-5" />
+                  </button>
+                </div>
+              </div>
+            )}
 
             <div className="bg-card dark:bg-zinc-900/60 border border-border dark:border-white/10 rounded-[2.5rem] p-10 flex flex-col shadow-lg">
               <div className="flex items-center gap-3 mb-6">
@@ -636,21 +701,34 @@ export default function BillingSettings() {
               </div>
               
               <p className="text-zinc-500 dark:text-zinc-400 text-sm font-medium leading-relaxed mb-8">
-                Your subscription payments are securely processed via Ozow Instant EFT.
+                {isComplimentary 
+                  ? 'Your workspace is sponsored under a direct complimentary enterprise license. No recurring billing mandate is attached.'
+                  : 'Your subscription payments are securely processed via Ozow Instant EFT.'}
               </p>
               
               <div className="mt-auto">
                 <div className="flex items-center gap-4 p-5 rounded-2xl bg-surface-container-low dark:bg-white/5 border border-border dark:border-white/10 mb-6 group hover:bg-surface-container transition-colors cursor-default">
                   <div className="w-12 h-12 rounded-xl bg-white dark:bg-zinc-800 flex items-center justify-center shrink-0 border border-border dark:border-white/5 shadow-sm">
-                    <span className="material-symbols-outlined text-emerald-500 text-[24px]">account_balance</span>
+                    {isComplimentary ? (
+                      <Shield className="w-6 h-6 text-emerald-500" />
+                    ) : (
+                      <span className="material-symbols-outlined text-emerald-500 text-[24px]">account_balance</span>
+                    )}
                   </div>
                   <div>
-                    <p className="text-base font-bold text-on-surface dark:text-white">Instant EFT</p>
-                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">Supported by all SA banks</p>
+                    <p className="text-base font-bold text-on-surface dark:text-white">
+                      {isComplimentary ? 'Direct License' : 'Instant EFT'}
+                    </p>
+                    <p className="text-xs font-medium text-zinc-500 dark:text-zinc-400">
+                      {isComplimentary ? 'Managed by Organization Admin' : 'Supported by all SA banks'}
+                    </p>
                   </div>
                 </div>
 
-                <button className="text-sm font-bold text-primary dark:text-indigo-400 hover:text-primary-fixed dark:hover:text-indigo-300 transition-colors flex items-center gap-2 group w-full justify-center bg-surface-container-low dark:bg-white/5 hover:bg-surface-container dark:hover:bg-white/10 py-3 rounded-xl">
+                <button 
+                  onClick={() => setShowHistoryModal(true)}
+                  className="text-sm font-bold text-primary dark:text-indigo-400 hover:text-primary-fixed dark:hover:text-indigo-300 transition-colors flex items-center gap-2 group w-full justify-center bg-surface-container-low dark:bg-white/5 hover:bg-surface-container dark:hover:bg-white/10 py-3 rounded-xl"
+                >
                   View Billing History 
                   <ArrowRight className="w-4 h-4 transform group-hover:translate-x-1 transition-transform" />
                 </button>
@@ -985,6 +1063,80 @@ export default function BillingSettings() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Billing & Invoicing History Modal */}
+      {showHistoryModal && (
+        <div className="fixed inset-0 bg-zinc-950/60 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setShowHistoryModal(false)}>
+          <div className="bg-white dark:bg-zinc-900 border border-border dark:border-white/10 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
+            <div className="px-8 py-6 border-b border-border dark:border-white/10 flex items-center justify-between">
+              <div>
+                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
+                  <CreditCard className="w-5 h-5 text-primary" /> Billing & Invoicing History
+                </h2>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Receipts and automated settlement records for this workspace</p>
+              </div>
+              <button onClick={() => setShowHistoryModal(false)} className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors">
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+
+            <div className="p-8 max-h-[60vh] overflow-y-auto">
+              {isWorkspaceBillingLoading ? (
+                <div className="flex items-center justify-center py-12 text-zinc-400 gap-3">
+                  <Loader2 className="w-5 h-5 animate-spin" /> Loading transactions...
+                </div>
+              ) : !workspaceBilling?.transactions?.transactions || workspaceBilling.transactions.transactions.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4 border border-primary/20 shadow-inner">
+                    <Shield className="w-7 h-7" />
+                  </div>
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
+                    {isComplimentary ? 'Complimentary Enterprise Allocation' : 'No Invoices Yet'}
+                  </h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                    {isComplimentary 
+                      ? 'Your workspace is active under an enterprise-sponsored plan. No direct billing transactions have been levied.'
+                      : 'Past receipts and payment confirmation invoices will appear here once processed.'}
+                  </p>
+                </div>
+              ) : (
+                <div className="divide-y divide-gray-100 dark:divide-white/5 border border-border dark:border-white/10 rounded-2xl overflow-hidden">
+                  {workspaceBilling.transactions.transactions.map((tx: any) => (
+                    <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-semibold text-gray-900 dark:text-white">{tx.transactionRef || tx.id.slice(0, 8)}</span>
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                            tx.status === 'COMPLETE' || tx.status === 'SUCCEEDED' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                            tx.status === 'PENDING' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                            'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                          }`}>{tx.status}</span>
+                        </div>
+                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                          {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                        </p>
+                      </div>
+                      <div className="text-right">
+                        <div className="font-bold text-gray-900 dark:text-white">
+                          {tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}
+                        </div>
+                        <div className="text-[11px] text-zinc-400">Instant EFT</div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-8 py-4 bg-gray-50 dark:bg-white/5 border-t border-border dark:border-white/10 flex justify-between items-center text-xs text-zinc-500 dark:text-zinc-400">
+              <span>VAT registered · Instant settlement</span>
+              <button onClick={() => setShowHistoryModal(false)} className="px-5 py-2 bg-gray-200 dark:bg-zinc-800 hover:bg-gray-300 dark:hover:bg-zinc-700 text-gray-900 dark:text-white rounded-xl font-bold transition-colors">
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -204,6 +204,8 @@ export class SubscriptionCron implements OnModuleInit {
     await Promise.allSettled(
       recentlyExpired.map(async (sub) => {
         if (!sub.tenantId) return;
+        const subMeta = (sub.metadata as any) || {};
+        if (subMeta.isLifetime) return; // Lifetime complimentary licenses never expire
         try {
           await this.prisma.subscription.update({
             where: { id: sub.id },

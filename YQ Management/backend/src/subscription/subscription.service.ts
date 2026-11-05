@@ -21,7 +21,7 @@ export class SubscriptionService {
 
   async getSubscription(
     tenantId: string,
-  ): Promise<(Subscription & { plan: Plan }) | null> {
+  ): Promise<(Subscription & { plan: Plan; effectiveRenewalDate?: Date | null; isComplimentary?: boolean }) | null> {
     let sub = await this.prisma.subscription.findUnique({
       where: { tenantId },
       include: {
@@ -42,7 +42,17 @@ export class SubscriptionService {
       }
     }
 
-    return sub;
+    if (!sub) return null;
+
+    const subMeta = (sub.metadata as any) || {};
+    const isComplimentary = Boolean(subMeta.isFree || sub.plan?.price === 0);
+    const effectiveRenewalDate = sub.nextBillingDate || sub.renewalDate || sub.currentPeriodEnd || null;
+
+    return {
+      ...sub,
+      effectiveRenewalDate,
+      isComplimentary,
+    } as any;
   }
 
   async checkLimit(

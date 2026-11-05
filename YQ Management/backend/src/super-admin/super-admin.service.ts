@@ -208,9 +208,20 @@ export class SuperAdminService {
       orderBy: { createdAt: 'desc' },
     });
 
+    const subMeta = (currentSub?.metadata as any) || {};
+    const isComplimentary = Boolean(subMeta.isFree || currentSub?.plan?.price === 0);
+    const effectiveRenewalDate = currentSub?.nextBillingDate || currentSub?.renewalDate || currentSub?.currentPeriodEnd || null;
+
+    const enrichedSub = currentSub ? {
+      ...currentSub,
+      effectiveRenewalDate,
+      isComplimentary,
+    } : null;
+
     return {
       ...tenant,
-      subscriptions: currentSub,
+      subscription: enrichedSub,
+      subscriptions: enrichedSub,
       subscriptionStatus: currentSub ? currentSub.status : 'INACTIVE',
     };
   }
@@ -730,7 +741,8 @@ export class SuperAdminService {
         billingInterval: interval.toLowerCase(),
         currentPeriodStart: new Date(),
         currentPeriodEnd,
-        nextBillingDate: isFree ? null : currentPeriodEnd, // No billing if free
+        nextBillingDate: currentPeriodEnd, // Always set date so UI never shows Unknown
+        renewalDate: currentPeriodEnd,
         metadata: newMetadata,
         cancellationDate: null,
         cancelAtPeriodEnd: false,
@@ -745,7 +757,8 @@ export class SuperAdminService {
         billingInterval: interval.toLowerCase(),
         currentPeriodStart: new Date(),
         currentPeriodEnd,
-        nextBillingDate: isFree ? null : currentPeriodEnd, // No billing if free
+        nextBillingDate: currentPeriodEnd,
+        renewalDate: currentPeriodEnd,
         metadata: newMetadata,
       },
       include: {
@@ -804,6 +817,67 @@ export class SuperAdminService {
     }
 
     return updatedSub;
+  }
+
+  async extendSubscription(tenantId: string, days: number) {
+    const existing = await this.prisma.subscription.findUnique({
+      where: { tenantId },
+      include: { plan: true },
+    });
+    if (!existing) {
+      throw new Error('No subscription found for tenant');
+    }
+
+    const baseDate = existing.currentPeriodEnd && new Date(existing.currentPeriodEnd) > new Date()
+      ? new Date(existing.currentPeriodEnd)
+      : new Date();
+    const newPeriodEnd = new Date(baseDate.getTime() + days * 24 * 60 * 60 * 1000);
+
+    return this.prisma.subscription.update({
+      where: { tenantId },
+      data: {
+        status: 'ACTIVE',
+        currentPeriodEnd: newPeriodEnd,
+        nextBillingDate: newPeriodEnd,
+        renewalDate: newPeriodEnd,
+        cancellationDate: null,
+        cancelAtPeriodEnd: false,
+      },
+      include: { plan: true },
+    });
+  }
+
+  async syncTenantLimits(tenantId: string) {
+    const sub = await this.prisma.subscription.findUnique({
+      where: { tenantId },
+      include: { plan: true },
+    });
+    if (!sub || !sub.plan) {
+      throw new Error('No plan or subscription found for tenant');
+    }
+
+    const limits = typeof sub.plan.limits === 'string'
+      ? JSON.parse(sub.plan.limits)
+      : sub.plan.limits || {};
+
+    const meta = (sub.metadata as any) || {};
+    const updatedMeta = {
+      ...meta,
+      syncedAt: new Date().toISOString(),
+      customLimits: {
+        ...(meta.customLimits || {}),
+        maxServices: limits.maxServices ?? limits.maxQueues ?? 100,
+        maxLocations: limits.maxLocations ?? 10,
+        maxStaff: limits.maxStaff ?? 50,
+        maxTokens: limits.maxTokens ?? 100000,
+      },
+    };
+
+    return this.prisma.subscription.update({
+      where: { tenantId },
+      data: { metadata: updatedMeta },
+      include: { plan: true },
+    });
   }
 
   // ── Enterprise Blueprint Management ────────────────────────────────────────
