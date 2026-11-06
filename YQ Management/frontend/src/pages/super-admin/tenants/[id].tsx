@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
 import { useRouter } from 'next/router';
+import { createPortal } from 'react-dom';
 import SuperAdminLayout from '../../../components/SuperAdminLayout';
 import { fetchApi } from '../../../lib/api';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
@@ -9,7 +10,7 @@ import {
   ArrowLeft, CreditCard, Users, Activity, AlertCircle, Clock,
   CheckCircle2, XCircle, Settings, Store, MapPin, Check, X, ShieldAlert,
   Zap, Layers, Sliders, Crown, Info, ChevronDown, ChevronRight,
-  RefreshCw, Send, Target, Workflow
+  RefreshCw, Send, Target, Workflow, Sparkles, Loader2, ExternalLink
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -17,51 +18,82 @@ import { ConfirmModal } from '../../../components/modals/ConfirmModal';
 
 // ── Reusable sub-components ───────────────────────────────────────────────────
 
-function LimitRow({ label, planVal, customVal, unit = '', onChange, onClear, editing }: {
+function LimitRow({
+  label, planVal, customVal, unit = '', onChange, onClear, editing, presets = []
+}: {
   label: string; planVal: any; customVal: any; unit?: string;
   onChange: (v: number | null) => void; onClear: () => void; editing: boolean;
+  presets?: { label: string; value: number | null }[];
 }) {
   const effective = customVal ?? planVal;
   const hasOverride = customVal !== undefined && customVal !== null;
+
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-100 dark:border-white/5 last:border-0">
-      <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-900 dark:text-white">{label}</div>
-        <div className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
-          Plan default: {planVal === null || planVal === undefined
-            ? <span className="text-emerald-500 font-medium">Unlimited</span>
-            : `${planVal.toLocaleString()}${unit}`}
-        </div>
-      </div>
-      <div className="flex items-center gap-3">
-        {hasOverride && (
-          <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 flex items-center gap-1">
-            <Crown className="w-3 h-3" /> Override
-          </span>
-        )}
-        {editing ? (
-          <div className="flex items-center gap-2">
-            <input
-              type="number" min={0}
-              placeholder={planVal === null ? '∞' : String(planVal)}
-              defaultValue={customVal ?? ''}
-              className="w-24 h-8 px-3 text-sm rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-              onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
-            />
+    <div className="py-4 border-b border-gray-100 dark:border-white/5 last:border-0 transition-colors">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+        <div className="flex-1 min-w-0">
+          <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
+            {label}
             {hasOverride && (
-              <button onClick={onClear} className="p-1.5 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg text-red-500 transition-colors" title="Remove override">
-                <X className="w-3.5 h-3.5" />
-              </button>
+              <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 flex items-center gap-1 uppercase tracking-wider">
+                <Crown className="w-3 h-3" /> Override
+              </span>
             )}
           </div>
-        ) : (
-          <div className={`text-sm font-bold ${hasOverride ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-zinc-300'}`}>
-            {effective === null || effective === undefined
-              ? <span className="text-emerald-500">∞ Unlimited</span>
-              : `${Number(effective).toLocaleString()}${unit}`}
+          <div className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">
+            Plan default: {planVal === null || planVal === undefined
+              ? <span className="text-emerald-500 font-semibold">∞ Unlimited</span>
+              : `${planVal.toLocaleString()}${unit}`}
           </div>
-        )}
+        </div>
+
+        <div className="flex items-center gap-3 shrink-0">
+          {editing ? (
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                placeholder={planVal === null ? '∞' : String(planVal)}
+                defaultValue={customVal ?? ''}
+                className="w-28 h-9 px-3 text-sm rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none font-mono"
+                onChange={(e) => onChange(e.target.value === '' ? null : Number(e.target.value))}
+              />
+              {hasOverride && (
+                <button
+                  type="button"
+                  onClick={onClear}
+                  className="p-2 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-xl text-rose-500 transition-colors border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20"
+                  title="Remove override"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className={`text-base font-extrabold ${hasOverride ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white'}`}>
+              {effective === null || effective === undefined
+                ? <span className="text-emerald-500 font-black">∞ Unlimited</span>
+                : `${Number(effective).toLocaleString()}${unit}`}
+            </div>
+          )}
+        </div>
       </div>
+
+      {editing && presets.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 mt-2.5">
+          <span className="text-[10px] uppercase font-bold tracking-wider text-gray-400 dark:text-zinc-500 mr-1">Presets:</span>
+          {presets.map((p) => (
+            <button
+              key={p.label}
+              type="button"
+              onClick={() => onChange(p.value)}
+              className="px-2.5 py-1 text-xs rounded-lg bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-700 dark:text-zinc-300 transition-colors border border-gray-200 dark:border-white/5 font-medium"
+            >
+              {p.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -69,39 +101,42 @@ function LimitRow({ label, planVal, customVal, unit = '', onChange, onClear, edi
 function FeatureToggleRow({ label, desc, planVal, customVal, onChange, editing }: any) {
   const effective = customVal !== undefined ? customVal : planVal;
   const hasOverride = customVal !== undefined;
+
   return (
-    <div className="flex items-center justify-between gap-4 py-3 border-b border-gray-100 dark:border-white/5 last:border-0">
+    <div className="flex items-center justify-between gap-4 py-3.5 border-b border-gray-100 dark:border-white/5 last:border-0 transition-colors">
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-900 dark:text-white flex items-center gap-2">
+        <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2">
           {label}
           {hasOverride && (
-            <span className="text-xs font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 flex items-center gap-1">
+            <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 flex items-center gap-1 uppercase tracking-wider">
               <Crown className="w-3 h-3" /> Override
             </span>
           )}
         </div>
         <div className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5">{desc}</div>
       </div>
-      {editing ? (
-        <select
-          value={customVal === undefined ? '' : String(customVal)}
-          onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value === 'true')}
-          className="h-8 px-2 text-sm rounded-lg border border-gray-300 dark:border-zinc-600 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none"
-        >
-          <option value="">Plan default ({String(planVal ?? 'false')})</option>
-          <option value="true">Enabled (Override)</option>
-          <option value="false">Disabled (Override)</option>
-        </select>
-      ) : (
-        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${
-          effective
-            ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400'
-            : 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-zinc-400'
-        }`}>
-          {effective ? <CheckCircle2 className="w-3 h-3" /> : <X className="w-3 h-3" />}
-          {effective ? 'Enabled' : 'Disabled'}
-        </span>
-      )}
+      <div className="shrink-0">
+        {editing ? (
+          <select
+            value={customVal === undefined ? '' : String(customVal)}
+            onChange={(e) => onChange(e.target.value === '' ? undefined : e.target.value === 'true')}
+            className="h-9 px-3 text-xs rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none font-medium"
+          >
+            <option value="">Plan default ({String(planVal ?? 'false')})</option>
+            <option value="true">Enabled (Override)</option>
+            <option value="false">Disabled (Override)</option>
+          </select>
+        ) : (
+          <span className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold ${
+            effective
+              ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-500/20'
+              : 'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-zinc-400 border border-gray-200 dark:border-white/5'
+          }`}>
+            {effective ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <X className="w-3.5 h-3.5 text-gray-400" />}
+            {effective ? 'Enabled' : 'Disabled'}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -112,6 +147,11 @@ export default function SuperAdminTenantDetail() {
   const router = useRouter();
   const { id } = router.query;
   const queryClient = useQueryClient();
+
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const { data: tenant, isLoading } = useQuery({
     queryKey: ['super-admin-tenant', id],
@@ -136,7 +176,7 @@ export default function SuperAdminTenantDetail() {
   const [pendingFeatures, setPendingFeatures] = useState<any>({});
   const [limitsNote, setLimitsNote] = useState('');
   const [showBlueprintDrawer, setShowBlueprintDrawer] = useState(false);
-  const [blueprintDrawerMode, setBlueprintDrawerMode] = useState<'push' | 'apply'>('push');
+  const [blueprintDrawerMode, setBlueprintDrawerMode] = useState<'push' | 'apply'>('apply');
   const [selectedBlueprintId, setSelectedBlueprintId] = useState('');
   const [selectedServiceId, setSelectedServiceId] = useState('');
   const [pushCustomName, setPushCustomName] = useState('');
@@ -177,8 +217,21 @@ export default function SuperAdminTenantDetail() {
   const { data: blueprints, isLoading: blueprintsLoading } = useQuery({
     queryKey: ['super-admin-blueprints'],
     queryFn: () => fetchApi('/super-admin/blueprints'),
-    enabled: !!id && activeTab === 'enterprise',
+    enabled: !!id,
   });
+
+  // Preselect first blueprint & first service if available
+  useEffect(() => {
+    if (blueprints && blueprints.length > 0 && !selectedBlueprintId) {
+      setSelectedBlueprintId(blueprints[0].id);
+    }
+  }, [blueprints, selectedBlueprintId]);
+
+  useEffect(() => {
+    if (tenant?.services && tenant.services.length > 0 && !selectedServiceId) {
+      setSelectedServiceId(tenant.services[0].id);
+    }
+  }, [tenant, selectedServiceId]);
 
   // Mutations
   const assignPlanMutation = useMutation({
@@ -290,7 +343,10 @@ export default function SuperAdminTenantDetail() {
   const handleDelete = () => {
     setShowDeleteTenantConfirm(true);
   };
-  const handleUpdateSettings = (e: React.FormEvent) => { e.preventDefault(); updateTenantMutation.mutate(editForm); };
+  const handleUpdateSettings = (e: React.FormEvent) => {
+    e.preventDefault();
+    updateTenantMutation.mutate(editForm);
+  };
 
   const handleSaveLimits = () => {
     const dto: any = {};
@@ -314,9 +370,9 @@ export default function SuperAdminTenantDetail() {
       <SuperAdminLayout pageTitle="Business Details" pageSubtitle="Loading...">
         <Head><title>Business Details | Super Admin</title></Head>
         <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 space-y-8 pb-12">
-          <div className="h-10 w-48 bg-gray-200 dark:bg-white/5 rounded animate-pulse" />
+          <div className="h-10 w-48 bg-gray-200 dark:bg-white/5 rounded-2xl animate-pulse" />
           <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-            {[1,2,3,4].map(i => <div key={i} className="h-32 bg-white dark:bg-zinc-950 rounded-2xl border border-gray-200 dark:border-white/10 animate-pulse" />)}
+            {[1, 2, 3, 4].map(i => <div key={i} className="h-32 bg-white dark:bg-zinc-950 rounded-3xl border border-gray-200 dark:border-white/10 animate-pulse" />)}
           </div>
         </div>
       </SuperAdminLayout>
@@ -327,10 +383,10 @@ export default function SuperAdminTenantDetail() {
     return (
       <SuperAdminLayout pageTitle="Business Not Found" pageSubtitle="Does not exist">
         <Head><title>Not Found | Super Admin</title></Head>
-        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-12 text-center">
+        <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 py-16 text-center">
           <AlertCircle className="w-12 h-12 text-gray-400 dark:text-zinc-500 mx-auto mb-4" />
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4">Business Not Found</h2>
-          <Link href="/super-admin/tenants" className="inline-flex items-center gap-2 px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium">
+          <Link href="/super-admin/tenants" className="inline-flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium shadow-sm transition-all">
             <ArrowLeft className="w-4 h-4" /> Back to Businesses
           </Link>
         </div>
@@ -342,71 +398,88 @@ export default function SuperAdminTenantDetail() {
     <SuperAdminLayout pageTitle={tenant.name} pageSubtitle="Advanced business management and telemetry">
       <Head><title>{tenant.name} | Super Admin</title></Head>
 
-      <div className="w-full mx-auto px-4 sm:px-6 lg:px-8 space-y-8 pb-12">
-        {/* Header */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="w-full mx-auto space-y-6 pb-12">
+        {/* Header Bar */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-white dark:bg-zinc-950/80 border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm">
           <div className="flex items-center gap-4">
-            <Link href="/super-admin/tenants" className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-lg text-gray-400 dark:text-zinc-500 transition-colors">
+            <Link
+              href="/super-admin/tenants"
+              className="p-2.5 hover:bg-gray-100 dark:hover:bg-white/5 rounded-2xl text-gray-400 dark:text-zinc-500 transition-colors border border-gray-200 dark:border-white/5"
+              title="Back to Businesses"
+            >
               <ArrowLeft className="w-5 h-5" />
             </Link>
             <div>
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-3xl font-black tracking-tight text-gray-900 dark:text-white">{tenant.name}</h1>
-                <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
-                  tenant.subscriptionStatus === 'ACTIVE' ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                  tenant.subscriptionStatus === 'TRIAL' ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
-                  'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400'
-                }`}>{tenant.subscriptionStatus}</span>
+                <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-gray-900 dark:text-white">{tenant.name}</h1>
+                <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${
+                  tenant.subscriptionStatus === 'ACTIVE' ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20' :
+                  tenant.subscriptionStatus === 'TRIAL' ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20' :
+                  'bg-rose-500/10 text-rose-600 dark:text-rose-400 border border-rose-500/20'
+                }`}>
+                  <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
+                  {tenant.subscriptionStatus}
+                </span>
                 {isEnterprise && (
-                  <span className="px-2.5 py-0.5 rounded-full text-xs font-bold uppercase bg-gradient-to-r from-amber-500 to-orange-500 text-white flex items-center gap-1 shadow-sm">
-                    <Crown className="w-3 h-3" /> Enterprise
+                  <span className="px-3 py-1 rounded-full text-xs font-extrabold uppercase bg-gradient-to-r from-amber-500 to-orange-500 text-white flex items-center gap-1.5 shadow-md shadow-amber-500/25">
+                    <Crown className="w-3.5 h-3.5" /> Enterprise Fleet
                   </span>
                 )}
               </div>
-              <p className="text-gray-500 dark:text-zinc-400 mt-1 font-mono text-xs">
-                ID: {tenant.id} · {tenant.subdomain}.qmova.com
+              <p className="text-gray-500 dark:text-zinc-400 mt-1 font-mono text-xs flex items-center gap-2 flex-wrap">
+                <span>ID: {tenant.id}</span>
+                <span>•</span>
+                <span className="text-indigo-600 dark:text-indigo-400 font-semibold">{tenant.subdomain}.qmova.com</span>
               </p>
             </div>
           </div>
-          <button
-            onClick={() => toast.info('Impersonation requires a secure token exchange endpoint.')}
-            className="px-5 py-2.5 bg-gray-900 dark:bg-white text-white dark:text-black rounded-xl font-medium transition-transform active:scale-95 shadow-sm hover:shadow-md flex items-center gap-2"
-          >
-            <ShieldAlert className="w-4 h-4" /> Login as Business
-          </button>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => toast.info('Impersonation requires a secure token exchange endpoint.')}
+              className="px-4 py-2.5 bg-gray-900 dark:bg-white/10 hover:bg-gray-800 dark:hover:bg-white/15 text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center gap-2 border border-white/10"
+            >
+              <ShieldAlert className="w-4 h-4 text-amber-400" /> Login as Business
+            </button>
+          </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex items-center gap-1 border-b border-gray-200 dark:border-white/10 overflow-x-auto no-scrollbar">
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-1 border-b border-gray-200 dark:border-white/10 overflow-x-auto no-scrollbar pb-px">
           {TABS.map(tab => {
             const icons: Record<string, React.ReactNode> = {
               overview: <Activity className="w-4 h-4" />,
               users: <Users className="w-4 h-4" />,
               subscription: <CreditCard className="w-4 h-4" />,
               settings: <Settings className="w-4 h-4" />,
-              enterprise: <Crown className="w-4 h-4" />,
+              enterprise: <Crown className="w-4 h-4 text-amber-500" />,
             };
+            const isTabActive = activeTab === tab;
             return (
               <button
                 key={tab}
                 onClick={() => setActiveTab(tab)}
-                className={`pb-3 px-1 mr-5 text-sm font-bold capitalize transition-all border-b-2 whitespace-nowrap flex items-center gap-2 ${
-                  activeTab === tab
+                className={`py-3 px-4 text-sm font-bold capitalize transition-all border-b-2 whitespace-nowrap flex items-center gap-2 rounded-t-xl ${
+                  isTabActive
                     ? tab === 'enterprise'
-                      ? 'border-amber-500 text-amber-600 dark:text-amber-400'
-                      : 'border-indigo-500 text-indigo-600 dark:text-indigo-400'
-                    : 'border-transparent text-gray-500 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-white'
+                      ? 'border-amber-500 text-amber-600 dark:text-amber-400 bg-amber-500/5'
+                      : 'border-indigo-500 text-indigo-600 dark:text-indigo-400 bg-indigo-500/5'
+                    : 'border-transparent text-gray-500 hover:text-gray-900 dark:text-zinc-400 dark:hover:text-white hover:bg-gray-100/50 dark:hover:bg-white/5'
                 }`}
               >
-                {icons[tab]}{tab}
+                {icons[tab]}
+                <span>{tab}</span>
+                {tab === 'enterprise' && isEnterprise && (
+                  <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
+                )}
               </button>
             );
           })}
         </div>
 
-        {/* ── OVERVIEW ── */}
+        {/* ── OVERVIEW TAB ── */}
         {activeTab === 'overview' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <div className="space-y-6 animate-in fade-in duration-200">
             <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               {[
                 { label: 'Total Customers', val: tenant._count?.customers || 0, color: 'text-blue-500' },
@@ -416,13 +489,14 @@ export default function SuperAdminTenantDetail() {
                 { label: 'Staff Members', val: tenant._count?.staffMembers || 0, color: 'text-amber-500' },
                 { label: 'Appointments', val: tenant._count?.appointments || 0, color: 'text-rose-500' },
               ].map((stat, i) => (
-                <div key={i} className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl p-5 shadow-sm hover:shadow-md transition-shadow">
+                <div key={i} className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl p-5 shadow-sm hover:shadow-md transition-shadow">
                   <div className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-2">{stat.label}</div>
                   <div className={`text-3xl font-black ${stat.color}`}>{stat.val.toLocaleString()}</div>
                 </div>
               ))}
             </div>
-            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+
+            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center gap-2">
                 <MapPin className="w-5 h-5 text-indigo-500" />
                 <h2 className="text-base font-bold text-gray-900 dark:text-white">Physical Locations</h2>
@@ -448,7 +522,8 @@ export default function SuperAdminTenantDetail() {
                 </tbody>
               </table>
             </div>
-            <div className="p-6 bg-rose-50 dark:bg-rose-500/5 border border-rose-200 dark:border-rose-500/10 rounded-2xl flex items-center justify-between">
+
+            <div className="p-6 bg-rose-50 dark:bg-rose-500/5 border border-rose-200 dark:border-rose-500/10 rounded-3xl flex items-center justify-between">
               <div>
                 <h3 className="font-bold text-rose-900 dark:text-rose-400 flex items-center gap-2"><AlertCircle className="w-5 h-5" />Danger Zone</h3>
                 <p className="text-sm text-rose-700 dark:text-rose-300 mt-1">Permanently remove this business and all associated data.</p>
@@ -458,58 +533,56 @@ export default function SuperAdminTenantDetail() {
           </div>
         )}
 
-        {/* ── USERS ── */}
+        {/* ── USERS TAB ── */}
         {activeTab === 'users' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
               <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center gap-2">
                 <Users className="w-5 h-5 text-indigo-500" />
                 <h2 className="text-base font-bold text-gray-900 dark:text-white">System Users</h2>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-400">
-                <thead className="bg-gray-50 dark:bg-white/5 text-xs font-bold uppercase tracking-wider border-b border-gray-200 dark:border-white/10 text-gray-900 dark:text-zinc-200">
-                  <tr>
-                    <th className="px-6 py-4">User ID</th>
-                    <th className="px-6 py-4">Email</th>
-                    <th className="px-6 py-4">Role</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                  {(!tenant.users || tenant.users.length === 0) ? (
-                    <tr><td colSpan={3} className="px-6 py-8 text-center text-gray-400 dark:text-zinc-500">No users found.</td></tr>
-                  ) : tenant.users.map((user: any) => (
-                    <tr key={user.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{user.id}</td>
-                      <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{user.email}</td>
-                      <td className="px-6 py-4">
-                        <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${
-                          user.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-800 dark:bg-purple-500/10 dark:text-purple-400' :
-                          user.role === 'OWNER' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400' :
-                          user.role === 'OWNER' ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-500/10 dark:text-indigo-400' :
-                          user.role === 'MANAGER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400' :
-                          'bg-gray-100 text-gray-800 dark:bg-gray-500/10 dark:text-gray-400'
-                        }`}>{user.role.replace(/_/g, ' ')}</span>
-                      </td>
+                  <thead className="bg-gray-50 dark:bg-white/5 text-xs font-bold uppercase tracking-wider border-b border-gray-200 dark:border-white/10 text-gray-900 dark:text-zinc-200">
+                    <tr>
+                      <th className="px-6 py-4">User ID</th>
+                      <th className="px-6 py-4">Email</th>
+                      <th className="px-6 py-4">Role</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                    {(!tenant.users || tenant.users.length === 0) ? (
+                      <tr><td colSpan={3} className="px-6 py-8 text-center text-gray-400 dark:text-zinc-500">No users found.</td></tr>
+                    ) : tenant.users.map((u: any) => (
+                      <tr key={u.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                        <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{u.id}</td>
+                        <td className="px-6 py-4 font-medium text-gray-900 dark:text-white">{u.email}</td>
+                        <td className="px-6 py-4">
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                            u.role === 'SUPER_ADMIN' ? 'bg-purple-100 text-purple-800 dark:bg-purple-500/10 dark:text-purple-400' :
+                            u.role === 'OWNER' ? 'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400' :
+                            u.role === 'MANAGER' ? 'bg-blue-100 text-blue-800 dark:bg-blue-500/10 dark:text-blue-400' :
+                            'bg-gray-100 text-gray-800 dark:bg-gray-500/10 dark:text-gray-400'
+                          }`}>{u.role.replace(/_/g, ' ')}</span>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
             </div>
           </div>
         )}
 
-        {/* ── SUBSCRIPTION ── */}
+        {/* ── SUBSCRIPTION TAB ── */}
         {activeTab === 'subscription' && (() => {
           const currentSub = tenant.subscription || tenant.subscriptions;
-          const isFree = Boolean(currentSub?.isComplimentary || (currentSub?.metadata as any)?.isFree || currentSub?.plan?.price === 0);
+          const isComplimentary = Boolean(currentSub?.isComplimentary || (currentSub?.metadata as any)?.isFree || currentSub?.plan?.price === 0);
           const effectiveEnd = currentSub?.nextBillingDate || currentSub?.renewalDate || currentSub?.currentPeriodEnd;
           const daysRemaining = effectiveEnd ? Math.max(0, Math.ceil((new Date(effectiveEnd).getTime() - Date.now()) / (1000 * 60 * 60 * 24))) : 0;
 
           return (
-            <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-              {/* Active Subscription & License Overview Card */}
+            <div className="space-y-6 animate-in fade-in duration-200">
               <div className="bg-gradient-to-br from-indigo-950/80 via-zinc-900/90 to-black border border-indigo-500/30 rounded-3xl p-8 relative overflow-hidden shadow-2xl">
                 <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
                 
@@ -527,7 +600,7 @@ export default function SuperAdminTenantDetail() {
 
                       {currentSub && (
                         <span className="px-3 py-1 rounded-full bg-white/10 text-white text-xs font-bold uppercase tracking-wider border border-white/15">
-                          {isFree ? 'Complimentary Access' : `${currentSub.billingInterval || 'Monthly'} Billing`}
+                          {isComplimentary ? 'Complimentary Access' : `${currentSub.billingInterval || 'Monthly'} Billing`}
                         </span>
                       )}
                     </div>
@@ -542,7 +615,7 @@ export default function SuperAdminTenantDetail() {
                     <p className="text-zinc-300 text-sm mt-2 max-w-xl leading-relaxed">
                       {currentSub ? (
                         <>
-                          {isFree ? 'Granted with complimentary enterprise access. ' : `Standard paid subscription at ${currentSub.plan?.currency || 'ZAR'} ${Number((currentSub.plan?.price || 0) / 100).toFixed(2)} / ${currentSub.billingInterval || 'mo'}. `}
+                          {isComplimentary ? 'Granted with complimentary enterprise access. ' : `Standard paid subscription at ${currentSub.plan?.currency || 'ZAR'} ${Number((currentSub.plan?.price || 0) / 100).toFixed(2)} / ${currentSub.billingInterval || 'mo'}. `}
                           {effectiveEnd && (
                             <span>Active through <strong className="text-white">{format(new Date(effectiveEnd), 'MMMM d, yyyy')}</strong> ({daysRemaining} days remaining).</span>
                           )}
@@ -552,7 +625,6 @@ export default function SuperAdminTenantDetail() {
                       )}
                     </p>
 
-                    {/* Date details row */}
                     {currentSub && (
                       <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 mt-6 pt-6 border-t border-white/10 text-xs">
                         <div>
@@ -570,14 +642,14 @@ export default function SuperAdminTenantDetail() {
                         <div>
                           <span className="text-zinc-400 block mb-1">License Classification</span>
                           <span className="font-semibold text-indigo-300">
-                            {isFree ? 'Complimentary VIP / Internal' : 'Standard Commercial'}
+                            {isComplimentary ? 'Complimentary VIP / Internal' : 'Standard Commercial'}
                           </span>
                         </div>
                       </div>
                     )}
                   </div>
 
-                  {/* Quick Action Controls */}
+                  {/* Actions */}
                   <div className="flex flex-col gap-2.5 shrink-0 min-w-[220px]">
                     <div className="text-xs font-bold uppercase tracking-wider text-zinc-400 mb-1">Quick Extensions</div>
                     <div className="flex gap-2">
@@ -634,52 +706,52 @@ export default function SuperAdminTenantDetail() {
                 </div>
               </div>
 
-              {/* Transactions & Invoices Table */}
-              <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
+              {/* Transactions Table */}
+              <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
                 <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex justify-between items-center flex-wrap gap-3">
                   <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2"><CreditCard className="w-5 h-5 text-indigo-500" />Transaction History & Invoicing</h2>
                 </div>
                 <div className="overflow-x-auto">
                   <table className="w-full text-left text-sm text-gray-600 dark:text-zinc-400">
-                  <thead className="bg-gray-50 dark:bg-white/5 text-xs font-bold uppercase tracking-wider border-b border-gray-200 dark:border-white/10 text-gray-900 dark:text-zinc-200">
-                    <tr>
-                      <th className="px-6 py-4">Transaction ID</th>
-                      <th className="px-6 py-4">Amount</th>
-                      <th className="px-6 py-4">Status</th>
-                      <th className="px-6 py-4">Date</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-gray-100 dark:divide-white/5">
-                    {(!tenant.transactions || tenant.transactions.length === 0) ? (
-                      <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 dark:text-zinc-500">
-                        {isFree ? 'No billing transactions recorded — tenant is active under a complimentary license.' : 'No payment history found.'}
-                      </td></tr>
-                    ) : tenant.transactions.map((tx: any) => (
-                      <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                        <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{tx.id}</td>
-                        <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}</td>
-                        <td className="px-6 py-4">
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                            ['COMPLETE','SUCCEEDED'].includes(tx.status) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                            ['PENDING','PROCESSING'].includes(tx.status) ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
-                            'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400'
-                          }`}>{tx.status}</span>
-                        </td>
-                        <td className="px-6 py-4 text-gray-500 text-sm">{tx.createdAt ? format(new Date(tx.createdAt), 'MMM d, yyyy h:mm a') : '-'}</td>
+                    <thead className="bg-gray-50 dark:bg-white/5 text-xs font-bold uppercase tracking-wider border-b border-gray-200 dark:border-white/10 text-gray-900 dark:text-zinc-200">
+                      <tr>
+                        <th className="px-6 py-4">Transaction ID</th>
+                        <th className="px-6 py-4">Amount</th>
+                        <th className="px-6 py-4">Status</th>
+                        <th className="px-6 py-4">Date</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody className="divide-y divide-gray-100 dark:divide-white/5">
+                      {(!tenant.transactions || tenant.transactions.length === 0) ? (
+                        <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400 dark:text-zinc-500">
+                          {isComplimentary ? 'No billing transactions recorded — tenant is active under a complimentary license.' : 'No payment history found.'}
+                        </td></tr>
+                      ) : tenant.transactions.map((tx: any) => (
+                        <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                          <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{tx.id}</td>
+                          <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}</td>
+                          <td className="px-6 py-4">
+                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
+                              ['COMPLETE','SUCCEEDED'].includes(tx.status) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
+                              ['PENDING','PROCESSING'].includes(tx.status) ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
+                              'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400'
+                            }`}>{tx.status}</span>
+                          </td>
+                          <td className="px-6 py-4 text-gray-500 text-sm">{tx.createdAt ? format(new Date(tx.createdAt), 'MMM d, yyyy h:mm a') : '-'}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             </div>
           );
         })()}
 
-        {/* ── SETTINGS ── */}
+        {/* ── SETTINGS TAB ── */}
         {activeTab === 'settings' && (
-          <div className="space-y-6 animate-in fade-in slide-in-from-bottom-2 duration-300">
-            <form onSubmit={handleUpdateSettings} className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl p-6 shadow-sm">
+          <div className="space-y-6 animate-in fade-in duration-200">
+            <form onSubmit={handleUpdateSettings} className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-sm">
               <h2 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2 mb-6"><Settings className="w-5 h-5 text-indigo-500" />Platform Overrides & Configuration</h2>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
                 <div>
@@ -710,7 +782,7 @@ export default function SuperAdminTenantDetail() {
                   { id: 'enableSmartReviews', label: 'Smart Google Reviews', desc: 'Automated NPS & review routing?' },
                   { id: 'autonomousEnabled', label: 'Fully Autonomous Mode', desc: 'Allows AI agents to act on behalf of staff' },
                 ].map(toggle => (
-                  <label key={toggle.id} className="flex items-start gap-3 p-4 border border-gray-200 dark:border-white/10 rounded-xl cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
+                  <label key={toggle.id} className="flex items-start gap-3 p-4 border border-gray-200 dark:border-white/10 rounded-2xl cursor-pointer hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                     <input type="checkbox" checked={editForm[toggle.id as keyof typeof editForm] as boolean} onChange={e => setEditForm(p => ({...p, [toggle.id]: e.target.checked}))} className="w-5 h-5 mt-0.5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
                     <div>
                       <div className="font-bold text-gray-900 dark:text-white">{toggle.label}</div>
@@ -729,129 +801,265 @@ export default function SuperAdminTenantDetail() {
         )}
 
         {/* ══════════════════════════════════════════════════════════════════
-            ENTERPRISE TAB
+            ENTERPRISE TAB (10/10 Overhaul)
            ══════════════════════════════════════════════════════════════════ */}
         {activeTab === 'enterprise' && (
-          <div className={`space-y-8 animate-in fade-in slide-in-from-bottom-2 duration-300 ${setCustomLimitsMutation.isPending ? 'opacity-50 pointer-events-none' : ''}`}>
+          <div className="space-y-6 animate-in fade-in duration-200">
 
-            {/* Status Banner */}
-            <div className={`relative overflow-hidden rounded-2xl border p-6 ${
+            {/* Enterprise Command Hero Card */}
+            <div className={`relative rounded-3xl p-6 sm:p-8 border shadow-xl overflow-hidden transition-all ${
               isEnterprise
-                ? 'bg-gradient-to-br from-amber-50 to-orange-50 dark:from-amber-500/5 dark:to-orange-500/5 border-amber-200 dark:border-amber-500/20'
-                : 'bg-gradient-to-br from-gray-50 to-slate-50 dark:from-white/3 dark:to-white/1 border-gray-200 dark:border-white/10'
+                ? 'bg-gradient-to-br from-amber-950/40 via-zinc-950 to-black border-amber-500/30'
+                : 'bg-gradient-to-br from-zinc-900/90 via-zinc-950 to-black border-white/10'
             }`}>
-              <div className="absolute top-0 right-0 w-64 h-64 rounded-full blur-3xl opacity-10 pointer-events-none bg-amber-400" style={{ transform: 'translate(30%,-50%)' }} />
-              <div className="relative flex flex-col sm:flex-row sm:items-center justify-between gap-6">
-                <div className="flex items-center gap-4">
-                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center shadow-lg ${isEnterprise ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gray-200 dark:bg-zinc-700'}`}>
-                    <Crown className={`w-7 h-7 ${isEnterprise ? 'text-white' : 'text-gray-400 dark:text-zinc-500'}`} />
+              {/* Radial ambient glow */}
+              <div className={`absolute top-0 right-0 w-80 h-80 rounded-full blur-3xl opacity-20 pointer-events-none ${isEnterprise ? 'bg-amber-500' : 'bg-indigo-500'}`} />
+
+              <div className="relative z-10 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                <div className="flex items-start sm:items-center gap-5 min-w-0 flex-1">
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center shadow-xl shrink-0 ${
+                    isEnterprise
+                      ? 'bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-amber-500/25 ring-2 ring-amber-400/30'
+                      : 'bg-white/10 text-zinc-400 border border-white/10'
+                  }`}>
+                    <Crown className="w-8 h-8" />
                   </div>
-                  <div>
-                    <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <h2 className="text-xl font-black text-gray-900 dark:text-white">{isEnterprise ? 'Enterprise Account' : 'Standard Account'}</h2>
-                      {isEnterprise && <span className="px-2 py-0.5 rounded-full text-xs font-bold bg-amber-500 text-white">ACTIVE</span>}
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2.5 mb-1.5 flex-wrap">
+                      <h2 className="text-2xl font-black text-white tracking-tight">
+                        {isEnterprise ? 'Enterprise Fleet Account' : 'Standard Commercial Account'}
+                      </h2>
+                      <span className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                        isEnterprise
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'bg-white/10 text-zinc-400 border border-white/10'
+                      }`}>
+                        {isEnterprise ? 'OVERRIDE ACTIVE' : 'PLAN CONSTRAINED'}
+                      </span>
                     </div>
-                    <p className="text-sm text-gray-600 dark:text-zinc-400 max-w-lg">
+                    <p className="text-zinc-300 text-sm max-w-xl leading-relaxed">
                       {isEnterprise
-                        ? `Custom limits active. ${Object.keys(effectiveLimits?.customOverrides || {}).length} resource overrides in place.${effectiveLimits?.note ? ` Note: "${effectiveLimits.note}"` : ''}`
-                        : 'Standard plan tenant. Set custom limits below to configure enterprise-grade access.'
+                        ? `Enterprise overrides take absolute precedence over plan limits. ${Object.keys(effectiveLimits?.customOverrides || {}).length} custom quotas applied.${effectiveLimits?.note ? ` Note: "${effectiveLimits.note}"` : ''}`
+                        : 'Standard tier tenant. Activate enterprise overrides below to grant custom quotas or deploy automated white-glove workflows.'
                       }
                     </p>
                     {effectiveLimits?.planName && (
-                      <p className="text-xs text-gray-400 dark:text-zinc-500 mt-1">Base plan: <span className="font-medium">{effectiveLimits.planName}</span></p>
+                      <div className="flex items-center gap-2 mt-2 text-xs text-zinc-400">
+                        <span>Base Subscription:</span>
+                        <span className="font-semibold text-white px-2 py-0.5 rounded-md bg-white/10 border border-white/10">{effectiveLimits.planName}</span>
+                      </div>
                     )}
                   </div>
                 </div>
-                <div className="flex flex-wrap gap-3">
+
+                {/* Primary Action Buttons — ALWAYS visible and prominent */}
+                <div className="shrink-0 flex items-center gap-3 flex-wrap sm:flex-nowrap">
                   <button
+                    type="button"
                     onClick={() => setEditingLimits(true)}
-                    className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl font-medium transition-all active:scale-95 shadow-sm flex items-center gap-2"
+                    className="px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-2 bg-amber-500 hover:bg-amber-400 text-black active:scale-95 hover:shadow-amber-500/20"
                   >
-                    <Sliders className="w-4 h-4" /> {isEnterprise ? 'Edit Limits' : 'Activate Enterprise'}
+                    <Sliders className="w-4 h-4" />
+                    {isEnterprise ? 'Edit Limits' : 'Activate Enterprise'}
                   </button>
                   <button
-                    onClick={() => { setBlueprintDrawerMode('apply'); setShowBlueprintDrawer(true); }}
-                    className="px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-medium transition-all active:scale-95 shadow-sm flex items-center gap-2"
+                    type="button"
+                    onClick={() => {
+                      setBlueprintDrawerMode('apply');
+                      setShowBlueprintDrawer(true);
+                    }}
+                    className="px-5 py-3 rounded-2xl font-bold text-xs uppercase tracking-wider transition-all shadow-md flex items-center gap-2 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-400 hover:to-purple-500 text-white active:scale-95 shadow-indigo-500/25"
                   >
-                    <Workflow className="w-4 h-4" /> White-Glove Setup
+                    <Workflow className="w-4 h-4" />
+                    White-Glove Setup
                   </button>
                 </div>
               </div>
             </div>
 
-            {/* Effective Limits Overview */}
-            {!limitsLoading && effectiveLimits && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[
-                  { label: 'Max Visits', val: effectiveLimits.effectiveLimits?.maxVisits, icon: <Activity className="w-5 h-5" />, key: 'maxVisits' },
-                  { label: 'Max Services', val: effectiveLimits.effectiveLimits?.maxServices, icon: <Layers className="w-5 h-5" />, key: 'maxServices' },
-                  { label: 'Max Locations', val: effectiveLimits.effectiveLimits?.maxLocations, icon: <MapPin className="w-5 h-5" />, key: 'maxLocations' },
-                  { label: 'Max Staff', val: effectiveLimits.effectiveLimits?.maxStaff, icon: <Users className="w-5 h-5" />, key: 'maxStaff' },
-                ].map((item) => {
-                  const hasOverride = effectiveLimits.customOverrides?.[item.key] !== undefined;
-                  return (
-                    <div key={item.key} className={`rounded-2xl border p-5 shadow-sm transition-all ${hasOverride ? 'border-amber-200 dark:border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/5' : 'border-gray-200 dark:border-white/10 bg-white dark:bg-zinc-950'}`}>
-                      <div className={`mb-3 ${hasOverride ? 'text-amber-500' : 'text-gray-400 dark:text-zinc-500'}`}>{item.icon}</div>
-                      <div className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider mb-1">{item.label}</div>
-                      <div className={`text-2xl font-black ${item.val === null || item.val === undefined ? 'text-emerald-500' : hasOverride ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white'}`}>
-                        {item.val === null || item.val === undefined ? '∞' : item.val.toLocaleString()}
+            {/* Effective Limits Overview Cards (Responsive 4-column grid) */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {[
+                { label: 'Monthly Visits', val: effectiveLimits?.effectiveLimits?.maxVisits, icon: <Activity className="w-5 h-5" />, key: 'maxVisits', accent: 'emerald' },
+                { label: 'Services Allowed', val: effectiveLimits?.effectiveLimits?.maxServices, icon: <Layers className="w-5 h-5" />, key: 'maxServices', accent: 'indigo' },
+                { label: 'Locations / Branches', val: effectiveLimits?.effectiveLimits?.maxLocations, icon: <MapPin className="w-5 h-5" />, key: 'maxLocations', accent: 'sky' },
+                { label: 'Staff Member Seats', val: effectiveLimits?.effectiveLimits?.maxStaff, icon: <Users className="w-5 h-5" />, key: 'maxStaff', accent: 'amber' },
+              ].map((item) => {
+                const hasOverride = effectiveLimits?.customOverrides?.[item.key] !== undefined && effectiveLimits?.customOverrides?.[item.key] !== null;
+                const isUnlimited = item.val === null || item.val === undefined;
+
+                return (
+                  <div
+                    key={item.key}
+                    className={`rounded-3xl p-5 border shadow-sm transition-all relative overflow-hidden flex flex-col justify-between ${
+                      hasOverride
+                        ? 'bg-amber-500/5 border-amber-500/30 dark:bg-amber-500/5'
+                        : 'bg-white dark:bg-zinc-950 border-gray-200 dark:border-white/10'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className={`p-2.5 rounded-2xl ${
+                          item.accent === 'emerald' ? 'bg-emerald-500/10 text-emerald-500' :
+                          item.accent === 'indigo' ? 'bg-indigo-500/10 text-indigo-500' :
+                          item.accent === 'sky' ? 'bg-sky-500/10 text-sky-500' :
+                          'bg-amber-500/10 text-amber-500'
+                        }`}>
+                          {item.icon}
+                        </div>
+                        {hasOverride ? (
+                          <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-amber-500/20 text-amber-600 dark:text-amber-400 border border-amber-500/30 flex items-center gap-1">
+                            <Crown className="w-3 h-3" /> Override
+                          </span>
+                        ) : (
+                          <span className="text-[10px] font-medium text-gray-400 dark:text-zinc-500 uppercase tracking-wider">
+                            Plan Default
+                          </span>
+                        )}
                       </div>
-                      <div className="text-xs mt-1">
-                        {hasOverride
-                          ? <span className="text-amber-600 dark:text-amber-400 font-medium flex items-center gap-1"><Crown className="w-3 h-3" />Enterprise override</span>
-                          : <span className="text-gray-400 dark:text-zinc-500">Plan default</span>
-                        }
+                      <div className="text-xs font-bold text-gray-500 dark:text-zinc-400 uppercase tracking-wider">
+                        {item.label}
                       </div>
                     </div>
-                  );
-                })}
-              </div>
-            )}
-            {limitsLoading && (
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                {[1,2,3,4].map(i => <div key={i} className="h-28 bg-gray-100 dark:bg-white/5 rounded-2xl animate-pulse" />)}
-              </div>
-            )}
 
-            {/* Custom Limits Editor */}
-            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-3">
+                    <div className="mt-4">
+                      <div className={`text-3xl font-black tracking-tight ${
+                        isUnlimited ? 'text-emerald-500' : hasOverride ? 'text-amber-600 dark:text-amber-400' : 'text-gray-900 dark:text-white'
+                      }`}>
+                        {isUnlimited ? '∞' : item.val.toLocaleString()}
+                      </div>
+                      <div className="text-[11px] text-gray-400 dark:text-zinc-500 mt-1">
+                        {isUnlimited ? 'Unlimited Capacity' : `Cap: ${item.val.toLocaleString()} max`}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Custom Resource Limits Editor */}
+            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
+              <div className="px-6 py-5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-amber-50 dark:bg-amber-500/10 text-amber-500"><Sliders className="w-5 h-5" /></div>
+                  <div className="p-2.5 rounded-2xl bg-amber-500/10 text-amber-500">
+                    <Sliders className="w-5 h-5" />
+                  </div>
                   <div>
-                    <h3 className="font-bold text-gray-900 dark:text-white">Custom Resource Limits</h3>
-                    <p className="text-xs text-gray-500 dark:text-zinc-400">Enterprise overrides take absolute priority over plan-level limits</p>
+                    <h3 className="font-bold text-base text-gray-900 dark:text-white">Custom Resource Limits</h3>
+                    <p className="text-xs text-gray-500 dark:text-zinc-400">Enterprise overrides take absolute precedence over plan-level limits</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
+
+                <div className="flex items-center gap-2">
                   {editingLimits ? (
                     <>
-                      <button onClick={() => { setEditingLimits(false); setPendingLimits({}); setPendingFeatures({}); }} className="px-4 py-2 text-sm font-medium text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors">Cancel</button>
-                      <button onClick={handleSaveLimits} disabled={setCustomLimitsMutation.isPending} className="px-4 py-2 text-sm font-medium bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl transition-colors flex items-center gap-2">
-                        {setCustomLimitsMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Check className="w-4 h-4" />}
+                      <button
+                        type="button"
+                        onClick={() => { setEditingLimits(false); setPendingLimits({}); setPendingFeatures({}); }}
+                        className="px-4 py-2 text-xs font-bold text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors uppercase tracking-wider"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveLimits}
+                        disabled={setCustomLimitsMutation.isPending}
+                        className="px-5 py-2.5 text-xs font-bold bg-amber-500 hover:bg-amber-400 text-black rounded-xl transition-all shadow-md flex items-center gap-2 uppercase tracking-wider disabled:opacity-50"
+                      >
+                        {setCustomLimitsMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Check className="w-3.5 h-3.5" />}
                         {setCustomLimitsMutation.isPending ? 'Saving...' : 'Save Overrides'}
                       </button>
                     </>
                   ) : (
-                    <button onClick={() => setEditingLimits(true)} className="px-4 py-2 text-sm font-medium border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors flex items-center gap-2">
-                      <Sliders className="w-4 h-4" />Edit Overrides
+                    <button
+                      type="button"
+                      onClick={() => setEditingLimits(true)}
+                      className="px-4 py-2 text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors flex items-center gap-2 uppercase tracking-wider"
+                    >
+                      <Sliders className="w-3.5 h-3.5 text-amber-500" /> Edit Overrides
                     </button>
                   )}
                 </div>
               </div>
+
               <div className="p-6">
                 {limitsLoading ? (
-                  <div className="space-y-4">{[1,2,3,4].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />)}</div>
+                  <div className="space-y-4">{[1, 2, 3, 4].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-white/5 rounded-2xl animate-pulse" />)}</div>
                 ) : (
                   <>
-                    <LimitRow label="Monthly Visit Quota" planVal={effectiveLimits?.effectiveLimits?.maxVisits ?? null} customVal={effectiveLimits?.customOverrides?.maxVisits} unit=" visits" editing={editingLimits} onChange={(v) => setPendingLimits((p: any) => ({...p, maxVisits: v}))} onClear={() => setPendingLimits((p: any) => ({...p, maxVisits: null}))} />
-                    <LimitRow label="Maximum Services" planVal={effectiveLimits?.effectiveLimits?.maxServices ?? null} customVal={effectiveLimits?.customOverrides?.maxServices} unit=" services" editing={editingLimits} onChange={(v) => setPendingLimits((p: any) => ({...p, maxServices: v}))} onClear={() => setPendingLimits((p: any) => ({...p, maxServices: null}))} />
-                    <LimitRow label="Maximum Locations" planVal={effectiveLimits?.effectiveLimits?.maxLocations ?? null} customVal={effectiveLimits?.customOverrides?.maxLocations} unit=" locations" editing={editingLimits} onChange={(v) => setPendingLimits((p: any) => ({...p, maxLocations: v}))} onClear={() => setPendingLimits((p: any) => ({...p, maxLocations: null}))} />
-                    <LimitRow label="Maximum Staff Members" planVal={effectiveLimits?.effectiveLimits?.maxStaff ?? null} customVal={effectiveLimits?.customOverrides?.maxStaff} unit=" staff" editing={editingLimits} onChange={(v) => setPendingLimits((p: any) => ({...p, maxStaff: v}))} onClear={() => setPendingLimits((p: any) => ({...p, maxStaff: null}))} />
+                    <LimitRow
+                      label="Monthly Visit Quota"
+                      planVal={effectiveLimits?.effectiveLimits?.maxVisits ?? null}
+                      customVal={effectiveLimits?.customOverrides?.maxVisits}
+                      unit=" visits"
+                      editing={editingLimits}
+                      onChange={(v) => setPendingLimits((p: any) => ({ ...p, maxVisits: v }))}
+                      onClear={() => setPendingLimits((p: any) => ({ ...p, maxVisits: null }))}
+                      presets={[
+                        { label: '5,000', value: 5000 },
+                        { label: '25,000', value: 25000 },
+                        { label: '100,000', value: 100000 },
+                        { label: '∞ Unlimited', value: null },
+                      ]}
+                    />
+                    <LimitRow
+                      label="Maximum Services"
+                      planVal={effectiveLimits?.effectiveLimits?.maxServices ?? null}
+                      customVal={effectiveLimits?.customOverrides?.maxServices}
+                      unit=" services"
+                      editing={editingLimits}
+                      onChange={(v) => setPendingLimits((p: any) => ({ ...p, maxServices: v }))}
+                      onClear={() => setPendingLimits((p: any) => ({ ...p, maxServices: null }))}
+                      presets={[
+                        { label: '5 Services', value: 5 },
+                        { label: '20 Services', value: 20 },
+                        { label: '50 Services', value: 50 },
+                        { label: '∞ Unlimited', value: null },
+                      ]}
+                    />
+                    <LimitRow
+                      label="Maximum Locations"
+                      planVal={effectiveLimits?.effectiveLimits?.maxLocations ?? null}
+                      customVal={effectiveLimits?.customOverrides?.maxLocations}
+                      unit=" locations"
+                      editing={editingLimits}
+                      onChange={(v) => setPendingLimits((p: any) => ({ ...p, maxLocations: v }))}
+                      onClear={() => setPendingLimits((p: any) => ({ ...p, maxLocations: null }))}
+                      presets={[
+                        { label: '1 Branch', value: 1 },
+                        { label: '5 Branches', value: 5 },
+                        { label: '20 Branches', value: 20 },
+                        { label: '∞ Unlimited', value: null },
+                      ]}
+                    />
+                    <LimitRow
+                      label="Maximum Staff Members"
+                      planVal={effectiveLimits?.effectiveLimits?.maxStaff ?? null}
+                      customVal={effectiveLimits?.customOverrides?.maxStaff}
+                      unit=" staff"
+                      editing={editingLimits}
+                      onChange={(v) => setPendingLimits((p: any) => ({ ...p, maxStaff: v }))}
+                      onClear={() => setPendingLimits((p: any) => ({ ...p, maxStaff: null }))}
+                      presets={[
+                        { label: '5 Staff', value: 5 },
+                        { label: '25 Staff', value: 25 },
+                        { label: '100 Staff', value: 100 },
+                        { label: '∞ Unlimited', value: null },
+                      ]}
+                    />
+
                     {editingLimits && (
-                      <div className="mt-4 pt-4 border-t border-gray-100 dark:border-white/5">
-                        <label className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">Internal Note <span className="font-normal text-gray-400">(admin only)</span></label>
-                        <input type="text" placeholder="e.g., Enterprise deal — 12 month contract signed Oct 2025" value={limitsNote} onChange={e => setLimitsNote(e.target.value)} className="w-full h-11 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none text-sm" />
+                      <div className="mt-6 pt-6 border-t border-gray-100 dark:border-white/5">
+                        <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-zinc-300 mb-2">
+                          Audit Trail Note <span className="font-normal text-gray-400 lowercase">(internal admin reason)</span>
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="e.g. Enterprise VIP contract signed, custom quote #8821"
+                          value={limitsNote}
+                          onChange={e => setLimitsNote(e.target.value)}
+                          className="w-full h-11 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-gray-50 dark:bg-zinc-900 text-gray-900 dark:text-white focus:ring-2 focus:ring-amber-500 outline-none text-sm"
+                        />
                       </div>
                     )}
                   </>
@@ -860,26 +1068,24 @@ export default function SuperAdminTenantDetail() {
             </div>
 
             {/* Feature Flag Overrides */}
-            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center gap-3">
-                <div className="p-2 rounded-xl bg-violet-50 dark:bg-violet-500/10 text-violet-500"><Zap className="w-5 h-5" /></div>
+            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
+              <div className="px-6 py-5 border-b border-gray-200 dark:border-white/10 flex items-center gap-3">
+                <div className="p-2.5 rounded-2xl bg-purple-500/10 text-purple-500">
+                  <Zap className="w-5 h-5" />
+                </div>
                 <div>
-                  <h3 className="font-bold text-gray-900 dark:text-white">Feature Flag Overrides</h3>
-                  <p className="text-xs text-gray-500 dark:text-zinc-400">Enable/disable features for this tenant beyond what their plan allows</p>
+                  <h3 className="font-bold text-base text-gray-900 dark:text-white">Enterprise Feature Flags</h3>
+                  <p className="text-xs text-gray-500 dark:text-zinc-400">Enable or disable specific features for this tenant beyond base plan entitlements</p>
                 </div>
               </div>
               <div className="p-6">
-                {limitsLoading ? (
-                  <div className="space-y-4">
-                    {[1, 2, 3].map(i => <div key={i} className="h-12 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />)}
-                  </div>
-                ) : [
-                  { key: 'customBranding', label: 'Custom Branding', desc: 'Allows logo, colours and hiding Qmova branding' },
-                  { key: 'analyticsAdvanced', label: 'Advanced Analytics', desc: 'Historical data export, cohort and attribution analysis' },
-                  { key: 'whatsappMultiChannel', label: 'Multi-channel WhatsApp', desc: 'Multiple WhatsApp numbers / instances per account' },
-                  { key: 'prioritySupport', label: 'Priority Support SLA', desc: 'Routes account to priority support queue' },
-                  { key: 'apiAccess', label: 'Public API Access', desc: 'Grants Qmova REST API and webhook access' },
-                  { key: 'customDomain', label: 'Custom Domain / White-label', desc: 'e.g., queue.clientbrand.com as a custom endpoint' },
+                {[
+                  { key: 'customBranding', label: 'Custom Branding & White-label', desc: 'Allows logo, custom colours, and removal of Qmova branding' },
+                  { key: 'analyticsAdvanced', label: 'Advanced Telemetry & Analytics', desc: 'Historical data export, cohort reports, and performance attribution' },
+                  { key: 'whatsappMultiChannel', label: 'Multi-Channel WhatsApp Core', desc: 'Multiple WhatsApp numbers / instances per business account' },
+                  { key: 'prioritySupport', label: 'Priority Support SLA', desc: 'Routes account to dedicated emergency support queue' },
+                  { key: 'apiAccess', label: 'Public REST API & Webhooks', desc: 'Direct programmatic access to API keys and outbound event hooks' },
+                  { key: 'customDomain', label: 'Custom CNAME Domain Mapping', desc: 'e.g. queue.clientbrand.com as a custom branded endpoint' },
                 ].map(feature => (
                   <FeatureToggleRow
                     key={feature.key}
@@ -890,34 +1096,46 @@ export default function SuperAdminTenantDetail() {
                       ? effectiveLimits.customFeatureOverrides[feature.key]
                       : pendingFeatures[feature.key]}
                     editing={editingLimits}
-                    onChange={(v: any) => setPendingFeatures((p: any) => ({...p, [feature.key]: v}))}
+                    onChange={(v: any) => setPendingFeatures((p: any) => ({ ...p, [feature.key]: v }))}
                   />
                 ))}
               </div>
             </div>
 
-            {/* Blueprint Manager */}
-            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-2xl overflow-hidden shadow-sm">
-              <div className="px-6 py-4 border-b border-gray-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-3">
+            {/* Workflow Blueprint Library */}
+            <div className="bg-white dark:bg-zinc-950 border border-gray-200 dark:border-white/10 rounded-3xl overflow-hidden shadow-sm">
+              <div className="px-6 py-5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between flex-wrap gap-4">
                 <div className="flex items-center gap-3">
-                  <div className="p-2 rounded-xl bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500"><Workflow className="w-5 h-5" /></div>
+                  <div className="p-2.5 rounded-2xl bg-indigo-500/10 text-indigo-500">
+                    <Workflow className="w-5 h-5" />
+                  </div>
                   <div>
-                    <h3 className="font-bold text-gray-900 dark:text-white">Workflow Blueprint Library</h3>
+                    <h3 className="font-bold text-base text-gray-900 dark:text-white">Workflow Blueprint Library</h3>
                     <p className="text-xs text-gray-500 dark:text-zinc-400">Push blueprints to tenant library or apply directly to a service (white-glove)</p>
                   </div>
                 </div>
-                <div className="flex gap-2">
-                  <button onClick={() => { setBlueprintDrawerMode('push'); setShowBlueprintDrawer(true); }} className="px-3 py-2 text-sm font-medium border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors flex items-center gap-2">
-                    <Send className="w-4 h-4" />Push to Library
+
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => { setBlueprintDrawerMode('push'); setShowBlueprintDrawer(true); }}
+                    className="px-3.5 py-2 text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors flex items-center gap-1.5 uppercase tracking-wider"
+                  >
+                    <Send className="w-3.5 h-3.5 text-indigo-500" /> Push to Library
                   </button>
-                  <button onClick={() => { setBlueprintDrawerMode('apply'); setShowBlueprintDrawer(true); }} className="px-3 py-2 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl transition-colors flex items-center gap-2">
-                    <Target className="w-4 h-4" />Apply to Service
+                  <button
+                    type="button"
+                    onClick={() => { setBlueprintDrawerMode('apply'); setShowBlueprintDrawer(true); }}
+                    className="px-4 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-all shadow-md shadow-indigo-600/20 flex items-center gap-1.5 uppercase tracking-wider"
+                  >
+                    <Workflow className="w-3.5 h-3.5" /> ⚡ White-Glove Setup
                   </button>
                 </div>
               </div>
+
               <div className="divide-y divide-gray-100 dark:divide-white/5">
                 {blueprintsLoading ? (
-                  <div className="p-6 space-y-3">{[1,2,3].map(i => <div key={i} className="h-14 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" />)}</div>
+                  <div className="p-6 space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-16 bg-gray-100 dark:bg-white/5 rounded-2xl animate-pulse" />)}</div>
                 ) : !blueprints || blueprints.length === 0 ? (
                   <div className="p-12 text-center">
                     <Workflow className="w-10 h-10 text-gray-300 dark:text-zinc-600 mx-auto mb-3" />
@@ -925,50 +1143,74 @@ export default function SuperAdminTenantDetail() {
                   </div>
                 ) : blueprints.slice(0, 8).map((bp: any) => (
                   <div key={bp.id} className="hover:bg-gray-50/50 dark:hover:bg-white/2 transition-colors">
-                    <button onClick={() => setExpandedBlueprint(expandedBlueprint === bp.id ? null : bp.id)} className="w-full text-left px-6 py-4 flex items-center justify-between gap-4">
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className={`w-2 h-2 rounded-full flex-shrink-0 ${bp.tenantId ? 'bg-amber-500' : 'bg-indigo-500'}`} />
+                    <button
+                      type="button"
+                      onClick={() => setExpandedBlueprint(expandedBlueprint === bp.id ? null : bp.id)}
+                      className="w-full text-left px-6 py-4 flex items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0">
+                        <div className={`w-3 h-3 rounded-full shrink-0 ${bp.tenantId ? 'bg-amber-500 shadow-sm shadow-amber-500/50' : 'bg-indigo-500 shadow-sm shadow-indigo-500/50'}`} />
                         <div className="min-w-0">
                           <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
                             {bp.name}
-                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${bp.tenantId ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400'}`}>
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider ${
+                              bp.tenantId ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400'
+                            }`}>
                               {bp.tenantId ? 'Custom' : 'Global'}
                             </span>
                           </div>
                           <div className="text-xs text-gray-400 dark:text-zinc-500 truncate mt-0.5">{bp.description}</div>
                         </div>
                       </div>
-                      <div className="flex items-center gap-4 flex-shrink-0">
-                        <span className="text-xs text-gray-400 font-medium">{bp._count?.steps || bp.steps?.length || 0} steps</span>
+
+                      <div className="flex items-center gap-4 shrink-0">
+                        <span className="text-xs font-semibold text-gray-500 dark:text-zinc-400 bg-gray-100 dark:bg-white/5 px-2.5 py-1 rounded-lg">
+                          {bp._count?.steps || bp.steps?.length || 0} steps
+                        </span>
                         {expandedBlueprint === bp.id ? <ChevronDown className="w-4 h-4 text-gray-400" /> : <ChevronRight className="w-4 h-4 text-gray-400" />}
                       </div>
                     </button>
+
                     {expandedBlueprint === bp.id && bp.steps && (
-                      <div className="px-6 pb-4">
-                        <div className="bg-gray-50 dark:bg-white/3 rounded-xl p-4">
-                          <div className="text-xs font-bold text-gray-500 dark:text-zinc-500 uppercase tracking-wider mb-3">Steps</div>
+                      <div className="px-6 pb-5 pt-1">
+                        <div className="bg-gray-50 dark:bg-white/3 rounded-2xl p-4 border border-gray-200 dark:border-white/5">
+                          <div className="text-[10px] font-bold text-gray-400 dark:text-zinc-500 uppercase tracking-wider mb-3">
+                            Step Progression Pipeline
+                          </div>
                           <div className="space-y-2">
                             {bp.steps.map((step: any) => (
-                              <div key={step.id} className="flex items-center gap-3">
-                                <div className="w-6 h-6 rounded-full bg-indigo-100 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 text-xs font-bold flex items-center justify-center flex-shrink-0">{step.stepOrder}</div>
-                                <span className="text-sm font-medium text-gray-900 dark:text-white flex-1 min-w-0">{step.name}</span>
-                                {step.isOptional && <span className="text-xs text-gray-400">(optional)</span>}
-                                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                              <div key={step.id} className="flex items-center gap-3 p-2 bg-white dark:bg-zinc-900/60 rounded-xl border border-gray-100 dark:border-white/5">
+                                <div className="w-6 h-6 rounded-full bg-indigo-500/10 text-indigo-500 text-xs font-bold flex items-center justify-center shrink-0">
+                                  {step.stepOrder}
+                                </div>
+                                <span className="text-sm font-semibold text-gray-900 dark:text-white flex-1 min-w-0">{step.name}</span>
+                                {step.isOptional && <span className="text-xs text-gray-400 font-medium">(optional)</span>}
+                                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
                                   step.type === 'SERVICE' ? 'bg-blue-100 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400' :
                                   step.type === 'CHECKPOINT' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400' :
                                   step.type === 'PAYMENT' ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' :
-                                  step.type === 'COLLECTION' ? 'bg-purple-100 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400' :
-                                  'bg-gray-100 text-gray-600 dark:bg-white/5 dark:text-zinc-400'
-                                }`}>{step.type}</span>
+                                  'bg-purple-100 text-purple-700 dark:bg-purple-500/10 dark:text-purple-400'
+                                }`}>
+                                  {step.type}
+                                </span>
                               </div>
                             ))}
                           </div>
+
                           <div className="flex gap-2 mt-4 pt-3 border-t border-gray-200 dark:border-white/10">
-                            <button onClick={() => { setSelectedBlueprintId(bp.id); setBlueprintDrawerMode('push'); setShowBlueprintDrawer(true); }} className="flex-1 py-2 text-xs font-medium border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-white/5 rounded-lg transition-colors flex items-center justify-center gap-1">
-                              <Send className="w-3.5 h-3.5" />Push to Library
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedBlueprintId(bp.id); setBlueprintDrawerMode('push'); setShowBlueprintDrawer(true); }}
+                              className="flex-1 py-2 text-xs font-bold border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-white dark:hover:bg-white/5 rounded-xl transition-colors flex items-center justify-center gap-1.5 uppercase tracking-wider"
+                            >
+                              <Send className="w-3.5 h-3.5 text-indigo-500" /> Push to Library
                             </button>
-                            <button onClick={() => { setSelectedBlueprintId(bp.id); setBlueprintDrawerMode('apply'); setShowBlueprintDrawer(true); }} className="flex-1 py-2 text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg transition-colors flex items-center justify-center gap-1">
-                              <Target className="w-3.5 h-3.5" />Apply to Service
+                            <button
+                              type="button"
+                              onClick={() => { setSelectedBlueprintId(bp.id); setBlueprintDrawerMode('apply'); setShowBlueprintDrawer(true); }}
+                              className="flex-1 py-2 text-xs font-bold bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl transition-colors flex items-center justify-center gap-1.5 uppercase tracking-wider shadow-sm"
+                            >
+                              <Target className="w-3.5 h-3.5" /> ⚡ Apply to Service
                             </button>
                           </div>
                         </div>
@@ -976,34 +1218,41 @@ export default function SuperAdminTenantDetail() {
                     )}
                   </div>
                 ))}
-                {blueprints && blueprints.length > 8 && (
-                  <div className="px-6 py-3 text-sm text-center text-gray-400 dark:text-zinc-500">
-                    +{blueprints.length - 8} more · <button onClick={() => { setBlueprintDrawerMode('push'); setShowBlueprintDrawer(true); }} className="text-indigo-500 hover:underline">View all in drawer</button>
-                  </div>
-                )}
               </div>
             </div>
           </div>
         )}
       </div>
 
-      {/* ── ASSIGN PLAN MODAL ── */}
-      {showAssignPlanModal && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-950/80 backdrop-blur-sm animate-in fade-in duration-200">
+      {/* ── ASSIGN PLAN MODAL (Portalled to document.body) ── */}
+      {mounted && showAssignPlanModal && createPortal(
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
           <div className="w-full max-w-lg bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200">
             <div className="flex items-center justify-between mb-6">
               <div>
                 <h2 className="text-xl font-bold text-gray-900 dark:text-white">Assign Subscription Plan</h2>
                 <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">Provision immediate tier entitlements and duration</p>
               </div>
-              <button onClick={() => setShowAssignPlanModal(false)} className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors"><XCircle className="w-5 h-5" /></button>
+              <button
+                type="button"
+                onClick={() => setShowAssignPlanModal(false)}
+                className="p-2 text-gray-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-full transition-colors"
+              >
+                <XCircle className="w-5 h-5" />
+              </button>
             </div>
-            
+
             <div className="space-y-5 mb-8">
               <div>
                 <label className="block text-sm font-semibold text-gray-700 dark:text-zinc-300 mb-1.5">Select Target Plan</label>
-                {plansLoading ? <div className="h-12 bg-gray-100 dark:bg-zinc-800 rounded-xl animate-pulse" /> : (
-                  <select value={selectedPlanId} onChange={e => setSelectedPlanId(e.target.value)} className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium">
+                {plansLoading ? (
+                  <div className="h-12 bg-gray-100 dark:bg-zinc-800 rounded-xl animate-pulse" />
+                ) : (
+                  <select
+                    value={selectedPlanId}
+                    onChange={e => setSelectedPlanId(e.target.value)}
+                    className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm font-medium"
+                  >
                     <option value="">-- Choose a plan --</option>
                     {plans?.map((plan: any) => (
                       <option key={plan.id} value={plan.id}>
@@ -1041,7 +1290,11 @@ export default function SuperAdminTenantDetail() {
                 <div className="grid grid-cols-2 gap-3 mt-3">
                   <div>
                     <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Billing Interval Mode</label>
-                    <select value={billingInterval} onChange={e => setBillingInterval(e.target.value)} className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs">
+                    <select
+                      value={billingInterval}
+                      onChange={e => setBillingInterval(e.target.value)}
+                      className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
+                    >
                       <option value="MONTHLY">Monthly (30 Days)</option>
                       <option value="YEARLY">Yearly (365 Days)</option>
                       <option value="CUSTOM">Custom Specific Date</option>
@@ -1049,17 +1302,17 @@ export default function SuperAdminTenantDetail() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-gray-500 dark:text-zinc-400 mb-1">Expiry / Renewal Date</label>
-                    <input 
-                      type="date" 
+                    <input
+                      type="date"
                       value={customEndDate || (() => {
                         const days = billingInterval === 'YEARLY' ? 365 : 30;
                         return new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-                      })()} 
+                      })()}
                       onChange={e => {
                         setBillingInterval('CUSTOM');
                         setCustomEndDate(e.target.value);
-                      }} 
-                      className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs" 
+                      }}
+                      className="w-full h-11 px-3 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-xs"
                     />
                   </div>
                 </div>
@@ -1067,7 +1320,12 @@ export default function SuperAdminTenantDetail() {
 
               <div className="p-4 bg-gray-50 dark:bg-white/5 border border-gray-200 dark:border-white/10 rounded-2xl">
                 <label className="flex items-start gap-3 cursor-pointer">
-                  <input type="checkbox" checked={isFree} onChange={e => setIsFree(e.target.checked)} className="w-4 h-4 mt-0.5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500" />
+                  <input
+                    type="checkbox"
+                    checked={isFree}
+                    onChange={e => setIsFree(e.target.checked)}
+                    className="w-4 h-4 mt-0.5 text-indigo-600 rounded border-gray-300 focus:ring-indigo-500"
+                  />
                   <div>
                     <span className="text-sm font-semibold text-gray-900 dark:text-white block">Grant as Free / Complimentary License</span>
                     <span className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5 block">
@@ -1079,20 +1337,27 @@ export default function SuperAdminTenantDetail() {
             </div>
 
             <div className="flex justify-end gap-3 pt-4 border-t border-gray-200 dark:border-white/10">
-              <button onClick={() => setShowAssignPlanModal(false)} className="px-5 py-2.5 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl font-medium transition-colors text-sm">Cancel</button>
               <button
-                onClick={() => { 
+                type="button"
+                onClick={() => setShowAssignPlanModal(false)}
+                className="px-5 py-2.5 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl font-medium transition-colors text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   if (selectedPlanId) {
-                    const finalEndDate = customEndDate || (billingInterval === 'YEARLY' 
+                    const finalEndDate = customEndDate || (billingInterval === 'YEARLY'
                       ? new Date(Date.now() + 365 * 24 * 60 * 60 * 1000).toISOString()
                       : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString()
                     );
-                    assignPlanMutation.mutate({ 
-                      planId: selectedPlanId, 
-                      billingInterval, 
-                      customEndDate: finalEndDate, 
-                      isFree 
-                    }); 
+                    assignPlanMutation.mutate({
+                      planId: selectedPlanId,
+                      billingInterval,
+                      customEndDate: finalEndDate,
+                      isFree,
+                    });
                   }
                 }}
                 disabled={!selectedPlanId || assignPlanMutation.isPending}
@@ -1103,122 +1368,271 @@ export default function SuperAdminTenantDetail() {
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
-      {/* ── BLUEPRINT DRAWER ── */}
-      {showBlueprintDrawer && (
-        <div className="fixed inset-0 z-[100] flex" onClick={() => setShowBlueprintDrawer(false)}>
-          <div className="flex-1 bg-zinc-950/60 backdrop-blur-sm" />
-          <div className="w-full max-w-lg h-full bg-white dark:bg-zinc-900 border-l border-gray-200 dark:border-white/10 flex flex-col shadow-2xl animate-in slide-in-from-right duration-300" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between px-6 py-5 border-b border-gray-200 dark:border-white/10">
-              <div>
-                <h2 className="text-lg font-bold text-gray-900 dark:text-white">
-                  {blueprintDrawerMode === 'push' ? 'Push Blueprint to Library' : '⚡ White-Glove Setup'}
-                </h2>
-                <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
-                  {blueprintDrawerMode === 'push'
-                    ? `Adds a private copy to ${tenant.name}'s template library`
-                    : `Applies a workflow directly to a service of ${tenant.name}`}
-                </p>
+      {/* ── WHITE-GLOVE SETUP DRAWER (Portalled to document.body) ── */}
+      {mounted && showBlueprintDrawer && createPortal(
+        <div
+          className="fixed inset-0 z-[120] flex justify-end bg-black/80 backdrop-blur-sm animate-in fade-in duration-200"
+          onClick={() => setShowBlueprintDrawer(false)}
+        >
+          <div
+            className="w-full max-w-xl h-full bg-white dark:bg-zinc-950 border-l border-gray-200 dark:border-white/10 flex flex-col shadow-2xl animate-in slide-in-from-right duration-300 relative"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Pinned Header */}
+            <div className="px-6 py-5 border-b border-gray-200 dark:border-white/10 flex items-center justify-between shrink-0 bg-white dark:bg-zinc-950">
+              <div className="flex items-center gap-3 min-w-0">
+                <div className={`w-10 h-10 rounded-2xl flex items-center justify-center shrink-0 shadow-md ${
+                  blueprintDrawerMode === 'apply'
+                    ? 'bg-gradient-to-br from-amber-400 to-orange-600 text-white shadow-amber-500/20'
+                    : 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-indigo-500/20'
+                }`}>
+                  {blueprintDrawerMode === 'apply' ? <Zap className="w-5 h-5" /> : <Send className="w-5 h-5" />}
+                </div>
+                <div className="min-w-0">
+                  <h2 className="text-lg font-black text-gray-900 dark:text-white truncate">
+                    {blueprintDrawerMode === 'apply' ? '⚡ White-Glove Service Configuration' : 'Push Blueprint to Library'}
+                  </h2>
+                  <p className="text-xs text-gray-500 dark:text-zinc-400 truncate">
+                    {blueprintDrawerMode === 'apply'
+                      ? `Deploy automated journey directly to ${tenant.name}'s service`
+                      : `Clone blueprint to ${tenant.name}'s private template library`}
+                  </p>
+                </div>
               </div>
-              <button onClick={() => setShowBlueprintDrawer(false)} className="p-2 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl text-gray-400 transition-colors"><X className="w-5 h-5" /></button>
+              <button
+                type="button"
+                onClick={() => setShowBlueprintDrawer(false)}
+                className="p-2 text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl transition-colors shrink-0"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
 
-            {/* Mode Toggle */}
-            <div className="flex gap-1 p-2 mx-6 mt-4 bg-gray-100 dark:bg-white/5 rounded-xl">
-              {(['push', 'apply'] as const).map(mode => (
-                <button key={mode} onClick={() => setBlueprintDrawerMode(mode)} className={`flex-1 py-2 text-sm font-medium rounded-lg transition-all flex items-center justify-center gap-2 ${blueprintDrawerMode === mode ? 'bg-white dark:bg-zinc-800 shadow-sm text-gray-900 dark:text-white' : 'text-gray-500 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'}`}>
-                  {mode === 'push' ? <><Send className="w-4 h-4" />Push to Library</> : <><Target className="w-4 h-4" />Apply to Service</>}
+            {/* Segmented Mode Control */}
+            <div className="px-6 pt-4 shrink-0">
+              <div className="grid grid-cols-2 p-1.5 bg-gray-100 dark:bg-white/5 rounded-2xl border border-gray-200 dark:border-white/5">
+                <button
+                  type="button"
+                  onClick={() => setBlueprintDrawerMode('apply')}
+                  className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                    blueprintDrawerMode === 'apply'
+                      ? 'bg-amber-500 text-black shadow-sm font-black'
+                      : 'text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Target className="w-4 h-4" /> ⚡ Apply to Service (White-Glove)
                 </button>
-              ))}
+                <button
+                  type="button"
+                  onClick={() => setBlueprintDrawerMode('push')}
+                  className={`py-2 px-3 text-xs font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${
+                    blueprintDrawerMode === 'push'
+                      ? 'bg-indigo-600 text-white shadow-sm font-black'
+                      : 'text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white'
+                  }`}
+                >
+                  <Send className="w-4 h-4" /> 📦 Push to Library
+                </button>
+              </div>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 space-y-5">
-              {blueprintDrawerMode === 'push' && (
-                <div className="p-4 bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 rounded-xl flex items-start gap-3">
-                  <Info className="w-4 h-4 text-blue-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-blue-700 dark:text-blue-300">Adds a private, editable copy to this tenant's template library. They can customize it freely — the global original is untouched.</p>
+            {/* Scrollable Content Body */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-6 space-y-6">
+              {/* Notice Callout */}
+              {blueprintDrawerMode === 'apply' ? (
+                <div className="p-4 rounded-2xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-300 flex items-start gap-3">
+                  <Sparkles className="w-5 h-5 text-amber-500 shrink-0 mt-0.5" />
+                  <div className="text-xs leading-relaxed">
+                    <strong className="font-bold text-amber-900 dark:text-amber-200 block mb-0.5">White-Glove Deployment:</strong>
+                    This replaces the existing workflow on the selected service with a comprehensive, multi-step customer journey. The tenant can immediately use it and customize steps anytime.
+                  </div>
                 </div>
-              )}
-              {blueprintDrawerMode === 'apply' && (
-                <div className="p-4 bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-xl flex items-start gap-3">
-                  <AlertCircle className="w-4 h-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                  <p className="text-xs text-amber-700 dark:text-amber-300"><strong>Replaces</strong> the existing workflow on the selected service. Use for enterprise onboarding white-glove configuration. The tenant can edit the steps afterwards.</p>
+              ) : (
+                <div className="p-4 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-700 dark:text-indigo-300 flex items-start gap-3">
+                  <Info className="w-5 h-5 text-indigo-500 shrink-0 mt-0.5" />
+                  <div className="text-xs leading-relaxed">
+                    <strong className="font-bold text-indigo-900 dark:text-indigo-200 block mb-0.5">Library Ingestion:</strong>
+                    Adds a private, editable clone to this tenant's template library. The global system blueprint remains untouched.
+                  </div>
                 </div>
               )}
 
-              {/* Blueprint Picker */}
+              {/* Step 1: Select Blueprint */}
               <div>
-                <label className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">Select Blueprint</label>
-                {blueprintsLoading ? <div className="h-12 bg-gray-100 dark:bg-white/5 rounded-xl animate-pulse" /> : (
-                  <div className="space-y-2 max-h-64 overflow-y-auto pr-1 custom-scrollbar">
-                    {blueprints?.map((bp: any) => (
-                      <label key={bp.id} className={`flex items-start gap-3 p-3.5 border rounded-xl cursor-pointer transition-all ${selectedBlueprintId === bp.id ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-500/10' : 'border-gray-200 dark:border-white/10 hover:border-indigo-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
-                        <input type="radio" name="blueprint" value={bp.id} checked={selectedBlueprintId === bp.id} onChange={() => setSelectedBlueprintId(bp.id)} className="mt-0.5 text-indigo-600 flex-shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-2 flex-wrap">
-                            {bp.name}
-                            <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${bp.tenantId ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400' : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-400'}`}>{bp.tenantId ? 'Custom' : 'Global'}</span>
+                <div className="flex items-center justify-between mb-2.5">
+                  <label className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-zinc-300">
+                    Step 1: Select Workflow Blueprint
+                  </label>
+                  <span className="text-[11px] text-gray-400 dark:text-zinc-500">
+                    {blueprints?.length || 0} templates available
+                  </span>
+                </div>
+
+                {blueprintsLoading ? (
+                  <div className="space-y-3">{[1, 2, 3].map(i => <div key={i} className="h-20 bg-gray-100 dark:bg-white/5 rounded-2xl animate-pulse" />)}</div>
+                ) : !blueprints || blueprints.length === 0 ? (
+                  <div className="p-8 text-center border border-dashed border-gray-300 dark:border-zinc-800 rounded-2xl text-gray-400">
+                    No blueprints found.
+                  </div>
+                ) : (
+                  <div className="space-y-2.5 max-h-72 overflow-y-auto custom-scrollbar pr-1">
+                    {blueprints.map((bp: any) => {
+                      const isSelected = selectedBlueprintId === bp.id;
+                      return (
+                        <div
+                          key={bp.id}
+                          onClick={() => setSelectedBlueprintId(bp.id)}
+                          className={`p-4 rounded-2xl border cursor-pointer transition-all ${
+                            isSelected
+                              ? 'bg-amber-500/10 border-amber-500 dark:bg-amber-500/10 dark:border-amber-500 ring-2 ring-amber-500/20'
+                              : 'bg-white dark:bg-zinc-900/60 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                          }`}
+                        >
+                          <div className="flex items-start gap-3">
+                            <div className={`w-5 h-5 rounded-full border-2 mt-0.5 flex items-center justify-center shrink-0 transition-all ${
+                              isSelected
+                                ? 'border-amber-500 bg-amber-500 text-black'
+                                : 'border-gray-300 dark:border-zinc-700'
+                            }`}>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
+                                <span className="font-bold text-sm text-gray-900 dark:text-white">{bp.name}</span>
+                                <span className={`text-[10px] font-black uppercase px-2 py-0.5 rounded-full ${
+                                  bp.tenantId
+                                    ? 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300'
+                                    : 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
+                                }`}>
+                                  {bp.tenantId ? 'Custom' : 'Global'}
+                                </span>
+                                <span className="text-[10px] text-gray-400 dark:text-zinc-500 ml-auto font-bold">
+                                  {bp._count?.steps || bp.steps?.length || 0} steps
+                                </span>
+                              </div>
+                              <p className="text-xs text-gray-500 dark:text-zinc-400 line-clamp-2 leading-relaxed">{bp.description}</p>
+                            </div>
                           </div>
-                          <div className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5 line-clamp-2">{bp.description}</div>
-                          <div className="text-xs text-gray-400 dark:text-zinc-500 mt-1">{bp._count?.steps || bp.steps?.length || 0} steps</div>
                         </div>
-                      </label>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
 
-              {/* Service picker (apply mode) */}
+              {/* Step 2: Target Service (Apply mode) */}
               {blueprintDrawerMode === 'apply' && (
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">Target Service</label>
-                  {!tenant?.services || tenant.services.length === 0 ? (
-                    <div className="p-4 text-sm text-gray-400 dark:text-zinc-500 border border-gray-200 dark:border-white/10 rounded-xl text-center">No services found. The tenant must create a service first.</div>
+                  <div className="flex items-center justify-between mb-2.5">
+                    <label className="text-xs font-black uppercase tracking-wider text-gray-700 dark:text-zinc-300">
+                      Step 2: Select Target Service
+                    </label>
+                    <span className="text-[11px] text-gray-400 dark:text-zinc-500">
+                      {tenant.services?.length || 0} services configured
+                    </span>
+                  </div>
+
+                  {!tenant.services || tenant.services.length === 0 ? (
+                    <div className="p-6 text-center border border-dashed border-gray-300 dark:border-zinc-800 rounded-2xl text-gray-400 text-sm">
+                      No services found for this tenant. The tenant must create at least one service before applying a white-glove blueprint.
+                    </div>
                   ) : (
-                    <div className="space-y-2">
-                      {tenant.services.map((svc: any) => (
-                        <label key={svc.id} className={`flex items-center gap-3 p-3.5 border rounded-xl cursor-pointer transition-all ${selectedServiceId === svc.id ? 'border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10' : 'border-gray-200 dark:border-white/10 hover:border-emerald-300 hover:bg-gray-50 dark:hover:bg-white/5'}`}>
-                          <input type="radio" name="service" value={svc.id} checked={selectedServiceId === svc.id} onChange={() => setSelectedServiceId(svc.id)} className="text-emerald-600 flex-shrink-0" />
-                          <div>
-                            <div className="text-sm font-bold text-gray-900 dark:text-white">{svc.name}</div>
-                            {svc.location?.name && <div className="text-xs text-gray-400 dark:text-zinc-500">at {svc.location.name}</div>}
+                    <div className="space-y-2.5 max-h-56 overflow-y-auto custom-scrollbar pr-1">
+                      {tenant.services.map((svc: any) => {
+                        const isSelected = selectedServiceId === svc.id;
+                        return (
+                          <div
+                            key={svc.id}
+                            onClick={() => setSelectedServiceId(svc.id)}
+                            className={`p-3.5 rounded-2xl border cursor-pointer transition-all flex items-center gap-3.5 ${
+                              isSelected
+                                ? 'bg-amber-500/10 border-amber-500 dark:bg-amber-500/10 dark:border-amber-500 ring-2 ring-amber-500/20'
+                                : 'bg-white dark:bg-zinc-900/60 border-gray-200 dark:border-white/10 hover:border-gray-300 dark:hover:border-white/20'
+                            }`}
+                          >
+                            <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center shrink-0 transition-all ${
+                              isSelected
+                                ? 'border-amber-500 bg-amber-500 text-black'
+                                : 'border-gray-300 dark:border-zinc-700'
+                            }`}>
+                              {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
+                            </div>
+
+                            <div className="flex-1 min-w-0">
+                              <div className="font-bold text-sm text-gray-900 dark:text-white truncate">{svc.name}</div>
+                              <div className="text-xs text-gray-400 dark:text-zinc-500 mt-0.5 flex items-center gap-2">
+                                {svc.location?.name && <span>📍 {svc.location.name}</span>}
+                                {svc.queues && svc.queues.length > 0 && <span>• {svc.queues.length} queue(s)</span>}
+                              </div>
+                            </div>
                           </div>
-                        </label>
-                      ))}
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               )}
 
-              {/* Custom name (push) */}
-              {blueprintDrawerMode === 'push' && selectedBlueprintId && (
+              {/* Step 2 (Push Mode): Optional Custom Name */}
+              {blueprintDrawerMode === 'push' && (
                 <div>
-                  <label className="block text-sm font-bold text-gray-700 dark:text-zinc-300 mb-2">Custom Name for Tenant Copy <span className="font-normal text-gray-400">(optional)</span></label>
-                  <input type="text" placeholder="Leave blank to auto-generate" value={pushCustomName} onChange={e => setPushCustomName(e.target.value)} className="w-full h-11 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm" />
+                  <label className="block text-xs font-black uppercase tracking-wider text-gray-700 dark:text-zinc-300 mb-2">
+                    Custom Template Name <span className="font-normal text-gray-400 lowercase">(optional)</span>
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="Leave blank to use original blueprint title"
+                    value={pushCustomName}
+                    onChange={e => setPushCustomName(e.target.value)}
+                    className="w-full h-12 px-4 rounded-xl border border-gray-300 dark:border-zinc-700 bg-white dark:bg-zinc-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
+                  />
                 </div>
               )}
             </div>
 
-            <div className="px-6 py-4 border-t border-gray-200 dark:border-white/10 flex gap-3">
-              <button onClick={() => setShowBlueprintDrawer(false)} className="flex-1 py-2.5 text-sm font-medium border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-50 dark:hover:bg-white/5 rounded-xl transition-colors">Cancel</button>
-              {blueprintDrawerMode === 'push' ? (
-                <button onClick={() => pushBlueprintMutation.mutate({ blueprintId: selectedBlueprintId, name: pushCustomName || undefined })} disabled={!selectedBlueprintId || pushBlueprintMutation.isPending} className="flex-1 py-2.5 text-sm font-medium bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white rounded-xl transition-colors flex items-center justify-center gap-2">
-                  {pushBlueprintMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-                  {pushBlueprintMutation.isPending ? 'Pushing...' : 'Push to Library'}
+            {/* Pinned Bottom Actions */}
+            <div className="p-6 border-t border-gray-200 dark:border-white/10 flex items-center gap-3 shrink-0 bg-white dark:bg-zinc-950">
+              <button
+                type="button"
+                onClick={() => setShowBlueprintDrawer(false)}
+                className="px-5 py-3 text-xs font-bold uppercase tracking-wider border border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-white/5 rounded-2xl transition-colors"
+              >
+                Cancel
+              </button>
+
+              {blueprintDrawerMode === 'apply' ? (
+                <button
+                  type="button"
+                  onClick={() => applyBlueprintMutation.mutate({ blueprintId: selectedBlueprintId, serviceId: selectedServiceId })}
+                  disabled={!selectedBlueprintId || !selectedServiceId || applyBlueprintMutation.isPending}
+                  className="flex-1 py-3 px-5 text-xs font-black uppercase tracking-wider bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 disabled:opacity-50 text-black rounded-2xl transition-all shadow-lg shadow-amber-500/25 flex items-center justify-center gap-2"
+                >
+                  {applyBlueprintMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
+                  {applyBlueprintMutation.isPending ? 'Deploying Journey...' : '⚡ Apply Workflow (White-Glove)'}
                 </button>
               ) : (
-                <button onClick={() => applyBlueprintMutation.mutate({ blueprintId: selectedBlueprintId, serviceId: selectedServiceId })} disabled={!selectedBlueprintId || !selectedServiceId || applyBlueprintMutation.isPending} className="flex-1 py-2.5 text-sm font-medium bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl transition-colors flex items-center justify-center gap-2">
-                  {applyBlueprintMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Zap className="w-4 h-4" />}
-                  {applyBlueprintMutation.isPending ? 'Applying...' : 'Apply Workflow'}
+                <button
+                  type="button"
+                  onClick={() => pushBlueprintMutation.mutate({ blueprintId: selectedBlueprintId, name: pushCustomName || undefined })}
+                  disabled={!selectedBlueprintId || pushBlueprintMutation.isPending}
+                  className="flex-1 py-3 px-5 text-xs font-black uppercase tracking-wider bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white rounded-2xl transition-all shadow-lg shadow-indigo-600/25 flex items-center justify-center gap-2"
+                >
+                  {pushBlueprintMutation.isPending ? <RefreshCw className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
+                  {pushBlueprintMutation.isPending ? 'Pushing to Library...' : '📦 Push to Tenant Library'}
                 </button>
               )}
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
+      {/* Confirmation Modals */}
       <ConfirmModal
         isOpen={showCancelPlanConfirm}
         onClose={() => setShowCancelPlanConfirm(false)}
