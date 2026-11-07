@@ -74,6 +74,9 @@ export class TenantPaymentsController {
       visitStepId?: string;
       appointmentId?: string;
       description?: string;
+      customerEmail?: string;
+      customerName?: string;
+      customerPhone?: string;
     },
   ) {
     return this.tenantPaymentsService.createPaymentIntent(
@@ -84,6 +87,9 @@ export class TenantPaymentsController {
         visitStepId: dto.visitStepId,
         appointmentId: dto.appointmentId,
         description: dto.description,
+        customerEmail: dto.customerEmail,
+        customerName: dto.customerName,
+        customerPhone: dto.customerPhone,
       },
     );
   }
@@ -98,6 +104,9 @@ export class TenantPaymentsController {
       visitStepId?: string;
       appointmentId?: string;
       description?: string;
+      customerEmail?: string;
+      customerName?: string;
+      customerPhone?: string;
     },
   ) {
     // For public bookings, they pass the tenantId in the body
@@ -109,6 +118,9 @@ export class TenantPaymentsController {
         visitStepId: dto.visitStepId,
         appointmentId: dto.appointmentId,
         description: dto.description,
+        customerEmail: dto.customerEmail,
+        customerName: dto.customerName,
+        customerPhone: dto.customerPhone,
       },
     );
   }

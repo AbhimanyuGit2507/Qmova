@@ -1112,6 +1112,9 @@ export default function CustomerLiveStatus() {
                       amount={activeStep.templateStep?.stepPrice || data.token?.visitInvoice?.total || 0}
                       currency={activeStep.templateStep?.stepPriceCurrency || 'ZAR'}
                       stripeAccountId={stripeAccountId}
+                      customerName={data.token?.customer?.name || undefined}
+                      customerEmail={data.token?.customer?.email || undefined}
+                      customerPhone={data.token?.customer?.phone || undefined}
                       onSuccess={() => {
                         toast.success('Payment Successful!');
                         triggerRefetch();

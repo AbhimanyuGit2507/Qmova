@@ -46,6 +46,9 @@ interface PaymentStepProps {
   visitStepId?: string;
   onSkip?: () => void;
   isDark?: boolean;
+  customerEmail?: string;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 const CheckoutForm = ({
@@ -57,6 +60,9 @@ const CheckoutForm = ({
   amount,
   currency,
   isDark: _isDark,
+  customerEmail,
+  customerName,
+  customerPhone,
 }: {
   onSuccess: (paymentId: string) => void;
   onBack?: () => void;
@@ -66,6 +72,9 @@ const CheckoutForm = ({
   amount: number;
   currency: string;
   isDark?: boolean;
+  customerEmail?: string;
+  customerName?: string;
+  customerPhone?: string;
 }) => {
   const stripe = useStripe();
   const elements = useElements();
@@ -214,20 +223,44 @@ const CheckoutForm = ({
               onReady={() => setIsElementReady(true)}
               onLoadError={(err) => {
                 console.error('PaymentElement failed to load:', err);
-                setElementLoadError('Card processor unavailable. Please choose pay at counter.');
+                setElementLoadError('Card & wallet processor unavailable. Please choose pay at counter.');
               }}
               options={{
                 layout: {
-                  type: 'tabs',
+                  type: 'accordion',
                   defaultCollapsed: false,
+                  radios: true,
+                  spacedAccordionItems: true,
                 },
                 wallets: {
                   applePay: 'auto',
                   googlePay: 'auto',
                 },
+                defaultValues: {
+                  billingDetails: {
+                    email: customerEmail || undefined,
+                    name: customerName || undefined,
+                    phone: customerPhone || undefined,
+                  },
+                },
               }}
             />
           </div>
+        </div>
+      </div>
+
+      {/* Deepstash-Style Satisfaction & Booking Guarantee Box */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-gradient-to-br from-amber-500/5 via-primary/5 to-transparent border border-amber-500/20 dark:border-amber-500/15 flex items-start gap-3.5 shadow-xs">
+        <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0 border border-amber-500/20">
+          <ShieldCheck className="w-5 h-5" />
+        </div>
+        <div className="space-y-1 min-w-0">
+          <h4 className="text-xs sm:text-sm font-bold text-gray-900 dark:text-white">
+            Booking & Satisfaction Guarantee
+          </h4>
+          <p className="text-[11px] sm:text-xs text-gray-600 dark:text-zinc-400 leading-relaxed">
+            Your appointment reservation is secured with our provider guarantee. Rescheduling or cancellations under policy terms are refunded automatically to your original payment method.
+          </p>
         </div>
       </div>
 
@@ -288,6 +321,35 @@ const CheckoutForm = ({
         )}
       </div>
 
+      {/* Deepstash-Style "Powered by stripe" and Verified Payment Network Badges */}
+      <div className="pt-2 text-center space-y-2.5">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-lg border border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-800/60 text-xs font-semibold text-gray-700 dark:text-zinc-300">
+          <span className="text-[11px] text-gray-400 font-medium">Powered by</span>
+          <span className="font-extrabold tracking-tight text-[#635BFF]">stripe</span>
+        </div>
+
+        <div className="flex flex-wrap items-center justify-center gap-1.5">
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider bg-gray-100 dark:bg-zinc-800 text-gray-800 dark:text-zinc-200 border border-gray-200 dark:border-zinc-700">
+             Pay
+          </span>
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold tracking-wider bg-gray-100 dark:bg-zinc-800 text-gray-800 dark:text-zinc-200 border border-gray-200 dark:border-zinc-700">
+            G Pay
+          </span>
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold italic bg-blue-600 text-white shadow-xs">
+            VISA
+          </span>
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-extrabold bg-red-600 text-white shadow-xs">
+            MC
+          </span>
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-orange-500 text-white shadow-xs">
+            DISCOVER
+          </span>
+          <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-cyan-700 text-white shadow-xs">
+            AMEX
+          </span>
+        </div>
+      </div>
+
       {/* Trust & Compliance Footer */}
       <div className="pt-4 border-t border-gray-100 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-3 px-1 text-[11px] text-gray-500 dark:text-zinc-400">
         <div className="flex items-center gap-1.5 font-medium text-emerald-600 dark:text-emerald-400">
@@ -304,7 +366,22 @@ const CheckoutForm = ({
   );
 };
 
-export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuccess, onBack, onSkip, primaryColor, visitId, visitStepId, isDark }: PaymentStepProps) {
+export function PaymentStep({
+  tenantId,
+  amount,
+  currency,
+  stripeAccountId,
+  onSuccess,
+  onBack,
+  onSkip,
+  primaryColor,
+  visitId,
+  visitStepId,
+  isDark,
+  customerEmail,
+  customerName,
+  customerPhone,
+}: PaymentStepProps) {
   const [clientSecret, setClientSecret] = useState<string | null>(null);
   const [paymentId, setPaymentId] = useState<string | null>(null);
   const [intentError, setIntentError] = useState<string | null>(null);
@@ -364,7 +441,16 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
     try {
       const res = await fetchApi('/tenant-payments/public/intent', {
         method: 'POST',
-        body: JSON.stringify({ tenantId, amount, description: 'Booking Prepayment', visitId, visitStepId })
+        body: JSON.stringify({
+          tenantId,
+          amount,
+          description: 'Booking Prepayment',
+          visitId,
+          visitStepId,
+          customerEmail: customerEmail || undefined,
+          customerName: customerName || undefined,
+          customerPhone: customerPhone || undefined,
+        })
       });
       setClientSecret(res.clientSecret);
       setPaymentId(res.paymentId);
@@ -375,7 +461,7 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
     } finally {
       setIsRetrying(false);
     }
-  }, [tenantId, amount, visitId, visitStepId]);
+  }, [tenantId, amount, visitId, visitStepId, customerEmail, customerName, customerPhone]);
 
   useEffect(() => {
     if (tenantId && amount > 0 && stripeAccountId && amount >= minRequiredCents) {
@@ -383,7 +469,7 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
       getSecret();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, amount, stripeAccountId, visitId, visitStepId, minRequiredCents]);
+  }, [tenantId, amount, stripeAccountId, visitId, visitStepId, minRequiredCents, customerEmail, customerName, customerPhone]);
 
   // Seamless fallback to Pay at Counter if amount is below minimum processing limit
   if (isUnderLimit) {
@@ -528,16 +614,33 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
             colorBackground: isDark ? '#18181b' : '#ffffff',
             colorText: isDark ? '#f4f4f5' : '#18181b',
             colorDanger: '#f43f5e',
-            borderRadius: '12px',
+            borderRadius: '16px',
             fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+            spacingUnit: '4px',
           },
           rules: {
             '.Input': {
               backgroundColor: isDark ? '#09090b' : '#ffffff',
               borderColor: isDark ? '#27272a' : '#e4e4e7',
+              borderRadius: '12px',
             },
             '.Input:focus': {
               borderColor: primaryColor || '#6366f1',
+            },
+            '.AccordionItem': {
+              backgroundColor: isDark ? '#18181b' : '#ffffff',
+              border: isDark ? '1px solid #27272a' : '1px solid #e4e4e7',
+              borderRadius: '16px',
+              boxShadow: '0 1px 3px 0 rgba(0, 0, 0, 0.04)',
+            },
+            '.AccordionItem--selected': {
+              borderColor: primaryColor || '#6366f1',
+              boxShadow: isDark
+                ? '0 0 0 2px rgba(99, 102, 241, 0.25)'
+                : '0 0 0 2px rgba(99, 102, 241, 0.15)',
+            },
+            '.Radio': {
+              borderColor: isDark ? '#52525b' : '#d4d4d8',
             },
             '.Tab': {
               backgroundColor: isDark ? '#18181b' : '#ffffff',
@@ -560,6 +663,9 @@ export function PaymentStep({ tenantId, amount, currency, stripeAccountId, onSuc
         amount={amount}
         currency={currency}
         isDark={isDark}
+        customerEmail={customerEmail}
+        customerName={customerName}
+        customerPhone={customerPhone}
       />
     </Elements>
   );

@@ -2166,6 +2166,20 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                     ?.id
                 }
                 isDark={theme === 'dark'}
+                customerName={name || undefined}
+                customerPhone={phone || undefined}
+                customerEmail={(() => {
+                  for (const sid of selectedServiceIds) {
+                    const responses = serviceDetails[sid]?.responses || {};
+                    for (const key of Object.keys(responses)) {
+                      const val = responses[key];
+                      if (typeof val === 'string' && val.includes('@') && val.includes('.')) {
+                        return val.trim();
+                      }
+                    }
+                  }
+                  return undefined;
+                })()}
                 onSuccess={(paymentId) => {
                   setCompletedPaymentId(paymentId);
                   redirectToStatus(createdVisits);

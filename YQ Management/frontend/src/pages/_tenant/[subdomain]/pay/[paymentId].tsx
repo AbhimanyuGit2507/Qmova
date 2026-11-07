@@ -125,6 +125,9 @@ export default function PublicPaymentPage() {
               primaryColor={primaryColor}
               visitId={payment.visitId}
               visitStepId={payment.visitStepId}
+              customerName={payment.visit?.customer?.name || payment.appointment?.customer?.name || undefined}
+              customerEmail={payment.visit?.customer?.email || payment.appointment?.customer?.email || undefined}
+              customerPhone={payment.visit?.customer?.phone || payment.appointment?.customer?.phone || undefined}
             />
           </div>
         )}

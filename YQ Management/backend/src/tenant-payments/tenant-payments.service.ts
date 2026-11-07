@@ -232,6 +232,9 @@ export class TenantPaymentsService {
       visitStepId?: string;
       appointmentId?: string;
       description?: string;
+      customerEmail?: string;
+      customerName?: string;
+      customerPhone?: string;
     },
   ) {
     if (!this.stripe) {
@@ -337,22 +340,25 @@ export class TenantPaymentsService {
     // Create Stripe PaymentIntent directly on the connected account
     let paymentIntent: any;
     try {
-      paymentIntent = await this.stripe.paymentIntents.create(
-        {
-          amount: finalAmount,
-          currency,
-          automatic_payment_methods: { enabled: true },
-          application_fee_amount: applicationFeeAmount,
-          metadata: {
-            ...metadata,
-            tenantId,
-          },
-          description: metadata.description || 'Qmova Booking Payment',
+      const stripeParams: any = {
+        amount: finalAmount,
+        currency,
+        automatic_payment_methods: { enabled: true },
+        application_fee_amount: applicationFeeAmount,
+        metadata: {
+          ...metadata,
+          tenantId,
         },
-        {
-          stripeAccount: account.connectedAccountId, // DIRECT CHARGE
-        },
-      );
+        description: metadata.description || 'Qmova Booking Payment',
+      };
+
+      if (metadata.customerEmail && metadata.customerEmail.includes('@')) {
+        stripeParams.receipt_email = metadata.customerEmail.trim();
+      }
+
+      paymentIntent = await this.stripe.paymentIntents.create(stripeParams, {
+        stripeAccount: account.connectedAccountId, // DIRECT CHARGE
+      });
     } catch (stripeErr: any) {
       this.logger.error(
         `Stripe createPaymentIntent failed: ${stripeErr.message}`,
@@ -405,6 +411,16 @@ export class TenantPaymentsService {
       where: { id: paymentId },
       include: {
         paymentAccount: true,
+        visit: {
+          include: {
+            customer: true,
+          },
+        },
+        appointment: {
+          include: {
+            customer: true,
+          },
+        },
       },
     });
     if (!payment) throw new BadRequestException('Payment not found');
