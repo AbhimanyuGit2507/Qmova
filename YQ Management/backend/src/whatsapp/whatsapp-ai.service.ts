@@ -28,7 +28,7 @@ export class WhatsappAiService {
     jid: string,
     rawText: string,
     sendMessageFn: (jid: string, text: string) => Promise<void>,
-  ): Promise<{ handled: boolean; isHumanPaused: boolean }> {
+  ): Promise<{ handled: boolean; isHumanPaused: boolean; isHandoverEvent?: boolean }> {
     const tenantId = tenant.id;
 
     // Check if human paused
@@ -238,24 +238,35 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
           } else if (name === 'getPaymentLink') {
             result = await this.executeGetPaymentLink(tenantId, phone);
           } else if (name === 'transferToHuman') {
+            const config = (tenant.chatbotConfig as any) || {};
+            const agentName = (config.agentName || '').trim();
+            const agentRole = (config.fallbackAgentRole || '').trim();
+            const isNamedAgent = agentName && agentName !== 'Support Team';
+
+            const greeting = isNamedAgent
+              ? `I have paused automated replies. ${agentName}${agentRole ? ` (${agentRole})` : ''} from our customer care team has been notified and assigned to your chat. They will reply to you here shortly.\n\n(Reply '0' or 'BOT' at any time to return to the automated assistant.)`
+              : `I have paused automated replies. Our customer support team has been notified and will take over this chat shortly.\n\n(Reply '0' or 'BOT' at any time to return to the automated assistant.)`;
+
             await this.prisma.chatSession.update({
               where: { id: session.id },
               data: {
                 context: {
                   ...((session.context as object) || {}),
                   isHumanPaused: true,
+                  assignedAgentName: isNamedAgent ? agentName : 'Support Team',
+                  assignedAgentId: config.fallbackAgentId || null,
+                  assignedAgentType: config.fallbackAgentType || 'DEFAULT',
+                  assignedAgentRole: agentRole || null,
+                  handoverAt: new Date().toISOString(),
                 },
               },
             });
             result = {
               success: true,
-              message: 'Transferred to human operator',
+              message: `Transferred to human operator (${isNamedAgent ? agentName : 'Support Team'})`,
             };
-            await sendMessageFn(
-              jid,
-              'I have paused automated replies. A human agent will respond to you shortly.',
-            );
-            return { handled: true, isHumanPaused: true };
+            await sendMessageFn(jid, greeting);
+            return { handled: true, isHumanPaused: true, isHandoverEvent: true };
           }
         } catch (err) {
           this.logger.error(

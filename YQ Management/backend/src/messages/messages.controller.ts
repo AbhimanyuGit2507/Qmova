@@ -146,12 +146,22 @@ export class MessagesController {
   async toggleBot(
     @Req() req: AuthenticatedRequest,
     @Param('phone') phone: string,
-    @Body() body: { paused?: boolean },
+    @Body()
+    body: {
+      paused?: boolean;
+      agentInfo?: {
+        agentName?: string;
+        agentId?: string;
+        agentRole?: string;
+        agentType?: string;
+      };
+    },
   ) {
     return this.messagesService.toggleBot(
       req.user.tenantId,
       phone,
       body?.paused,
+      body?.agentInfo,
     );
   }
 
@@ -159,12 +169,22 @@ export class MessagesController {
   async toggleBotAlias(
     @Req() req: AuthenticatedRequest,
     @Param('phone') phone: string,
-    @Body() body: { paused?: boolean },
+    @Body()
+    body: {
+      paused?: boolean;
+      agentInfo?: {
+        agentName?: string;
+        agentId?: string;
+        agentRole?: string;
+        agentType?: string;
+      };
+    },
   ) {
     return this.messagesService.toggleBot(
       req.user.tenantId,
       phone,
       body?.paused,
+      body?.agentInfo,
     );
   }
 

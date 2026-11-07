@@ -22,6 +22,7 @@ import {
   MapPin,
   CheckCheck,
   User,
+  UserCheck,
   PanelRightClose,
   PanelRightOpen,
   PhoneCall,
@@ -215,7 +216,7 @@ export default function InboxPage() {
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
 
   // ── Filter & Search Toolbar State (WhatsApp Web Style) ───────────────────────
-  const [tabFilter, setTabFilter] = useState<'all' | 'unread' | 'automated'>('all');
+  const [tabFilter, setTabFilter] = useState<'all' | 'unread' | 'human' | 'automated'>('all');
   const [selectedLocationId, setSelectedLocationId] = useState<string>('all');
   const [search, setSearch] = useState('');
 
@@ -345,15 +346,31 @@ export default function InboxPage() {
       queryClient.invalidateQueries({ queryKey: ['inbox-conversations'] });
     };
 
+    // Human handover alert
+    const handoverAlertHandler = (payload: AnyFixMe) => {
+      queryClient.invalidateQueries({ queryKey: ['inbox-conversations'] });
+      if (payload?.phone === selectedPhone) {
+        queryClient.invalidateQueries({ queryKey: ['inbox-messages', selectedPhone] });
+      }
+      toast.warning(
+        `🔔 Human Handover: Customer ${payload?.phone} requested human support. Assigned to: ${payload?.assignedAgentName || 'Support Team'}${payload?.assignedAgentRole ? ` (${payload.assignedAgentRole})` : ''}`,
+        { duration: 7000 }
+      );
+    };
+
     socket.on('MESSAGE_DELETED', deletedHandler);
     socket.on('WHATSAPP_NEW_MESSAGE', newMsgHandler);
     socket.on('WHATSAPP_INCOMING', newMsgHandler);
+    socket.on('NEW_INBOX_MESSAGE', newMsgHandler);
     socket.on('WHATSAPP_CONVERSATION_UPDATED', convoUpdatedHandler);
+    socket.on('HUMAN_HANDOVER_ALERT', handoverAlertHandler);
     return () => {
       socket.off('MESSAGE_DELETED', deletedHandler);
       socket.off('WHATSAPP_NEW_MESSAGE', newMsgHandler);
       socket.off('WHATSAPP_INCOMING', newMsgHandler);
+      socket.off('NEW_INBOX_MESSAGE', newMsgHandler);
       socket.off('WHATSAPP_CONVERSATION_UPDATED', convoUpdatedHandler);
+      socket.off('HUMAN_HANDOVER_ALERT', handoverAlertHandler);
     };
   }, [socket, selectedPhone, queryClient]);
 
@@ -383,9 +400,13 @@ export default function InboxPage() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Total Unread and Automated counters for filter badges
+  // Total Unread, Needs Human, and Automated counters for filter badges
   const totalUnreadCount = useMemo(() => {
     return safeConversations.reduce((acc: number, c: AnyFixMe) => acc + (c.unreadCount || 0), 0);
+  }, [safeConversations]);
+
+  const humanNeededCount = useMemo(() => {
+    return safeConversations.filter((c: AnyFixMe) => c.isHumanPaused).length;
   }, [safeConversations]);
 
   const automatedCount = useMemo(() => {
@@ -396,9 +417,11 @@ export default function InboxPage() {
   const filteredConversations = useMemo(() => {
     let list = [...safeConversations];
 
-    // Filter by Tab (All, Unread, Automated)
+    // Filter by Tab (All, Unread, Human, Automated)
     if (tabFilter === 'unread') {
       list = list.filter((c: AnyFixMe) => (c.unreadCount || 0) > 0);
+    } else if (tabFilter === 'human') {
+      list = list.filter((c: AnyFixMe) => c.isHumanPaused);
     } else if (tabFilter === 'automated') {
       list = list.filter((c: AnyFixMe) => c.lastMessage?.sender === 'SYSTEM' || c.lastMessage?.isAutomated);
     }
@@ -735,6 +758,27 @@ export default function InboxPage() {
             </button>
 
             <button
+              onClick={() => setTabFilter('human')}
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
+                tabFilter === 'human'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'bg-surface-container dark:bg-white/5 text-on-surface-variant dark:text-zinc-300 hover:text-on-surface hover:bg-surface-container-high dark:hover:bg-white/10'
+              }`}
+            >
+              <UserCheck className="w-3 h-3 text-amber-500" />
+              <span>Needs Human</span>
+              {humanNeededCount > 0 && (
+                <span
+                  className={`text-[10px] px-1.5 py-0.2 rounded-full font-bold ${
+                    tabFilter === 'human' ? 'bg-white/20 text-white' : 'bg-amber-500 text-white'
+                  }`}
+                >
+                  {humanNeededCount}
+                </span>
+              )}
+            </button>
+
+            <button
               onClick={() => setTabFilter('automated')}
               className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer ${
                 tabFilter === 'automated'
@@ -867,6 +911,17 @@ export default function InboxPage() {
                           </span>
                         )}
                       </div>
+
+                      {c.isHumanPaused && (
+                        <div className="mt-1 flex items-center gap-1.5">
+                          <span className="inline-flex items-center gap-1 text-[10px] font-semibold px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                            <UserCheck className="w-2.5 h-2.5 shrink-0" />
+                            <span className="truncate max-w-[150px]">
+                              {c.assignedAgentName || 'Human Assigned'}
+                            </span>
+                          </span>
+                        </div>
+                      )}
                     </div>
                   </button>
                 );
@@ -919,6 +974,22 @@ export default function InboxPage() {
                               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
                               WhatsApp Cloud
                             </span>
+                            {currentConversation?.isHumanPaused && (
+                              <span
+                                title={
+                                  currentConversation?.handoverAt
+                                    ? `Assigned ${formatRelativeTime(currentConversation.handoverAt)}`
+                                    : 'Human support active'
+                                }
+                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20"
+                              >
+                                <UserCheck className="w-3 h-3 text-amber-500 shrink-0" />
+                                <span>
+                                  Assigned: {currentConversation?.assignedAgentName || 'Support Team'}
+                                  {currentConversation?.assignedAgentRole ? ` (${currentConversation.assignedAgentRole})` : ''}
+                                </span>
+                              </span>
+                            )}
                             {is24hExpired && (
                               <button
                                 type="button"
@@ -964,8 +1035,8 @@ export default function InboxPage() {
                     title={isBotActive ? 'Bot is ON — click to hand off to human agent' : 'Human mode — click to re-enable bot'}
                     className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-[11px] font-bold transition-all cursor-pointer border ${
                       isBotActive
-                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-red-500/10 hover:text-red-600 dark:hover:text-red-400 hover:border-red-500/20'
-                        : 'bg-orange-500/10 text-orange-600 dark:text-orange-400 border-orange-500/20 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-500/20'
+                        ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/20'
+                        : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20 hover:bg-emerald-500/10 hover:text-emerald-600 dark:hover:text-emerald-400 hover:border-emerald-500/20'
                     }`}
                   >
                     {toggleBotMutation.isPending ? (
@@ -973,9 +1044,9 @@ export default function InboxPage() {
                     ) : isBotActive ? (
                       <ToggleRight className="w-3.5 h-3.5" />
                     ) : (
-                      <ToggleLeft className="w-3.5 h-3.5" />
+                      <ToggleLeft className="w-3.5 h-3.5 text-amber-500" />
                     )}
-                    {isBotActive ? 'Bot' : 'Human'}
+                    {isBotActive ? 'Bot Active' : 'Human Active'}
                   </button>
 
                   <a

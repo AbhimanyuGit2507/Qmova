@@ -21,7 +21,7 @@ export class WhatsappChatbot {
     phone: string,
     jid: string,
     rawText: string,
-  ): Promise<{ handled: boolean; isHumanPaused: boolean }> {
+  ): Promise<{ handled: boolean; isHumanPaused: boolean; isHandoverEvent?: boolean }> {
     const text = rawText.trim();
     const upperText = text.toUpperCase();
     const tenantId = tenant.id;
@@ -179,14 +179,24 @@ export class WhatsappChatbot {
           upperText.includes('SUPPORT') ||
           upperText === 'chat_human')
       ) {
-        await this.sendMsg(
-          jid,
-          'I have paused automated replies. A human agent will respond to you shortly.',
-        );
+        const agentName = (config.agentName || '').trim();
+        const agentRole = (config.fallbackAgentRole || '').trim();
+        const isNamedAgent = agentName && agentName !== 'Support Team';
+
+        const greeting = isNamedAgent
+          ? `I have paused automated replies. ${agentName}${agentRole ? ` (${agentRole})` : ''} from our customer care team has been notified and assigned to your chat. They will reply to you here shortly.\n\n(Reply '0' or 'BOT' at any time to return to the automated assistant.)`
+          : `I have paused automated replies. Our customer support team has been notified and will take over this chat shortly.\n\n(Reply '0' or 'BOT' at any time to return to the automated assistant.)`;
+
+        await this.sendMsg(jid, greeting);
         await this.updateSession(session.id, undefined, {
           isHumanPaused: true,
+          assignedAgentName: isNamedAgent ? agentName : 'Support Team',
+          assignedAgentId: config.fallbackAgentId || null,
+          assignedAgentType: config.fallbackAgentType || 'DEFAULT',
+          assignedAgentRole: agentRole || null,
+          handoverAt: new Date().toISOString(),
         });
-        return { handled: true, isHumanPaused: true }; // Trigger inbox saving
+        return { handled: true, isHumanPaused: true, isHandoverEvent: true }; // Trigger inbox saving & alerts
       }
 
       if (

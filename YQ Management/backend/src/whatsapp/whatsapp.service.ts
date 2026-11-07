@@ -2034,6 +2034,53 @@ export class WhatsappService implements OnModuleInit {
         processed = await bot.process(tenant, phone, jid, rawText);
       }
 
+      if ((processed as any)?.isHandoverEvent) {
+        const cfg = (tenant.chatbotConfig as any) || {};
+        const assignedName =
+          cfg.agentName && cfg.agentName !== 'Support Team'
+            ? cfg.agentName
+            : 'Support Team';
+        const assignedRole = cfg.fallbackAgentRole || null;
+
+        // Log system handover marker into Message table
+        await this.prisma.message.create({
+          data: {
+            tenantId: tenant.id,
+            customerPhone: phone,
+            conversationId: conversation.id,
+            body: `🔔 Handover to Human Agent: Customer requested support. Assigned to ${assignedName}${assignedRole ? ` (${assignedRole})` : ''}.`,
+            sender: 'SYSTEM',
+            isRead: true,
+          },
+        });
+
+        // Broadcast real-time agent handover alert to all tenant dashboard clients
+        this.queueGateway.broadcastTenantUpdate(
+          tenant.id,
+          'HUMAN_HANDOVER_ALERT',
+          {
+            phone,
+            conversationId: conversation.id,
+            assignedAgentName: assignedName,
+            assignedAgentId: cfg.fallbackAgentId || null,
+            assignedAgentRole: assignedRole,
+            requestedAt: new Date().toISOString(),
+          },
+        );
+
+        this.queueGateway.broadcastTenantUpdate(
+          tenant.id,
+          'NEW_INBOX_MESSAGE',
+          {
+            phone,
+            conversationId: conversation.id,
+            isHumanPaused: true,
+            assignedAgentName: assignedName,
+            assignedAgentRole: assignedRole,
+          },
+        );
+      }
+
       return { handled: true, action: 'chatbot' };
     } catch (e) {
       const errorMessage = e instanceof Error ? e.message : String(e);

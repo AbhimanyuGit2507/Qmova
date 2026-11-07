@@ -7,13 +7,19 @@ import { toast } from 'sonner';
 import { 
   Bot, Save, Loader2, Sparkles, Zap, Calendar, CreditCard, 
   Smartphone, ShieldCheck, CheckCircle2, AlertTriangle, ArrowRight,
-  Clock, ShieldAlert, Check, RefreshCw, MessageSquare
+  Clock, ShieldAlert, Check, RefreshCw, MessageSquare,
+  UserCheck, User, Users, Shield, Headphones, Mail, Phone, Info
 } from 'lucide-react';
 import { Button } from '../ui/button';
 
 interface ChatbotConfig {
   botName: string;
   agentName: string;
+  fallbackAgentId?: string;
+  fallbackAgentType?: 'USER' | 'STAFF' | 'DEFAULT';
+  fallbackAgentRole?: string;
+  fallbackAgentEmail?: string;
+  fallbackAgentPhone?: string;
   welcomeMessage: string;
   booking: {
     enabled: boolean;
@@ -50,6 +56,11 @@ export default function ChatbotSettings() {
     queryFn: () => fetchApi('/staff'),
   });
 
+  const { data: usersList = [] } = useQuery({
+    queryKey: ['users'],
+    queryFn: () => fetchApi('/users'),
+  });
+
   const { data: paymentStatus } = useQuery({
     queryKey: ['tenant-payment-status'],
     queryFn: () => fetchApi('/tenant-payments/status'),
@@ -59,6 +70,9 @@ export default function ChatbotSettings() {
   const [config, setConfig] = useState<ChatbotConfig>({
     botName: 'Qmova Assistant',
     agentName: 'Support Team',
+    fallbackAgentId: undefined,
+    fallbackAgentType: 'DEFAULT',
+    fallbackAgentRole: 'Shared Team Pool',
     welcomeMessage: 'Hi there! I am your automated assistant. How can I help you today?',
     booking: {
       enabled: true,
@@ -83,6 +97,97 @@ export default function ChatbotSettings() {
     humanHandoverHours: 12,
   });
 
+  // Build unified list of Fallback Candidates from Platform Users (Admin, Manager, Staff, Owner) + On-Ground Staff
+  const agentCandidates = useMemo(() => {
+    const list: Array<{
+      key: string;
+      id?: string;
+      name: string;
+      role: string;
+      email?: string;
+      phone?: string;
+      type: 'USER' | 'STAFF' | 'DEFAULT';
+    }> = [
+      {
+        key: 'default',
+        name: 'Support Team',
+        role: 'Shared Team Pool (Unassigned)',
+        type: 'DEFAULT',
+      },
+    ];
+
+    const seenEmails = new Set<string>();
+
+    // 1. Platform Team Users (Owner, Admin, Manager, Staff)
+    (usersList || []).forEach((u: AnyFixMe) => {
+      if (u.email) seenEmails.add(u.email.toLowerCase());
+      const roleLabel =
+        u.role === 'OWNER'
+          ? 'Owner'
+          : u.role === 'SUPER_ADMIN'
+          ? 'Super Admin'
+          : u.role === 'ADMIN'
+          ? 'Admin'
+          : u.role === 'MANAGER'
+          ? 'Manager'
+          : 'Staff';
+
+      list.push({
+        key: `user_${u.id}`,
+        id: u.id,
+        name: u.name || u.email,
+        role: roleLabel,
+        email: u.email,
+        phone: u.phone,
+        type: 'USER',
+      });
+    });
+
+    // 2. On-Ground Staff Providers (if not already listed in platform users)
+    (staffList || []).forEach((s: AnyFixMe) => {
+      if (s.email && seenEmails.has(s.email.toLowerCase())) return;
+      list.push({
+        key: `staff_${s.id}`,
+        id: s.id,
+        name: s.name,
+        role: s.title || 'Service Staff',
+        email: s.email,
+        phone: s.phone,
+        type: 'STAFF',
+      });
+    });
+
+    return list;
+  }, [usersList, staffList]);
+
+  // Determine active candidate
+  const selectedCandidate = useMemo(() => {
+    if (config.fallbackAgentId) {
+      const match = agentCandidates.find((c) => c.id === config.fallbackAgentId);
+      if (match) return match;
+    }
+    if (config.agentName && config.agentName !== 'Support Team') {
+      const match = agentCandidates.find(
+        (c) => c.name.toLowerCase() === config.agentName.toLowerCase(),
+      );
+      if (match) return match;
+    }
+    return agentCandidates[0]; // Support Team
+  }, [agentCandidates, config.fallbackAgentId, config.agentName]);
+
+  const handleAgentSelect = (key: string) => {
+    const candidate = agentCandidates.find((c) => c.key === key) || agentCandidates[0];
+    setConfig((prev) => ({
+      ...prev,
+      agentName: candidate.name,
+      fallbackAgentId: candidate.type === 'DEFAULT' ? undefined : candidate.id,
+      fallbackAgentType: candidate.type,
+      fallbackAgentRole: candidate.type === 'DEFAULT' ? undefined : candidate.role,
+      fallbackAgentEmail: candidate.email,
+      fallbackAgentPhone: candidate.phone,
+    }));
+  };
+
   useEffect(() => {
     if (tenant) {
       setChatbotEnabled(tenant.chatbotEnabled ?? false);
@@ -91,6 +196,11 @@ export default function ChatbotSettings() {
         setConfig({
           botName: c.botName || 'Qmova Assistant',
           agentName: c.agentName || 'Support Team',
+          fallbackAgentId: c.fallbackAgentId || undefined,
+          fallbackAgentType: c.fallbackAgentType || 'DEFAULT',
+          fallbackAgentRole: c.fallbackAgentRole || undefined,
+          fallbackAgentEmail: c.fallbackAgentEmail || undefined,
+          fallbackAgentPhone: c.fallbackAgentPhone || undefined,
           welcomeMessage: c.welcomeMessage || 'Hi there! I am your automated assistant. How can I help you today?',
           booking: {
             enabled: c.booking?.enabled ?? (c.quickReplies?.booking !== false),
@@ -257,19 +367,94 @@ export default function ChatbotSettings() {
                     </div>
 
                     <div className="space-y-1.5">
-                      <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400">Fallback Human Agent</label>
+                      <div className="flex items-center justify-between">
+                        <label className="block text-xs font-semibold text-zinc-500 dark:text-zinc-400">Fallback Human Agent</label>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-primary">
+                          {selectedCandidate.type === 'DEFAULT' ? 'Shared Pool' : selectedCandidate.role}
+                        </span>
+                      </div>
                       <select
-                        value={config.agentName}
-                        onChange={(e) => setConfig({ ...config, agentName: e.target.value })}
-                        className="w-full h-11 px-4 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary shadow-sm"
+                        value={selectedCandidate.key}
+                        onChange={(e) => handleAgentSelect(e.target.value)}
+                        className="w-full h-11 px-4 bg-white dark:bg-zinc-800 border border-gray-300 dark:border-zinc-700 rounded-xl text-sm text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary shadow-sm font-medium"
                       >
-                        <option value="Support Team">Support Team (Default)</option>
-                        {staffList.map((staff: AnyFixMe) => (
-                          <option key={staff.id} value={staff.name || staff.email}>
-                            {staff.name || staff.email}
-                          </option>
-                        ))}
+                        <optgroup label="Default / Shared Pool">
+                          <option value="default">Support Team (Shared Pool — Unassigned)</option>
+                        </optgroup>
+                        {agentCandidates.filter((c) => c.type === 'USER').length > 0 && (
+                          <optgroup label="Platform Team (Owner, Admin, Manager, Staff)">
+                            {agentCandidates
+                              .filter((c) => c.type === 'USER')
+                              .map((candidate) => (
+                                <option key={candidate.key} value={candidate.key}>
+                                  {candidate.name} ({candidate.role}) {candidate.email ? `• ${candidate.email}` : ''}
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
+                        {agentCandidates.filter((c) => c.type === 'STAFF').length > 0 && (
+                          <optgroup label="On-Ground Service Staff">
+                            {agentCandidates
+                              .filter((c) => c.type === 'STAFF')
+                              .map((candidate) => (
+                                <option key={candidate.key} value={candidate.key}>
+                                  {candidate.name} ({candidate.role})
+                                </option>
+                              ))}
+                          </optgroup>
+                        )}
                       </select>
+                    </div>
+                  </div>
+
+                  {/* Designated Fallback Human Agent Live Card */}
+                  <div className="p-4 rounded-2xl bg-white dark:bg-zinc-800/80 border border-border dark:border-white/10 shadow-sm space-y-3">
+                    <div className="flex items-center justify-between flex-wrap gap-2">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 text-primary flex items-center justify-center font-bold text-xs uppercase shadow-xs">
+                          {selectedCandidate.type === 'DEFAULT' ? (
+                            <Users className="w-4 h-4 text-primary" />
+                          ) : (
+                            selectedCandidate.name.slice(0, 2).toUpperCase()
+                          )}
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-bold text-gray-900 dark:text-white">
+                              {selectedCandidate.name}
+                            </span>
+                            <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-primary/10 text-primary border border-primary/20">
+                              {selectedCandidate.role}
+                            </span>
+                          </div>
+                          <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+                            {selectedCandidate.email || selectedCandidate.phone || 'Designated customer care recipient'}
+                          </p>
+                        </div>
+                      </div>
+
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        {selectedCandidate.type === 'DEFAULT' ? 'Pool Fallback Active' : 'Dedicated Fallback Agent'}
+                      </span>
+                    </div>
+
+                    <div className="text-xs text-zinc-600 dark:text-zinc-300 leading-relaxed bg-zinc-50 dark:bg-zinc-900/50 p-3 rounded-xl border border-zinc-200 dark:border-zinc-800">
+                      <p className="font-semibold text-zinc-800 dark:text-zinc-200 mb-1 flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-primary" />
+                        Handover Routing & Customer Greeting:
+                      </p>
+                      <p className="text-zinc-500 dark:text-zinc-400 italic">
+                        {selectedCandidate.type === 'DEFAULT' ? (
+                          <>
+                            &ldquo;I have paused automated replies. Our customer support team has been notified and will take over this chat shortly.&rdquo;
+                          </>
+                        ) : (
+                          <>
+                            &ldquo;I have paused automated replies. <strong className="text-zinc-800 dark:text-zinc-200">{selectedCandidate.name} ({selectedCandidate.role})</strong> from our customer care team has been notified and assigned to your chat. They will reply to you here shortly.&rdquo;
+                          </>
+                        )}
+                      </p>
                     </div>
                   </div>
 

@@ -294,10 +294,11 @@ export class MessagesService {
       }
 
       const session = sessionMap.get(c.customerPhone);
-      const isHumanPaused =
+      const sessionCtx =
         session?.context && typeof session.context === 'object'
-          ? !!(session.context as any).isHumanPaused
-          : false;
+          ? (session.context as any)
+          : null;
+      const isHumanPaused = sessionCtx ? !!sessionCtx.isHumanPaused : false;
 
       return {
         ...c,
@@ -307,6 +308,11 @@ export class MessagesService {
         customerAvatar: cust?.avatarUrl || null,
         lastMessage: c.messages?.[0] || null,
         isHumanPaused,
+        assignedAgentName: sessionCtx?.assignedAgentName || null,
+        assignedAgentId: sessionCtx?.assignedAgentId || null,
+        assignedAgentRole: sessionCtx?.assignedAgentRole || null,
+        assignedAgentType: sessionCtx?.assignedAgentType || null,
+        handoverAt: sessionCtx?.handoverAt || null,
       };
     });
   }
@@ -1069,7 +1075,17 @@ export class MessagesService {
     return { success: true };
   }
 
-  async toggleBot(tenantId: string, phone: string, paused?: boolean) {
+  async toggleBot(
+    tenantId: string,
+    phone: string,
+    paused?: boolean,
+    agentInfo?: {
+      agentName?: string;
+      agentId?: string;
+      agentRole?: string;
+      agentType?: string;
+    },
+  ) {
     const session = await this.prisma.chatSession.findUnique({
       where: { tenantId_phone: { tenantId, phone } },
     });
@@ -1078,28 +1094,73 @@ export class MessagesService {
     const targetPaused =
       typeof paused === 'boolean' ? paused : !currentlyPaused;
 
+    let assignedAgentName = (currentContext as any).assignedAgentName;
+    let assignedAgentId = (currentContext as any).assignedAgentId;
+    let assignedAgentRole = (currentContext as any).assignedAgentRole;
+    let assignedAgentType = (currentContext as any).assignedAgentType;
+
+    if (targetPaused) {
+      if (agentInfo?.agentName) {
+        assignedAgentName = agentInfo.agentName;
+        assignedAgentId = agentInfo.agentId || null;
+        assignedAgentRole = agentInfo.agentRole || null;
+        assignedAgentType = agentInfo.agentType || 'USER';
+      } else if (!assignedAgentName) {
+        const tenant = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { chatbotConfig: true },
+        });
+        const cfg = (tenant?.chatbotConfig as any) || {};
+        assignedAgentName = cfg.agentName || 'Support Team';
+        assignedAgentId = cfg.fallbackAgentId || null;
+        assignedAgentRole = cfg.fallbackAgentRole || null;
+        assignedAgentType = cfg.fallbackAgentType || 'DEFAULT';
+      }
+    } else {
+      assignedAgentName = null;
+      assignedAgentId = null;
+      assignedAgentRole = null;
+      assignedAgentType = null;
+    }
+
+    const updatedContext = {
+      ...currentContext,
+      isHumanPaused: targetPaused,
+      assignedAgentName,
+      assignedAgentId,
+      assignedAgentRole,
+      assignedAgentType,
+      handoverAt: targetPaused ? new Date().toISOString() : null,
+    };
+
     await this.prisma.chatSession.upsert({
       where: { tenantId_phone: { tenantId, phone } },
       create: {
         tenantId,
         phone,
         step: 0,
-        context: { ...currentContext, isHumanPaused: targetPaused },
+        context: updatedContext,
       },
       update: {
-        context: { ...currentContext, isHumanPaused: targetPaused },
+        context: updatedContext,
         lastActive: new Date(),
       },
     });
+
     this.queueGateway.broadcastTenantUpdate(tenantId, 'NEW_INBOX_MESSAGE', {
       phone,
       isHumanPaused: targetPaused,
       botEnabled: !targetPaused,
+      assignedAgentName,
+      assignedAgentRole,
     });
+
     return {
       success: true,
       isHumanPaused: targetPaused,
       botEnabled: !targetPaused,
+      assignedAgentName,
+      assignedAgentRole,
     };
   }
 
