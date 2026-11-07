@@ -63,6 +63,58 @@ export class TenantPaymentsController {
     return this.tenantPaymentsService.resetConnectAccount(req.user.tenantId);
   }
 
+  // ── Paystack Direct Bank Payout Endpoints ─────────────────────────────────
+
+  @UseGuards(JwtAuthGuard)
+  @Get('banks')
+  listSouthAfricanBanks() {
+    return this.tenantPaymentsService.listSouthAfricanBanks();
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('paystack/verify-bank')
+  verifyBankAccount(
+    @Body() dto: { accountNumber: string; bankCode: string },
+  ) {
+    return this.tenantPaymentsService.verifyBankAccount(dto);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('paystack/connect')
+  connectPaystackBank(
+    @Req() req: any,
+    @Body()
+    dto: {
+      bankCode: string;
+      bankName: string;
+      accountNumber: string;
+      accountName: string;
+    },
+  ) {
+    return this.tenantPaymentsService.connectPaystackBank(
+      req.user.tenantId,
+      dto,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('paystack/reset')
+  resetPaystackAccount(@Req() req: any) {
+    return this.tenantPaymentsService.resetPaystackAccount(req.user.tenantId);
+  }
+
+  @Post('public/paystack/verify')
+  verifyPublicPaystackPayment(@Body() body: { reference: string }) {
+    return this.tenantPaymentsService.verifyPublicPaystackPayment(
+      body.reference,
+    );
+  }
+
+  @Post('webhook/paystack')
+  handlePaystackWebhook(@Body() body: any) {
+    return this.tenantPaymentsService.handlePaystackWebhook(body);
+  }
+
   @UseGuards(JwtAuthGuard)
   @Post('intent')
   createPaymentIntent(

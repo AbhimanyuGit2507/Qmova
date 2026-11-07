@@ -51,6 +51,212 @@ interface PaymentStepProps {
   customerPhone?: string;
 }
 
+const PaystackCheckoutForm = ({
+  paystackData,
+  onSuccess,
+  onBack,
+  onSkip,
+  primaryColor,
+  amount,
+  currency,
+  customerEmail,
+}: {
+  paystackData: any;
+  onSuccess: (paymentId: string) => void;
+  onBack?: () => void;
+  onSkip?: () => void;
+  primaryColor?: string;
+  amount: number;
+  currency: string;
+  customerEmail?: string;
+  customerName?: string;
+  isDark?: boolean;
+}) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if ((window as any).PaystackPop) return;
+    const script = document.createElement('script');
+    script.src = 'https://js.paystack.co/v1/inline.js';
+    script.async = true;
+    document.body.appendChild(script);
+  }, []);
+
+  const currSymbol = getCurrencySymbol(currency);
+  const formattedAmount = `${currSymbol}${(amount / 100).toFixed(2)}`;
+
+  const handlePay = () => {
+    setError(null);
+    setIsProcessing(true);
+
+    if (typeof (window as any).PaystackPop !== 'undefined') {
+      const handler = (window as any).PaystackPop.setup({
+        key: paystackData.publicKey,
+        email: customerEmail || 'customer@qmova.com',
+        amount: amount,
+        currency: currency || 'ZAR',
+        ref: paystackData.reference,
+        onClose: () => {
+          setIsProcessing(false);
+        },
+        callback: async (response: any) => {
+          setIsProcessing(true);
+          try {
+            await fetchApi('/tenant-payments/public/paystack/verify', {
+              method: 'POST',
+              body: JSON.stringify({ reference: response.reference }),
+            });
+            onSuccess(paystackData.paymentId);
+          } catch (err: any) {
+            setError(err?.message || 'Payment completed, but status sync failed.');
+            setIsProcessing(false);
+          }
+        },
+      });
+      handler.openIframe();
+    } else if (paystackData.authorizationUrl) {
+      window.location.href = paystackData.authorizationUrl;
+    } else {
+      setError('Payment gateway is loading. Please try again.');
+      setIsProcessing(false);
+    }
+  };
+
+  return (
+    <div className="space-y-5 sm:space-y-6 flex-1 w-full max-w-2xl mx-auto bg-white dark:bg-zinc-900 border border-gray-200/90 dark:border-zinc-800 rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-xl shadow-black/5 dark:shadow-black/30">
+      <div className="text-center space-y-2">
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 text-xs font-bold tracking-wide">
+          <ShieldCheck className="w-3.5 h-3.5" />
+          <span>Instant South African Clearing</span>
+        </div>
+        <h2 className="text-2xl sm:text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+          Secure Payment
+        </h2>
+        <p className="text-xs sm:text-sm text-gray-500 dark:text-zinc-400">
+          Fast card, Apple Pay, & Capitec Pay checkout
+        </p>
+      </div>
+
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-br from-emerald-50/50 via-gray-50 to-emerald-50/20 dark:from-zinc-950 dark:via-zinc-950/90 dark:to-emerald-950/20 border border-emerald-200/60 dark:border-zinc-800 p-4 sm:p-5 flex items-center justify-between shadow-sm">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-emerald-800 dark:text-emerald-400">
+              Total Amount Due
+            </span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+              Direct Deposit
+            </span>
+          </div>
+          <p className="text-xs text-gray-600 dark:text-zinc-400 flex items-center gap-1.5 font-medium">
+            <CreditCard className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+            Cards, Capitec Pay & Instant EFT
+          </p>
+        </div>
+        <div className="text-right">
+          <div className="text-2xl sm:text-3xl font-black text-gray-900 dark:text-white tracking-tight">
+            {formattedAmount}
+          </div>
+          <span className="text-[10px] sm:text-[11px] font-medium text-gray-400 dark:text-zinc-500">
+            Taxes & fees included
+          </span>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <div className="p-3 rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-800/50 flex flex-col items-center justify-center text-center">
+          <span className="text-xs font-bold text-gray-900 dark:text-white">Capitec Pay</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-400">Push to App</span>
+        </div>
+        <div className="p-3 rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-800/50 flex flex-col items-center justify-center text-center">
+          <span className="text-xs font-bold text-gray-900 dark:text-white">Credit / Debit</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-400">Visa & MC</span>
+        </div>
+        <div className="p-3 rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-800/50 flex flex-col items-center justify-center text-center">
+          <span className="text-xs font-bold text-gray-900 dark:text-white">Instant EFT</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-400">All SA Banks</span>
+        </div>
+        <div className="p-3 rounded-xl border border-gray-200 dark:border-zinc-800 bg-gray-50/80 dark:bg-zinc-800/50 flex flex-col items-center justify-center text-center">
+          <span className="text-xs font-bold text-gray-900 dark:text-white">Apple Pay</span>
+          <span className="text-[10px] text-gray-500 dark:text-zinc-400">Touch / Face ID</span>
+        </div>
+      </div>
+
+      {error && (
+        <div className="p-3 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900/40 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
+          <AlertCircle className="w-4 h-4 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      <button
+        type="button"
+        onClick={handlePay}
+        disabled={isProcessing}
+        className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.01] active:scale-98 flex items-center justify-center gap-2 text-base"
+        style={{ backgroundColor: primaryColor || '#059669' }}
+      >
+        {isProcessing ? (
+          <>
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span>Processing Payment...</span>
+          </>
+        ) : (
+          <>
+            <Lock className="w-4 h-4" />
+            <span>Pay {formattedAmount} with Paystack</span>
+          </>
+        )}
+      </button>
+
+      {/* Satisfaction & Guarantee Card */}
+      <div className="p-4 rounded-xl border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 flex items-start gap-3">
+        <ShieldCheck className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+        <div className="text-xs text-amber-900 dark:text-amber-200/90 leading-relaxed">
+          <p className="font-bold text-amber-950 dark:text-amber-100 mb-0.5">Satisfaction & Booking Guarantee</p>
+          <p className="text-amber-800/90 dark:text-amber-300/80">
+            Your payment is held under official banking escrow until your service is fulfilled. If your appointment is rescheduled or canceled, full refunds are processed automatically.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex flex-col items-center justify-center pt-2 gap-1 text-[11px] text-gray-500 dark:text-zinc-400">
+        <div className="flex items-center gap-1.5 font-semibold">
+          <span>Secured by</span>
+          <span className="font-bold text-gray-800 dark:text-zinc-200">Paystack</span>
+          <span className="text-[10px] text-gray-400 font-normal">(A Stripe Company)</span>
+        </div>
+        <div className="flex items-center gap-2 text-[10px] text-gray-400">
+          <span>PCI-DSS Level 1 Certified</span>
+          <span>•</span>
+          <span>SARB Regulated</span>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between pt-2">
+        {onBack && (
+          <button
+            type="button"
+            onClick={onBack}
+            className="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-zinc-200 flex items-center gap-1"
+          >
+            <ArrowLeft className="w-3.5 h-3.5" /> Go Back
+          </button>
+        )}
+        {onSkip && (
+          <button
+            type="button"
+            onClick={onSkip}
+            className="text-xs font-semibold text-gray-500 hover:text-gray-800 dark:hover:text-zinc-200 ml-auto"
+          >
+            Pay at Counter Instead →
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const CheckoutForm = ({
   onSuccess,
   onBack,
@@ -387,6 +593,7 @@ export function PaymentStep({
   const [intentError, setIntentError] = useState<string | null>(null);
   const [isRetrying, setIsRetrying] = useState(false);
   const [confirmingCounter, setConfirmingCounter] = useState(false);
+  const [paystackData, setPaystackData] = useState<any | null>(null);
 
   const stripePromise = useMemo(() => {
     if (!stripeAccountId) return null;
@@ -394,8 +601,8 @@ export function PaymentStep({
     return loadStripe(pk, { stripeAccount: stripeAccountId });
   }, [stripeAccountId]);
 
-  const activeIntentError = !stripeAccountId
-    ? 'Online card payment is currently unavailable. Please complete your booking and pay in person at the counter.'
+  const activeIntentError = !stripeAccountId && !paystackData && !clientSecret && !isRetrying
+    ? null
     : intentError;
 
   const minRequiredCents = getCurrencyMinStripeCents(currency);
@@ -452,8 +659,13 @@ export function PaymentStep({
           customerPhone: customerPhone || undefined,
         })
       });
-      setClientSecret(res.clientSecret);
-      setPaymentId(res.paymentId);
+      if (res?.provider === 'paystack') {
+        setPaystackData(res);
+        setPaymentId(res.paymentId);
+      } else {
+        setClientSecret(res.clientSecret);
+        setPaymentId(res.paymentId);
+      }
     } catch (err: unknown) {
       console.error("Failed to create payment intent", err);
       const msg = err instanceof Error ? err.message : 'Unable to initialize secure payment session.';
@@ -464,12 +676,12 @@ export function PaymentStep({
   }, [tenantId, amount, visitId, visitStepId, customerEmail, customerName, customerPhone]);
 
   useEffect(() => {
-    if (tenantId && amount > 0 && stripeAccountId && amount >= minRequiredCents) {
+    if (tenantId && amount > 0 && amount >= minRequiredCents) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       getSecret();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tenantId, amount, stripeAccountId, visitId, visitStepId, minRequiredCents, customerEmail, customerName, customerPhone]);
+  }, [tenantId, amount, visitId, visitStepId, minRequiredCents, customerEmail, customerName, customerPhone]);
 
   // Seamless fallback to Pay at Counter if amount is below minimum processing limit
   if (isUnderLimit) {
@@ -590,6 +802,23 @@ export function PaymentStep({
           )}
         </div>
       </div>
+    );
+  }
+
+  if (paystackData) {
+    return (
+      <PaystackCheckoutForm
+        paystackData={paystackData}
+        onSuccess={onSuccess}
+        onBack={onBack}
+        onSkip={onSkip}
+        primaryColor={primaryColor}
+        amount={amount}
+        currency={currency}
+        customerEmail={customerEmail}
+        customerName={customerName}
+        isDark={isDark}
+      />
     );
   }
 

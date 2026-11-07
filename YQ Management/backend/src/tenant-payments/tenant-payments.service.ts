@@ -13,6 +13,7 @@ import { WhatsappService } from '../whatsapp/whatsapp.service';
 import { QueueGateway } from '../queue/queue.gateway';
 import { RedisService } from '../redis/redis.service';
 import { normalizePhoneZA } from '../utils/phone.util';
+import { PaystackService, SOUTH_AFRICAN_BANKS } from './paystack.service';
 import Stripe from 'stripe';
 
 @Injectable()
@@ -25,6 +26,7 @@ export class TenantPaymentsService {
     private readonly visitStepService: VisitStepService,
     private readonly invoiceService: InvoiceService,
     private readonly redisService: RedisService,
+    private readonly paystackService: PaystackService,
     @Inject(forwardRef(() => WhatsappService))
     private readonly whatsappService: WhatsappService,
     @Inject(forwardRef(() => QueueGateway))
@@ -104,6 +106,104 @@ export class TenantPaymentsService {
     return { success: true };
   }
 
+  // ── Paystack Direct Bank Payout Onboarding ─────────────────────────────────
+
+  async listSouthAfricanBanks() {
+    return this.paystackService.getSouthAfricanBanks();
+  }
+
+  async verifyBankAccount(dto: { accountNumber: string; bankCode: string }) {
+    return this.paystackService.verifyBankAccount(
+      dto.accountNumber,
+      dto.bankCode,
+    );
+  }
+
+  async connectPaystackBank(
+    tenantId: string,
+    dto: {
+      bankCode: string;
+      bankName: string;
+      accountNumber: string;
+      accountName: string;
+    },
+  ) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+    });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const businessName = dto.accountName || tenant.name || 'Tenant Business';
+    const subaccount = await this.paystackService.createSubaccount({
+      businessName,
+      bankCode: dto.bankCode,
+      accountNumber: dto.accountNumber,
+      description: `Qmova Payouts for ${businessName}`,
+    });
+
+    const updated = await this.prisma.tenantPaymentAccount.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        provider: 'paystack',
+        accountStatus: 'ENABLED',
+        connectedAccountId: subaccount.subaccountCode,
+        paystackSubaccountCode: subaccount.subaccountCode,
+        paystackBankCode: dto.bankCode,
+        paystackBankName: dto.bankName,
+        paystackAccountNumber: dto.accountNumber,
+        paystackAccountName: subaccount.accountName || dto.accountName,
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+        onboardingCompletedAt: new Date(),
+        currency: 'ZAR',
+      },
+      update: {
+        provider: 'paystack',
+        accountStatus: 'ENABLED',
+        connectedAccountId: subaccount.subaccountCode,
+        paystackSubaccountCode: subaccount.subaccountCode,
+        paystackBankCode: dto.bankCode,
+        paystackBankName: dto.bankName,
+        paystackAccountNumber: dto.accountNumber,
+        paystackAccountName: subaccount.accountName || dto.accountName,
+        chargesEnabled: true,
+        payoutsEnabled: true,
+        detailsSubmitted: true,
+        onboardingCompletedAt: new Date(),
+        currency: 'ZAR',
+      },
+    });
+
+    return {
+      success: true,
+      subaccountCode: subaccount.subaccountCode,
+      bankName: dto.bankName,
+      accountNumberMasked: `•••• ${dto.accountNumber.slice(-4)}`,
+      accountName: subaccount.accountName,
+    };
+  }
+
+  async resetPaystackAccount(tenantId: string) {
+    await this.prisma.tenantPaymentAccount.updateMany({
+      where: { tenantId },
+      data: {
+        paystackSubaccountCode: null,
+        paystackBankCode: null,
+        paystackBankName: null,
+        paystackAccountNumber: null,
+        paystackAccountName: null,
+        connectedAccountId: null,
+        accountStatus: 'NOT_CONNECTED',
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: false,
+      },
+    });
+    return { success: true };
+  }
+
   private async createAccountLink(accountId: string) {
     let baseUrl = process.env.FRONTEND_URL || 'http://localhost:3001';
     const isLive = process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_');
@@ -131,14 +231,36 @@ export class TenantPaymentsService {
   }
 
   async getAccountStatus(tenantId: string) {
-    const isTestMode = !process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_');
+    const isTestMode =
+      !process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_') &&
+      !process.env.PAYSTACK_SECRET_KEY?.startsWith('sk_live_');
     const account = await this.prisma.tenantPaymentAccount.findUnique({
       where: { tenantId },
     });
-    if (!account) return { status: 'NOT_CONNECTED', isTestMode };
+    if (!account) return { status: 'NOT_CONNECTED', isTestMode, provider: 'paystack' };
+
+    // Paystack Direct Bank Payout provider check
+    if (account.provider === 'paystack' || (account.paystackSubaccountCode && !account.connectedAccountId)) {
+      const isReady = Boolean(account.paystackSubaccountCode);
+      return {
+        provider: 'paystack',
+        status: isReady ? 'ENABLED' : 'NOT_CONNECTED',
+        accountId: account.paystackSubaccountCode,
+        isTestMode,
+        chargesEnabled: isReady,
+        payoutsEnabled: isReady,
+        detailsSubmitted: isReady,
+        bankName: account.paystackBankName,
+        bankCode: account.paystackBankCode,
+        accountNumberMasked: account.paystackAccountNumber
+          ? `•••• ${account.paystackAccountNumber.slice(-4)}`
+          : null,
+        accountName: account.paystackAccountName,
+      };
+    }
 
     if (!this.stripe) {
-      return { status: account.accountStatus || 'NOT_CONNECTED', isTestMode };
+      return { status: account.accountStatus || 'NOT_CONNECTED', isTestMode, provider: account.provider || 'stripe' };
     }
 
     if (!account.connectedAccountId) {
@@ -237,12 +359,6 @@ export class TenantPaymentsService {
       customerPhone?: string;
     },
   ) {
-    if (!this.stripe) {
-      throw new BadRequestException(
-        'Stripe is not configured on this server. Payments are currently disabled.',
-      );
-    }
-
     let finalAmount = Math.round(amount);
 
     // Server-side amount validation & tenant ownership check
@@ -298,7 +414,7 @@ export class TenantPaymentsService {
 
     if (
       !account ||
-      !account.connectedAccountId ||
+      (!account.connectedAccountId && !account.paystackSubaccountCode) ||
       account.accountStatus !== 'ENABLED'
     ) {
       throw new BadRequestException(
@@ -318,6 +434,81 @@ export class TenantPaymentsService {
 
     // Determine currency from account config, default to ZAR
     const currency = (account.currency || 'zar').toLowerCase();
+
+    // ── Paystack Direct Bank Payout Branch ────────────────────────────────────
+    if (
+      account.provider === 'paystack' ||
+      (account.paystackSubaccountCode && !account.connectedAccountId)
+    ) {
+      if (
+        !account.paystackSubaccountCode ||
+        account.accountStatus !== 'ENABLED'
+      ) {
+        throw new BadRequestException(
+          'Tenant is not fully onboarded to receive direct bank payouts.',
+        );
+      }
+
+      const reference = `qmova_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      const frontendUrl =
+        process.env.FRONTEND_URL || 'https://qmova.yqbuddy.com';
+      const callbackUrl = `${frontendUrl}/customer/status/${metadata.visitId || metadata.appointmentId || 'payment'}?paystack_ref=${reference}`;
+
+      const paystackRes = await this.paystackService.initializeTransaction({
+        email:
+          metadata.customerEmail && metadata.customerEmail.includes('@')
+            ? metadata.customerEmail.trim()
+            : 'customer@qmova.com',
+        amountInCents: finalAmount,
+        subaccountCode: account.paystackSubaccountCode,
+        reference,
+        callbackUrl,
+        metadata: {
+          tenantId,
+          visitId: metadata.visitId,
+          visitStepId: metadata.visitStepId,
+          appointmentId: metadata.appointmentId,
+          customerName: metadata.customerName,
+          customerPhone: metadata.customerPhone,
+        },
+      });
+
+      const bookingPayment = await this.prisma.bookingPayment.create({
+        data: {
+          tenantId,
+          tenantPaymentAccountId: account.id,
+          appointmentId: metadata.appointmentId,
+          visitId: metadata.visitId,
+          visitStepId: metadata.visitStepId,
+          amount: finalAmount,
+          platformFeeAmount: applicationFeeAmount,
+          tenantNetAmount: tenantNetAmount,
+          currency: currency.toUpperCase(),
+          paystackReference: reference,
+          paystackAccessCode: paystackRes.accessCode,
+          paystackAuthorizationUrl: paystackRes.authorizationUrl,
+          status: 'PENDING',
+          description: metadata.description,
+        },
+      });
+
+      return {
+        provider: 'paystack',
+        reference,
+        accessCode: paystackRes.accessCode,
+        authorizationUrl: paystackRes.authorizationUrl,
+        publicKey: this.paystackService.publicKey,
+        paymentId: bookingPayment.id,
+        amount: finalAmount,
+        currency: currency.toUpperCase(),
+      };
+    }
+
+    if (!this.stripe) {
+      throw new BadRequestException(
+        'Stripe is not configured on this server. Payments are currently disabled.',
+      );
+    }
 
     // Minimum charge amount validation for Stripe (prevents Stripe 500 rejection)
     // Stripe requires non-settlement currencies to convert to at least 30 GBP pence (~R8.00 / $0.50 / €0.50)
@@ -357,7 +548,7 @@ export class TenantPaymentsService {
       }
 
       paymentIntent = await this.stripe.paymentIntents.create(stripeParams, {
-        stripeAccount: account.connectedAccountId, // DIRECT CHARGE
+        stripeAccount: account.connectedAccountId || undefined, // DIRECT CHARGE
       });
     } catch (stripeErr: any) {
       this.logger.error(
@@ -1549,6 +1740,75 @@ export class TenantPaymentsService {
         methodBreakdown,
       },
     };
+  }
+
+  /**
+   * Verify and finalize a public Paystack payment after customer checkout
+   */
+  async verifyPublicPaystackPayment(reference: string) {
+    const bookingPayment = await this.prisma.bookingPayment.findUnique({
+      where: { paystackReference: reference },
+      include: {
+        paymentAccount: true,
+      },
+    });
+
+    if (!bookingPayment) {
+      throw new NotFoundException('Booking payment with reference not found');
+    }
+
+    if (bookingPayment.status === 'SUCCEEDED') {
+      return {
+        isSuccessful: true,
+        paymentId: bookingPayment.id,
+        status: 'SUCCEEDED',
+      };
+    }
+
+    const verification =
+      await this.paystackService.verifyTransaction(reference);
+
+    if (verification.isSuccessful) {
+      await this.completePayment(bookingPayment.id, 'CARD_PRESENT', {
+        description: `Paystack online payment (${verification.channel || 'card'})`,
+      });
+
+      return {
+        isSuccessful: true,
+        paymentId: bookingPayment.id,
+        status: 'SUCCEEDED',
+      };
+    }
+
+    return {
+      isSuccessful: false,
+      paymentId: bookingPayment.id,
+      status: 'FAILED',
+    };
+  }
+
+  /**
+   * Handle incoming Paystack webhooks
+   */
+  async handlePaystackWebhook(body: any) {
+    if (!body || !body.event) {
+      return { received: true };
+    }
+
+    if (body.event === 'charge.success') {
+      const reference = body.data?.reference;
+      if (reference) {
+        try {
+          await this.verifyPublicPaystackPayment(reference);
+        } catch (err: any) {
+          this.logger.error(
+            `Error processing Paystack webhook charge.success for ${reference}: ${err.message}`,
+          );
+        }
+      }
+    }
+
+    return { received: true };
   }
 
   /**

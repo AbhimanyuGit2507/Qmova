@@ -1098,10 +1098,19 @@ model TenantPaymentAccount {
   createdAt             DateTime         @default(now())
   updatedAt             DateTime         @updatedAt
   currency              String           @default("ZAR")
+
+  // Paystack subaccount fields
+  paystackSubaccountCode String?
+  paystackBankCode      String?
+  paystackBankName      String?
+  paystackAccountNumber String?
+  paystackAccountName   String?
+
   payments              BookingPayment[]
   tenant                Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@index([connectedAccountId])
+  @@index([paystackSubaccountCode])
 }
 
 model BookingPayment {
@@ -1120,6 +1129,9 @@ model BookingPayment {
   stripePaymentIntentId   String?               @unique
   stripeChargeId          String?
   stripePaymentMethodType String?
+  paystackReference       String?               @unique
+  paystackAccessCode      String?
+  paystackAuthorizationUrl String?
   description             String?
   receiptUrl              String?
   metadata                Json?
@@ -1143,6 +1155,7 @@ model BookingPayment {
   @@index([appointmentId])
   @@index([visitId])
   @@index([stripePaymentIntentId])
+  @@index([paystackReference])
 }
 
 model BlueprintFlow {

@@ -1,6 +1,7 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TenantPaymentsController } from './tenant-payments.controller';
 import { TenantPaymentsService } from './tenant-payments.service';
+import { PaystackService } from './paystack.service';
 import { PrismaModule } from '../prisma/prisma.module';
 import { VisitStepModule } from '../visit-step/visit-step.module';
 import { InvoiceModule } from '../invoice/invoice.module';
@@ -16,7 +17,7 @@ import { QueueModule } from '../queue/queue.module';
     forwardRef(() => QueueModule),
   ],
   controllers: [TenantPaymentsController],
-  providers: [TenantPaymentsService],
-  exports: [TenantPaymentsService],
+  providers: [TenantPaymentsService, PaystackService],
+  exports: [TenantPaymentsService, PaystackService],
 })
 export class TenantPaymentsModule {}
