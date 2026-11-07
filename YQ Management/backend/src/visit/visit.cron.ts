@@ -798,6 +798,13 @@ export class VisitCron {
             },
           });
 
+          await this.prisma.visitStep
+            .updateMany({
+              where: { visitId: visit.id, status: { not: 'DONE' } },
+              data: { status: 'SKIPPED', skippedAt: now },
+            })
+            .catch(() => null);
+
           if (visit.appointmentId) {
             await this.prisma.appointment
               .update({

@@ -550,10 +550,17 @@ export default function CustomerLiveStatus() {
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
             {/* Live Indicator */}
-            <div className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] sm:text-[11px] font-bold">
-              <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span className="hidden xs:inline">LIVE</span>
-            </div>
+            {isDone ? (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-slate-100 dark:bg-zinc-800 border border-slate-200 dark:border-zinc-700 text-slate-600 dark:text-zinc-400 text-[10px] sm:text-[11px] font-bold">
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-slate-400" />
+                <span>{currentState?.replace(/_/g, ' ')}</span>
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-full bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-400 text-[10px] sm:text-[11px] font-bold">
+                <span className="w-1.5 h-1.5 sm:w-2 sm:h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="hidden xs:inline">LIVE</span>
+              </div>
+            )}
 
             {/* Theme Toggle Button */}
             <button
@@ -730,12 +737,56 @@ export default function CustomerLiveStatus() {
 
             {/* ── Done State Notice ── */}
             {isDone && !isCompleted && (
-              <div className="bg-slate-100 dark:bg-zinc-800 rounded-xl sm:rounded-2xl p-4 sm:p-5 text-center">
-                <h3 className="text-sm sm:text-base font-bold mb-1">Visit Ended</h3>
-                <p className="text-slate-500 dark:text-zinc-400 text-xs">
-                  Your visit has ended with status{' '}
-                  <span className="font-semibold">{currentState?.replace('_', ' ')}</span>.
-                </p>
+              <div className="bg-rose-50/80 dark:bg-rose-950/25 border border-rose-200/80 dark:border-rose-900/40 rounded-xl sm:rounded-2xl p-4 sm:p-5 text-left space-y-3">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-rose-100 dark:bg-rose-900/50 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                    {currentState === 'NO_SHOW' ? (
+                      <Clock className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                    ) : (
+                      <XCircle className="w-5 h-5 text-rose-600 dark:text-rose-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap mb-1">
+                      <h3 className="text-sm sm:text-base font-bold text-rose-950 dark:text-rose-200">
+                        {currentState === 'NO_SHOW'
+                          ? 'Visit Closed — Marked as No-Show'
+                          : currentState === 'MISSED'
+                          ? 'Calling Window Expired — Ticket Missed'
+                          : 'Booking Cancelled'}
+                      </h3>
+                      <span className="text-[10px] uppercase font-bold px-2 py-0.5 rounded-full bg-rose-100 dark:bg-rose-900/60 text-rose-700 dark:text-rose-300">
+                        {currentState?.replace(/_/g, ' ')}
+                      </span>
+                    </div>
+                    <p className="text-xs text-rose-900/80 dark:text-rose-300/80 leading-relaxed">
+                      {(data.token as any)?.cancelReason ||
+                        (data.token as any)?.metadata?.noShow?.reason ||
+                        (data.token as any)?.metadata?.cancellation?.reason ||
+                        (currentState === 'NO_SHOW'
+                          ? 'Wait time exceeded maximum allowable threshold without arrival.'
+                          : 'This ticket was closed and is no longer active in the live queue.')}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-rose-200/60 dark:border-rose-900/40 flex items-center justify-between text-[11px] text-rose-800/80 dark:text-rose-400">
+                  <span>
+                    Closed at:{' '}
+                    {(data.token as any)?.completedAt
+                      ? new Date((data.token as any).completedAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                        })
+                      : 'Recently'}
+                  </span>
+                  <Link
+                    href="/"
+                    className="font-bold text-rose-700 hover:text-rose-900 dark:text-rose-300 dark:hover:text-white underline flex items-center gap-1"
+                  >
+                    <span>Book a New Appointment</span> &rarr;
+                  </Link>
+                </div>
               </div>
             )}
           </div>
@@ -1123,13 +1174,22 @@ export default function CustomerLiveStatus() {
               <div className="flex items-center justify-between">
                 <div>
                   <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
-                    Your Journey Itinerary
+                    {isDone && !isCompleted ? (
+                      <>
+                        <XCircle className="w-4 h-4 text-rose-500 shrink-0" />
+                        <span>Journey Terminated ({currentState?.replace(/_/g, ' ')})</span>
+                      </>
+                    ) : (
+                      'Your Journey Itinerary'
+                    )}
                   </h3>
                   <span className="text-[10px] sm:text-[11px] text-slate-400 dark:text-zinc-500">
-                    {completedStepsCount} of {totalSteps} stages completed
+                    {isDone && !isCompleted
+                      ? `${completedStepsCount} of ${totalSteps} stages fulfilled before closure`
+                      : `${completedStepsCount} of ${totalSteps} stages completed`}
                   </span>
                 </div>
-                <span className="text-xs font-black font-mono text-indigo-600 dark:text-indigo-400">
+                <span className={`text-xs font-black font-mono ${isDone && !isCompleted ? 'text-slate-400 dark:text-zinc-500' : 'text-indigo-600 dark:text-indigo-400'}`}>
                   {progressPercent}%
                 </span>
               </div>
@@ -1137,7 +1197,11 @@ export default function CustomerLiveStatus() {
               {/* Progress bar */}
               <div className="w-full h-1.5 rounded-full bg-slate-100 dark:bg-zinc-800 overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-indigo-500 to-emerald-500 transition-all duration-500 rounded-full"
+                  className={`h-full transition-all duration-500 rounded-full ${
+                    isDone && !isCompleted
+                      ? 'bg-rose-400/60 dark:bg-rose-900/60'
+                      : 'bg-gradient-to-r from-indigo-500 to-emerald-500'
+                  }`}
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
@@ -1154,10 +1218,12 @@ export default function CustomerLiveStatus() {
                     <div
                       key={step.id || idx}
                       className={`flex items-start gap-2.5 sm:gap-3 p-2.5 sm:p-3 rounded-xl sm:rounded-2xl transition-all border ${
-                        isStepActive
+                        isStepActive && !isDone
                           ? 'bg-indigo-50/70 dark:bg-indigo-950/30 border-indigo-200 dark:border-indigo-800/80 shadow-xs'
                           : isStepDone
                           ? 'bg-emerald-50/30 dark:bg-emerald-950/10 border-emerald-100/60 dark:border-emerald-900/30'
+                          : isDone && !isCompleted
+                          ? 'bg-slate-50/40 dark:bg-zinc-900/40 border-slate-100 dark:border-zinc-800/60 opacity-70'
                           : isStepSkipped
                           ? 'bg-slate-50/60 dark:bg-zinc-900/40 border-slate-100 dark:border-zinc-800/60 opacity-60'
                           : 'bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800'
@@ -1168,6 +1234,10 @@ export default function CustomerLiveStatus() {
                         {isStepDone ? (
                           <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-emerald-500 text-white flex items-center justify-center shadow-xs">
                             <Check className="w-3 h-3 sm:w-3.5 sm:h-3.5 stroke-[3]" />
+                          </div>
+                        ) : isDone && !isCompleted ? (
+                          <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-rose-100 dark:bg-rose-950 text-rose-500 flex items-center justify-center text-[10px] font-bold">
+                            ✕
                           </div>
                         ) : isStepActive ? (
                           <div className="w-5 h-5 sm:w-6 sm:h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-[11px] sm:text-xs shadow-sm ring-4 ring-indigo-500/20 animate-pulse">
@@ -1189,8 +1259,10 @@ export default function CustomerLiveStatus() {
                         <div className="flex items-center justify-between gap-1">
                           <p
                             className={`text-xs font-bold truncate ${
-                              isStepActive
+                              isStepActive && !isDone
                                 ? 'text-indigo-900 dark:text-indigo-200'
+                                : isDone && !isCompleted && !isStepDone
+                                ? 'line-through text-slate-400 dark:text-zinc-500'
                                 : isStepSkipped
                                 ? 'line-through text-slate-400 dark:text-zinc-500'
                                 : 'text-slate-800 dark:text-zinc-200'
@@ -1207,19 +1279,23 @@ export default function CustomerLiveStatus() {
                             )}
                             <span
                               className={`text-[9px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-full ${
-                                isStepActive
+                                isStepActive && !isDone
                                   ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300'
                                   : isStepDone
                                   ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
+                                  : isDone && !isCompleted
+                                  ? 'bg-rose-50 text-rose-600 dark:bg-rose-950/40 dark:text-rose-400 border border-rose-200/60 dark:border-rose-900/40'
                                   : isStepSkipped
                                   ? 'bg-slate-200 text-slate-600 dark:bg-zinc-800 dark:text-zinc-400'
                                   : 'bg-slate-100 text-slate-500 dark:bg-zinc-800 dark:text-zinc-400'
                               }`}
                             >
-                              {isStepActive
+                              {isStepActive && !isDone
                                 ? 'Active'
                                 : isStepDone
                                 ? 'Done'
+                                : isDone && !isCompleted
+                                ? (currentState === 'NO_SHOW' ? 'No Show' : 'Cancelled')
                                 : isStepSkipped
                                 ? 'Skipped'
                                 : 'Pending'}
@@ -1249,6 +1325,7 @@ export default function CustomerLiveStatus() {
             const invoice = data.token?.visitInvoice;
             const latestPayment = payments[0];
             const isPaid = latestPayment?.status === 'SUCCEEDED' || invoice?.status === 'PAID';
+            const isPaymentVoided = isDone && !isCompleted && !isPaid;
             const amountCents = latestPayment?.amount ?? invoice?.total ?? service?.basePrice ?? 0;
             const currency = latestPayment?.currency || invoice?.currency || service?.priceCurrency || 'ZAR';
 
@@ -1309,7 +1386,11 @@ export default function CustomerLiveStatus() {
                     </div>
                     <div className="min-w-0">
                       <h3 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white leading-tight truncate">
-                        Payment & Tax Invoice
+                        {isPaid
+                          ? 'Tax Invoice & Receipt'
+                          : isPaymentVoided
+                          ? 'Order Summary (Voided)'
+                          : 'Order & Estimated Bill'}
                       </h3>
                       <p className="text-[10px] sm:text-[11px] font-mono text-slate-400 dark:text-zinc-500 truncate">
                         {invoice?.invoiceNumber || `Ref: ${displayId || 'Queue Ticket'}`}
@@ -1321,48 +1402,65 @@ export default function CustomerLiveStatus() {
                     className={`text-[9px] sm:text-[10px] font-bold uppercase tracking-wider px-2 sm:px-2.5 py-0.5 sm:py-1 rounded-full shrink-0 ${
                       isPaid
                         ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400'
+                        : isPaymentVoided
+                        ? 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'
                         : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'
                     }`}
                   >
-                    {isPaid ? 'Paid' : 'Pay at Counter'}
+                    {isPaid ? 'Paid' : isPaymentVoided ? 'Voided / Unpaid' : 'Pay at Counter'}
                   </span>
                 </div>
 
                 <div className="bg-slate-50 dark:bg-zinc-900/60 rounded-xl sm:rounded-2xl p-3 sm:p-3.5 space-y-2 border border-slate-100 dark:border-zinc-800/80">
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 dark:text-zinc-400 truncate pr-2">Base Services (1 person):</span>
-                    <span className="font-medium text-slate-700 dark:text-zinc-300 shrink-0">
+                    <span className={`font-medium shrink-0 ${isPaymentVoided ? 'line-through text-slate-400' : 'text-slate-700 dark:text-zinc-300'}`}>
                       {formatMoney(Math.round(amountCents / 1.15), currency)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 dark:text-zinc-400 truncate pr-2">VAT (15% Included):</span>
-                    <span className="font-medium text-slate-700 dark:text-zinc-300 shrink-0">
+                    <span className={`font-medium shrink-0 ${isPaymentVoided ? 'line-through text-slate-400' : 'text-slate-700 dark:text-zinc-300'}`}>
                       {formatMoney(amountCents - Math.round(amountCents / 1.15), currency)}
                     </span>
                   </div>
                   <div className="flex justify-between items-center text-xs">
                     <span className="text-slate-500 dark:text-zinc-400 truncate pr-2">Payment Method:</span>
                     <span className="font-medium text-slate-700 dark:text-zinc-300 shrink-0">
-                      {methodLabel}
+                      {isPaymentVoided ? 'None (Voided)' : methodLabel}
                     </span>
                   </div>
                   <div className="pt-2 border-t border-slate-200/60 dark:border-zinc-800 flex justify-between items-center">
-                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">Total Amount:</span>
-                    <span className="font-black text-sm text-emerald-600 dark:text-emerald-400 font-mono">
+                    <span className="text-xs font-bold text-slate-800 dark:text-zinc-200">
+                      {isPaid ? 'Total Paid:' : isPaymentVoided ? 'Amount Voided:' : 'Total Due at Counter:'}
+                    </span>
+                    <span className={`font-black text-sm font-mono ${isPaid ? 'text-emerald-600 dark:text-emerald-400' : isPaymentVoided ? 'text-slate-400 line-through' : 'text-amber-600 dark:text-amber-400'}`}>
                       {formatMoney(amountCents, currency)}
                     </span>
                   </div>
                 </div>
 
-                <button
-                  type="button"
-                  onClick={handleDownloadPdf}
-                  className="w-full py-2.5 px-3 sm:px-4 rounded-xl text-xs font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors flex items-center justify-center gap-1.5"
-                >
-                  <Download className="w-3.5 h-3.5" />
-                  <span>Download Tax Invoice / Receipt (PDF)</span>
-                </button>
+                {/* Conditional Actions based on Payment State */}
+                {isPaid ? (
+                  <button
+                    type="button"
+                    onClick={handleDownloadPdf}
+                    className="w-full py-2.5 px-3 sm:px-4 rounded-xl text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors flex items-center justify-center gap-1.5 shadow-xs"
+                  >
+                    <Download className="w-3.5 h-3.5" />
+                    <span>Download Tax Invoice / Receipt (PDF)</span>
+                  </button>
+                ) : isPaymentVoided ? (
+                  <div className="p-3 bg-slate-100 dark:bg-zinc-900 rounded-xl text-xs text-slate-500 dark:text-zinc-400 flex items-center gap-2 border border-slate-200/60 dark:border-zinc-800">
+                    <XCircle className="w-4 h-4 text-slate-400 shrink-0" />
+                    <span>No payment was collected for this ticket. Tax invoice was not issued.</span>
+                  </div>
+                ) : (
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/30 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-center gap-2 border border-amber-200/70 dark:border-amber-900/50">
+                    <Info className="w-4 h-4 text-amber-600 shrink-0" />
+                    <span>Tax invoice & official receipt will be available for download once payment is settled at the counter or completed online.</span>
+                  </div>
+                )}
               </div>
             );
           })()}

@@ -1284,12 +1284,14 @@ export class WhatsappChatbot {
         const price = (item.unitPrice / 100).toFixed(2);
         msg += `${idx + 1}. ${item.name} — *R${price}*\n`;
       });
-      msg += `\nReply with item numbers separated by commas (e.g. *1, 3* or *2*), or reply *0* to skip.\nReply *00* to cancel.`;
+      msg += `\nReply with item numbers (e.g. *17* or *1, 3*), or reply *0* to skip.\nReply *00* to cancel.`;
 
       await this.updateSession(session.id, 15, {
         serviceId,
         mode,
         selectedSlot,
+        selectedItems: [],
+        menuTotal: 0,
         catalogItems: catalogItems.map((it) => ({
           id: it.id,
           name: it.name,
@@ -1330,57 +1332,177 @@ export class WhatsappChatbot {
     });
     const ctx = (currentSession?.context as any) || {};
     const catalogItems: any[] = ctx.catalogItems || [];
+    let currentSelected: any[] = ctx.selectedItems ? [...ctx.selectedItems] : [];
 
-    let selectedItems: any[] = [];
-    let menuTotal = 0;
-
+    // Case 1: Skip or finish with 0
     if (
-      raw !== '0' &&
-      raw.toUpperCase() !== 'SKIP' &&
-      raw.toUpperCase() !== 'NONE'
+      raw === '0' ||
+      raw.toUpperCase() === 'SKIP' ||
+      raw.toUpperCase() === 'NONE'
     ) {
-      const parts = raw
-        .split(/[,\s]+/)
-        .map((p) => parseInt(p.trim()))
-        .filter((n) => !isNaN(n));
-      const chosenIndexes = Array.from(new Set(parts));
+      await this.updateSession(session.id, 16, {
+        selectedItems: [],
+        menuTotal: 0,
+        catalogItems: undefined,
+      });
+      await this.promptNameInput(tenantId, phone, jid, session);
+      return;
+    }
 
-      const validItems: any[] = [];
-      for (const num of chosenIndexes) {
-        const itemIdx = num - 1;
-        if (itemIdx >= 0 && itemIdx < catalogItems.length) {
-          validItems.push(catalogItems[itemIdx]);
-        }
-      }
+    // Case 2: Done / Proceed with current items
+    const upper = raw.toUpperCase();
+    const isDoneCmd = [
+      'DONE',
+      'D',
+      'CONFIRM',
+      'C',
+      'OK',
+      'YES',
+      'CHECKOUT',
+      'PROCEED',
+      'NEXT',
+      'FINISH',
+    ].includes(upper);
 
-      if (validItems.length === 0 && chosenIndexes.length > 0) {
+    if (isDoneCmd) {
+      if (currentSelected.length === 0) {
         await this.sendMsg(
           jid,
-          'Invalid selection. Please reply with valid item numbers (e.g. *1, 3*), or reply *0* to skip:',
+          "Your order is currently empty.\nReply with an item number (e.g. *1* or *17*) to add items, or reply *0* to skip:",
         );
         return;
       }
-
-      selectedItems = validItems.map((v) => ({
-        id: v.id,
-        name: v.name,
-        category: v.category,
-        priceCents: v.priceCents,
-        quantity: 1,
-      }));
-      menuTotal = selectedItems.reduce(
-        (acc, it) => acc + (it.priceCents || 0),
+      const menuTotal = currentSelected.reduce(
+        (acc, it) => acc + (it.priceCents || 0) * (it.quantity || 1),
         0,
       );
+      await this.updateSession(session.id, 16, {
+        selectedItems: currentSelected,
+        menuTotal,
+        catalogItems: undefined,
+      });
+      await this.promptNameInput(tenantId, phone, jid, session);
+      return;
     }
 
-    await this.updateSession(session.id, 16, {
-      selectedItems,
+    // Case 3: Clear cart
+    if (upper === 'CLEAR' || upper === 'RESET') {
+      await this.updateSession(session.id, 15, {
+        selectedItems: [],
+        menuTotal: 0,
+      });
+      await this.sendMsg(
+        jid,
+        "🧹 Order cleared.\n\nReply with item numbers (e.g. *17* or *1, 3*) to select items, or reply *0* to skip.",
+      );
+      return;
+    }
+
+    // Case 4: Parse items and quantities (e.g. "17", "1, 3", "17*2", "2x1", "1, 5 DONE")
+    let wantsToProceed = false;
+    let cleanText = raw;
+    if (/\b(done|checkout|proceed|finish)\b/i.test(cleanText)) {
+      wantsToProceed = true;
+      cleanText = cleanText.replace(/\b(done|checkout|proceed|finish)\b/gi, '').trim();
+    }
+
+    const tokens = cleanText.split(/[,;\n]+/).map((t) => t.trim()).filter(Boolean);
+    const parsedEntries: { itemNum: number; qty: number }[] = [];
+
+    for (const token of tokens) {
+      let itemNum = NaN;
+      let qty = 1;
+
+      if (/^(\d+)\s*[*xX:]\s*(\d+)$/.test(token)) {
+        const m = token.match(/^(\d+)\s*[*xX:]\s*(\d+)$/)!;
+        itemNum = parseInt(m[1]);
+        qty = parseInt(m[2]);
+      } else if (/^(\d+)\s*[*xX]\s*(\d+)$/.test(token)) {
+        const m = token.match(/^(\d+)\s*[*xX]\s*(\d+)$/)!;
+        itemNum = parseInt(m[2]);
+        qty = parseInt(m[1]);
+      } else if (/^\d+$/.test(token)) {
+        itemNum = parseInt(token);
+        qty = 1;
+      }
+
+      if (!isNaN(itemNum) && qty > 0) {
+        parsedEntries.push({ itemNum, qty });
+      }
+    }
+
+    if (parsedEntries.length === 0) {
+      await this.sendMsg(
+        jid,
+        "I couldn't recognize those item numbers.\n\nPlease reply with valid item numbers (e.g. *1*, *17*, or *1, 3*), reply *D* to proceed, or *0* to skip.",
+      );
+      return;
+    }
+
+    let addedCount = 0;
+    for (const { itemNum, qty } of parsedEntries) {
+      const idx = itemNum - 1;
+      if (idx >= 0 && idx < catalogItems.length) {
+        const catItem = catalogItems[idx];
+        const existingIdx = currentSelected.findIndex((it) => it.id === catItem.id);
+        if (existingIdx >= 0) {
+          currentSelected[existingIdx].quantity =
+            (currentSelected[existingIdx].quantity || 1) + qty;
+        } else {
+          currentSelected.push({
+            id: catItem.id,
+            name: catItem.name,
+            category: catItem.category,
+            priceCents: catItem.priceCents,
+            quantity: qty,
+          });
+        }
+        addedCount++;
+      }
+    }
+
+    if (addedCount === 0) {
+      await this.sendMsg(
+        jid,
+        `Please choose numbers between 1 and ${catalogItems.length}, or reply *0* to skip:`,
+      );
+      return;
+    }
+
+    const menuTotal = currentSelected.reduce(
+      (acc, it) => acc + (it.priceCents || 0) * (it.quantity || 1),
+      0,
+    );
+
+    if (wantsToProceed) {
+      await this.updateSession(session.id, 16, {
+        selectedItems: currentSelected,
+        menuTotal,
+        catalogItems: undefined,
+      });
+      await this.promptNameInput(tenantId, phone, jid, session);
+      return;
+    }
+
+    // Save current cart and show interactive confirmation
+    await this.updateSession(session.id, 15, {
+      selectedItems: currentSelected,
       menuTotal,
-      catalogItems: undefined,
     });
 
-    await this.promptNameInput(tenantId, phone, jid, session);
+    let cartMsg = `🛒 *Your Order:* \n`;
+    currentSelected.forEach((it) => {
+      const lineCost = (((it.priceCents || 0) * (it.quantity || 1)) / 100).toFixed(2);
+      cartMsg += `• ${it.quantity || 1}x ${it.name} — *R${lineCost}*\n`;
+    });
+    cartMsg += `\n💰 *Total: R${(menuTotal / 100).toFixed(2)}*\n\n`;
+    cartMsg += `👉 Reply with:\n`;
+    cartMsg += `• More item numbers to add to order (e.g. *1* or *3*)\n`;
+    cartMsg += `• *D* or *DONE* to proceed to checkout\n`;
+    cartMsg += `• *CLEAR* to reset your order\n`;
+    cartMsg += `• *0* to skip menu add-ons`;
+
+    await this.sendMsg(jid, cartMsg);
   }
 
   private async promptNameInput(
@@ -1536,7 +1658,9 @@ export class WhatsappChatbot {
     if (selectedItems.length > 0) {
       summaryMsg += `🛒 Menu & Add-ons:\n`;
       selectedItems.forEach((it: any) => {
-        summaryMsg += `• 1x ${it.name} (R${(it.priceCents / 100).toFixed(2)})\n`;
+        const qty = it.quantity || 1;
+        const lineTotal = (((it.priceCents || 0) * qty) / 100).toFixed(2);
+        summaryMsg += `• ${qty}x ${it.name} (R${lineTotal})\n`;
       });
     }
     summaryMsg += `\nHow would you like to pay?\n`;
@@ -1725,7 +1849,7 @@ export class WhatsappChatbot {
       msg += `👤 Customer: *${data.customerName}*\n`;
       msg += `💼 Service: *${data.service.name}*\n`;
       if (data.selectedItems.length > 0) {
-        msg += `🛒 Items: ${data.selectedItems.map((i: any) => i.name).join(', ')}\n`;
+        msg += `🛒 Items: ${data.selectedItems.map((i: any) => (i.quantity > 1 ? `${i.quantity}x ${i.name}` : i.name)).join(', ')}\n`;
       }
       msg += `💰 Total Amount: *R${(data.totalAmount / 100).toFixed(2)}*\n\n`;
       msg += `👉 *Tap below to complete your payment securely with Card:*\n`;
@@ -1883,7 +2007,7 @@ export class WhatsappChatbot {
         msg += `👤 Name: *${data.customerName}*\n`;
         msg += `💼 Service: *${data.service.name}*\n`;
         if (data.selectedItems.length > 0) {
-          msg += `🛒 Items: ${data.selectedItems.map((i: any) => i.name).join(', ')}\n`;
+          msg += `🛒 Items: ${data.selectedItems.map((i: any) => (i.quantity > 1 ? `${i.quantity}x ${i.name}` : i.name)).join(', ')}\n`;
         }
         if (data.totalAmount > 0) {
           msg += `💰 Amount Due: *R${(data.totalAmount / 100).toFixed(2)}* (Pay at counter)\n`;
@@ -1903,7 +2027,7 @@ export class WhatsappChatbot {
         msg += `📅 Date & Time: *${timeStr}*\n`;
         msg += `💼 Service: *${data.service.name}*\n`;
         if (data.selectedItems.length > 0) {
-          msg += `🛒 Items: ${data.selectedItems.map((i: any) => i.name).join(', ')}\n`;
+          msg += `🛒 Items: ${data.selectedItems.map((i: any) => (i.quantity > 1 ? `${i.quantity}x ${i.name}` : i.name)).join(', ')}\n`;
         }
         if (data.totalAmount > 0) {
           msg += `💰 Amount Due: *R${(data.totalAmount / 100).toFixed(2)}* (Pay at counter)\n`;

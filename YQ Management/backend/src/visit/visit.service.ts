@@ -769,6 +769,9 @@ export class VisitService {
         rating: true,
         feedbackText: true,
         accompanyingGuests: true,
+        cancelReason: true,
+        cancelledBy: true,
+        metadata: true,
         customer: { select: { name: true } },
         service: {
           select: {
@@ -912,6 +915,10 @@ export class VisitService {
       );
     }
 
+    const isTerminal = ['CANCELLED', 'NO_SHOW', 'MISSED'].includes(
+      visit.currentState,
+    );
+
     const mappedSteps = (visit.visitSteps || []).map((step: any) => {
       let orderItems = step.templateStep?.orderItems;
       if (
@@ -922,8 +929,17 @@ export class VisitService {
       ) {
         orderItems = visit.service.catalog.items;
       }
+
+      // If the visit is in a terminal non-completed state (NO_SHOW, CANCELLED, MISSED),
+      // any step that was not finished (i.e. not DONE) is marked as SKIPPED / closed
+      let stepStatus = step.status;
+      if (isTerminal && stepStatus !== 'DONE') {
+        stepStatus = 'SKIPPED';
+      }
+
       return {
         ...step,
+        status: stepStatus,
         templateStep: step.templateStep
           ? {
               ...step.templateStep,
@@ -941,6 +957,9 @@ export class VisitService {
         customerName: visit.customer?.name,
         scheduledFor: visit.scheduledTime,
         checkedIn: visit.currentState !== 'SCHEDULED',
+        cancelReason: visit.cancelReason,
+        cancelledBy: visit.cancelledBy,
+        metadata: visit.metadata,
         queue: {
           name: visit.queue?.name,
           status: visit.queue?.status,
