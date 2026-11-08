@@ -435,7 +435,7 @@ const CheckoutForm = ({
                 layout: {
                   type: 'accordion',
                   defaultCollapsed: false,
-                  radios: true,
+                  radios: 'auto',
                   spacedAccordionItems: true,
                 },
                 wallets: {
