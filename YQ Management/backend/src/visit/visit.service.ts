@@ -1311,32 +1311,40 @@ export class VisitService {
         include: { paymentAccount: true },
       });
 
-      const stripeActive = Boolean(
-        tenant?.paymentAccount?.chargesEnabled &&
-        tenant?.paymentAccount?.connectedAccountId,
+      const paymentAcc = tenant?.paymentAccount;
+      const isOnlinePaymentsEnabled = paymentAcc?.accountStatus === 'ENABLED';
+      const isStripeReady = Boolean(
+        paymentAcc?.chargesEnabled && paymentAcc?.connectedAccountId,
       );
+      const isPaystackReady = Boolean(paymentAcc?.paystackSubaccountCode);
+      const hasActiveGateway =
+        isOnlinePaymentsEnabled &&
+        (paymentAcc?.provider === 'paystack'
+          ? isPaystackReady
+          : paymentAcc?.provider === 'stripe'
+          ? isStripeReady
+          : isPaystackReady || isStripeReady);
 
-      // Check if online Stripe payment is applicable for this booking
+      // Check if online payment is applicable for this booking
       const firstFlow = await tx.serviceFlow.findFirst({
         where: { serviceId: firstService.id, isActive: true },
       });
-      const isOnlineStripeBooking =
+      const isOnlineBooking =
         !data.payAtCounter &&
+        hasActiveGateway &&
         (firstFlow?.isActive
           ? (firstFlow.paymentTiming === 'BOOKING' ||
               firstFlow.paymentTiming === 'CHECKIN') &&
             (firstService.basePrice ?? 0) > 0 &&
-            firstFlow.checkinPayMode !== 'COUNTER_ONLY' &&
-            stripeActive
+            firstFlow.checkinPayMode !== 'COUNTER_ONLY'
           : (firstService.paymentMode === 'PREPAY' ||
               firstService.paymentMode === 'OPTIONAL_PREPAY' ||
               firstService.paymentMode === 'PAY_AT_SERVICE') &&
-            (firstService.basePrice ?? 0) > 0 &&
-            stripeActive);
+            (firstService.basePrice ?? 0) > 0);
 
-      // OTP is required ONLY for bookings that do NOT involve upfront Stripe card authorization
+      // OTP is required ONLY for bookings that do NOT involve upfront online card authorization
       // Internal chatbot bookings provide skipOtp=true since the WhatsApp session proves caller ownership
-      if (!data.skipOtp && !isOnlineStripeBooking && tenant?.whatsappConnected && data.phone) {
+      if (!data.skipOtp && !isOnlineBooking && tenant?.whatsappConnected && data.phone) {
         if (!data.otp) {
           throw new BadRequestException('OTP is required');
         }
@@ -1428,43 +1436,78 @@ export class VisitService {
         });
         const paymentAccount = await tx.tenantPaymentAccount.findUnique({
           where: { tenantId: service.tenantId },
-          select: { chargesEnabled: true, connectedAccountId: true },
+          select: {
+            chargesEnabled: true,
+            connectedAccountId: true,
+            paystackSubaccountCode: true,
+            provider: true,
+            accountStatus: true,
+          },
         });
-        const stripeActive =
-          !!paymentAccount?.chargesEnabled &&
-          !!paymentAccount?.connectedAccountId;
+        const isOnlinePaymentsEnabled =
+          paymentAccount?.accountStatus === 'ENABLED';
+        const isStripeReady = Boolean(
+          paymentAccount?.chargesEnabled && paymentAccount?.connectedAccountId,
+        );
+        const isPaystackReady = Boolean(
+          paymentAccount?.paystackSubaccountCode,
+        );
+        const hasActiveGateway =
+          isOnlinePaymentsEnabled &&
+          (paymentAccount?.provider === 'paystack'
+            ? isPaystackReady
+            : paymentAccount?.provider === 'stripe'
+            ? isStripeReady
+            : isPaystackReady || isStripeReady);
+        const isPaystackActive =
+          paymentAccount?.provider === 'paystack' && isPaystackReady;
         const payMode = bookingFlow?.checkinPayMode ?? 'COUNTER_ONLY';
 
-        // Check currency-specific Stripe minimum transaction limit
+        // Check currency-specific transaction limits
         const minAmountsInCents: Record<string, number> = {
-          zar: 800, // R8.00 (~35p) safely meets Stripe 30 pence requirement
+          zar: 800, // R8.00 meets Stripe minimum requirement
           gbp: 30, // 30p
           usd: 50, // $0.50
           eur: 50, // €0.50
         };
         const serviceCurrency = (service.priceCurrency || 'zar').toLowerCase();
-        const minStripeAmount = minAmountsInCents[serviceCurrency] || 50;
+        // Paystack supports amounts starting from R1.00 (100 cents), Stripe from R8.00 (800 cents)
+        const minRequiredAmount = isPaystackActive
+          ? 100
+          : minAmountsInCents[serviceCurrency] || 50;
         const menuTotalCents = Number((booking as any).menuTotal || 0);
         const totalBookingPrice = Math.round(
-          (service.basePrice ?? 0) * (1 + (booking.accompanyingGuests || 0)) + menuTotalCents,
+          (service.basePrice ?? 0) * (1 + (booking.accompanyingGuests || 0)) +
+            menuTotalCents,
         );
-        const canChargeStripe = totalBookingPrice >= minStripeAmount;
+        const canChargeOnline = totalBookingPrice >= minRequiredAmount;
 
-        const holdForBookingPayment =
-          !data.payAtCounter &&
-          (bookingFlow?.isActive
+        const isServiceConfiguredForOnline =
+          bookingFlow?.isActive
             ? (bookingFlow.paymentTiming === 'BOOKING' ||
                 bookingFlow.paymentTiming === 'CHECKIN') &&
               totalBookingPrice > 0 &&
-              payMode !== 'COUNTER_ONLY' &&
-              stripeActive &&
-              canChargeStripe
+              payMode !== 'COUNTER_ONLY'
             : (service.paymentMode === 'PREPAY' ||
                 service.paymentMode === 'OPTIONAL_PREPAY' ||
                 service.paymentMode === 'PAY_AT_SERVICE') &&
-              totalBookingPrice > 0 &&
-              stripeActive &&
-              canChargeStripe);
+              totalBookingPrice > 0;
+
+        // Fallback Architecture: If service is configured for online payment, but tenant gateway is offline/disabled:
+        if (isServiceConfiguredForOnline && !hasActiveGateway && !data.payAtCounter) {
+          if (service.allowOfflinePayment === false) {
+            throw new BadRequestException(
+              'Online card payment is temporarily unavailable for this service. Please contact our front desk to complete your reservation.',
+            );
+          }
+          // Fallback allowed: gracefully proceed as counter payment
+        }
+
+        const holdForBookingPayment =
+          !data.payAtCounter &&
+          hasActiveGateway &&
+          isServiceConfiguredForOnline &&
+          canChargeOnline;
 
         if (holdForBookingPayment && !(data as any).paymentId) {
           currentState = 'PENDING_PAYMENT';
@@ -1609,7 +1652,7 @@ export class VisitService {
             ? {
                 paymentTiming: bookingFlow.paymentTiming,
                 checkinPayMode: bookingFlow.checkinPayMode,
-                stripeEnabled: stripeActive,
+                stripeEnabled: hasActiveGateway,
               }
             : null,
         });

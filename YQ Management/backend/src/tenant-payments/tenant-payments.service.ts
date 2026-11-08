@@ -230,6 +230,55 @@ export class TenantPaymentsService {
     return { url: accountLink.url };
   }
 
+  async toggleOnlinePayments(tenantId: string, enabled: boolean) {
+    const account = await this.prisma.tenantPaymentAccount.findUnique({
+      where: { tenantId },
+    });
+    if (!account) {
+      if (enabled) {
+        await this.prisma.tenantPaymentAccount.create({
+          data: {
+            tenantId,
+            provider: 'paystack',
+            accountStatus: 'ENABLED',
+          },
+        });
+      }
+      return { success: true, isOnlinePaymentsEnabled: enabled };
+    }
+
+    const newStatus = enabled ? 'ENABLED' : 'DISABLED';
+    await this.prisma.tenantPaymentAccount.update({
+      where: { tenantId },
+      data: { accountStatus: newStatus },
+    });
+
+    return { success: true, isOnlinePaymentsEnabled: enabled, status: newStatus };
+  }
+
+  async setActiveProvider(tenantId: string, provider: 'stripe' | 'paystack') {
+    const account = await this.prisma.tenantPaymentAccount.findUnique({
+      where: { tenantId },
+    });
+    if (!account) {
+      await this.prisma.tenantPaymentAccount.create({
+        data: {
+          tenantId,
+          provider,
+          accountStatus: 'ENABLED',
+        },
+      });
+      return { success: true, provider };
+    }
+
+    await this.prisma.tenantPaymentAccount.update({
+      where: { tenantId },
+      data: { provider },
+    });
+
+    return { success: true, provider };
+  }
+
   async getAccountStatus(tenantId: string) {
     const isTestMode =
       !process.env.STRIPE_SECRET_KEY?.startsWith('sk_live_') &&
@@ -237,106 +286,127 @@ export class TenantPaymentsService {
     const account = await this.prisma.tenantPaymentAccount.findUnique({
       where: { tenantId },
     });
-    if (!account) return { status: 'NOT_CONNECTED', isTestMode, provider: 'paystack' };
-
-    // Paystack Direct Bank Payout provider check
-    if (account.provider === 'paystack' || (account.paystackSubaccountCode && !account.connectedAccountId)) {
-      const isReady = Boolean(account.paystackSubaccountCode);
+    if (!account) {
       return {
-        provider: 'paystack',
-        status: isReady ? 'ENABLED' : 'NOT_CONNECTED',
-        accountId: account.paystackSubaccountCode,
+        status: 'NOT_CONNECTED',
         isTestMode,
-        chargesEnabled: isReady,
-        payoutsEnabled: isReady,
-        detailsSubmitted: isReady,
+        provider: 'paystack',
+        isOnlinePaymentsEnabled: false,
+        chargesEnabled: false,
+        payoutsEnabled: false,
+        detailsSubmitted: false,
+        stripe: {
+          connected: false,
+          accountId: null,
+          chargesEnabled: false,
+          payoutsEnabled: false,
+          status: 'NOT_CONNECTED',
+        },
+        paystack: {
+          connected: false,
+          subaccountCode: null,
+          bankName: null,
+          bankCode: null,
+          accountNumberMasked: null,
+          accountName: null,
+          status: 'NOT_CONNECTED',
+        },
+      };
+    }
+
+    const isPaystackConfigured = Boolean(account.paystackSubaccountCode);
+    const isStripeConfigured = Boolean(account.connectedAccountId);
+    const isOnlinePaymentsEnabled = account.accountStatus === 'ENABLED';
+
+    let stripeStatus = isStripeConfigured ? 'CONNECTED' : 'NOT_CONNECTED';
+    let stripeChargesEnabled = account.chargesEnabled;
+    let stripePayoutsEnabled = account.payoutsEnabled;
+
+    if (this.stripe && account.connectedAccountId) {
+      try {
+        const stripeAccount = await this.stripe.accounts.retrieve(
+          account.connectedAccountId,
+        );
+        stripeChargesEnabled = stripeAccount.charges_enabled;
+        stripePayoutsEnabled = stripeAccount.payouts_enabled;
+        stripeStatus =
+          stripeChargesEnabled && stripePayoutsEnabled ? 'ENABLED' : 'RESTRICTED';
+
+        await this.prisma.tenantPaymentAccount.update({
+          where: { tenantId },
+          data: {
+            chargesEnabled: stripeAccount.charges_enabled,
+            payoutsEnabled: stripeAccount.payouts_enabled,
+            detailsSubmitted: stripeAccount.details_submitted,
+            accountStatus:
+              account.accountStatus === 'DISABLED'
+                ? 'DISABLED'
+                : stripeStatus,
+          },
+        });
+      } catch (err: any) {
+        this.logger.warn(
+          `Failed to retrieve Stripe account ${account.connectedAccountId}: ${err.message}`,
+        );
+        if (
+          err?.code === 'resource_missing' ||
+          err?.message?.includes('No such account') ||
+          err?.statusCode === 404
+        ) {
+          stripeStatus = 'NOT_CONNECTED';
+          stripeChargesEnabled = false;
+          stripePayoutsEnabled = false;
+        }
+      }
+    }
+
+    const currentProvider =
+      account.provider ||
+      (isStripeConfigured ? 'stripe' : 'paystack');
+
+    const effectiveChargesEnabled =
+      isOnlinePaymentsEnabled &&
+      (currentProvider === 'paystack'
+        ? isPaystackConfigured
+        : stripeChargesEnabled);
+
+    const effectivePayoutsEnabled =
+      isOnlinePaymentsEnabled &&
+      (currentProvider === 'paystack'
+        ? isPaystackConfigured
+        : stripePayoutsEnabled);
+
+    return {
+      provider: currentProvider,
+      status: account.accountStatus,
+      isOnlinePaymentsEnabled,
+      isTestMode,
+      accountId:
+        currentProvider === 'paystack'
+          ? account.paystackSubaccountCode
+          : account.connectedAccountId,
+      chargesEnabled: effectiveChargesEnabled,
+      payoutsEnabled: effectivePayoutsEnabled,
+      detailsSubmitted: account.detailsSubmitted,
+      stripe: {
+        connected: isStripeConfigured,
+        accountId: account.connectedAccountId,
+        chargesEnabled: stripeChargesEnabled,
+        payoutsEnabled: stripePayoutsEnabled,
+        status: stripeStatus,
+      },
+      paystack: {
+        connected: isPaystackConfigured,
+        subaccountCode: account.paystackSubaccountCode,
         bankName: account.paystackBankName,
         bankCode: account.paystackBankCode,
         accountNumberMasked: account.paystackAccountNumber
           ? `•••• ${account.paystackAccountNumber.slice(-4)}`
           : null,
         accountName: account.paystackAccountName,
-      };
-    }
-
-    if (!this.stripe) {
-      return { status: account.accountStatus || 'NOT_CONNECTED', isTestMode, provider: account.provider || 'stripe' };
-    }
-
-    if (!account.connectedAccountId) {
-      return { status: account.accountStatus, isTestMode };
-    }
-
-    try {
-      // Retrieve status from Stripe
-      const stripeAccount = await this.stripe.accounts.retrieve(
-        account.connectedAccountId,
-      );
-
-      const isReady =
-        stripeAccount.charges_enabled && stripeAccount.payouts_enabled;
-      const status = isReady ? 'ENABLED' : 'RESTRICTED';
-
-      await this.prisma.tenantPaymentAccount.update({
-        where: { tenantId },
-        data: {
-          chargesEnabled: stripeAccount.charges_enabled,
-          payoutsEnabled: stripeAccount.payouts_enabled,
-          detailsSubmitted: stripeAccount.details_submitted,
-          accountStatus: status,
-          currentlyDue: stripeAccount.requirements?.currently_due as any,
-          eventuallyDue: stripeAccount.requirements?.eventually_due as any,
-          pendingVerification: stripeAccount.requirements
-            ?.pending_verification as any,
-        },
-      });
-
-      if (status === 'ENABLED' && account.connectedAccountId) {
-        // Asynchronously ensure Apple Pay and wallet domains are verified
-        this.registerPaymentMethodDomains(account.connectedAccountId).catch(
-          () => {},
-        );
-      }
-
-      return {
-        status,
-        accountId: account.connectedAccountId,
-        isTestMode,
-        chargesEnabled: stripeAccount.charges_enabled,
-        payoutsEnabled: stripeAccount.payouts_enabled,
-        detailsSubmitted: stripeAccount.details_submitted,
-      };
-    } catch (err: any) {
-      this.logger.warn(
-        `Failed to retrieve Stripe account ${account.connectedAccountId}: ${err.message}`,
-      );
-      if (
-        err?.code === 'resource_missing' ||
-        err?.message?.includes('No such account') ||
-        err?.statusCode === 404
-      ) {
-        // Stale account ID from another mode (e.g. live vs test)
-        await this.prisma.tenantPaymentAccount.update({
-          where: { tenantId },
-          data: {
-            connectedAccountId: null,
-            accountStatus: 'NOT_CONNECTED',
-            chargesEnabled: false,
-            payoutsEnabled: false,
-            detailsSubmitted: false,
-          },
-        });
-        return { status: 'NOT_CONNECTED', isTestMode };
-      }
-      return {
-        status: account.accountStatus || 'NOT_CONNECTED',
-        accountId: account.connectedAccountId,
-        isTestMode,
-        chargesEnabled: account.chargesEnabled,
-        payoutsEnabled: account.payoutsEnabled,
-        detailsSubmitted: account.detailsSubmitted,
-      };
-    }
+        status: isPaystackConfigured ? 'ENABLED' : 'NOT_CONNECTED',
+      },
+    };
   }
 
   // ── Payment Processing ────────────────────────────────────────────────────

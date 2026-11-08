@@ -572,7 +572,93 @@ const CheckoutForm = ({
   );
 };
 
-export function PaymentStep({
+interface ErrorBoundaryProps {
+  children: React.ReactNode;
+  fallbackAmount: number;
+  currency: string;
+  primaryColor: string;
+  onPayAtCounter: () => void;
+  onBack?: () => void;
+}
+
+interface ErrorBoundaryState {
+  hasError: boolean;
+  errorMessage: string | null;
+}
+
+export class PaymentErrorBoundary extends React.Component<ErrorBoundaryProps, ErrorBoundaryState> {
+  constructor(props: ErrorBoundaryProps) {
+    super(props);
+    this.state = { hasError: false, errorMessage: null };
+  }
+
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, errorMessage: error.message };
+  }
+
+  componentDidCatch(error: Error, errorInfo: React.ErrorInfo) {
+    console.error('PaymentErrorBoundary caught an unhandled error:', error, errorInfo);
+  }
+
+  render() {
+    if (this.state.hasError) {
+      const currSymbol = getCurrencySymbol(this.props.currency);
+      const formatted = `${currSymbol}${(this.props.fallbackAmount / 100).toFixed(2)}`;
+      return (
+        <div className="w-full max-w-2xl mx-auto bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-2xl sm:rounded-3xl p-6 sm:p-8 text-center space-y-6 shadow-sm">
+          <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-2xl flex items-center justify-center mx-auto shadow-sm">
+            <CreditCard className="w-8 h-8" />
+          </div>
+
+          <div className="space-y-2">
+            <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white">
+              Pay at Counter
+            </h2>
+            <p className="text-sm text-gray-600 dark:text-zinc-400 leading-relaxed max-w-sm mx-auto">
+              Our card checkout processor is currently experiencing a brief technical delay. You can confirm your reservation now and settle your balance in person upon arrival.
+            </p>
+            <div className="p-4 rounded-xl bg-gray-50 dark:bg-zinc-800/60 border border-gray-200 dark:border-zinc-700/60 mt-4 text-left flex items-center justify-between">
+              <div>
+                <p className="text-xs uppercase tracking-wider text-gray-500 dark:text-zinc-400 font-semibold">Total Due Upon Arrival</p>
+                <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">Pay at service counter (Cash, Card, or EFT)</p>
+              </div>
+              <div className="text-right">
+                <span className="text-xl font-bold text-gray-900 dark:text-white">
+                  {formatted}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          <div className="space-y-3 pt-2">
+            <button
+              type="button"
+              onClick={this.props.onPayAtCounter}
+              className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.01] active:scale-98 flex items-center justify-center gap-2"
+              style={{ backgroundColor: this.props.primaryColor }}
+            >
+              <CheckCircle2 className="w-5 h-5" />
+              <span>Confirm Reservation (Pay at Counter)</span>
+            </button>
+
+            {this.props.onBack && (
+              <button
+                type="button"
+                onClick={this.props.onBack}
+                className="w-full py-3 rounded-xl font-semibold text-gray-700 dark:text-zinc-300 bg-gray-100 dark:bg-zinc-800 hover:bg-gray-200 dark:hover:bg-zinc-700 transition-colors flex items-center justify-center gap-1.5 text-sm"
+              >
+                <ArrowLeft className="w-4 h-4" /> Go Back
+              </button>
+            )}
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function PaymentStepInternal({
   tenantId,
   amount,
   currency,
@@ -897,5 +983,37 @@ export function PaymentStep({
         customerPhone={customerPhone}
       />
     </Elements>
+  );
+}
+
+export function PaymentStep(props: PaymentStepProps) {
+  const handleFallbackPayAtCounter = async () => {
+    try {
+      if (props.visitId) {
+        await fetchApi('/public-visit/confirm-counter-payment', {
+          method: 'POST',
+          body: JSON.stringify({ visitIds: [props.visitId] }),
+        });
+      }
+    } catch (e) {
+      console.warn('Fallback pay at counter error:', e);
+    }
+    if (props.onSkip) {
+      props.onSkip();
+    } else {
+      props.onSuccess('COUNTER_PAY');
+    }
+  };
+
+  return (
+    <PaymentErrorBoundary
+      fallbackAmount={props.amount}
+      currency={props.currency}
+      primaryColor={props.primaryColor}
+      onPayAtCounter={handleFallbackPayAtCounter}
+      onBack={props.onBack}
+    >
+      <PaymentStepInternal {...props} />
+    </PaymentErrorBoundary>
   );
 }

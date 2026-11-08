@@ -1882,15 +1882,20 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                     }
                   }
 
-                  const minStripeThreshold = getMinStripeCents(bookingCurrency);
-                  const isStripeBooking = selectedServiceIds.some(sid => {
+                  const isTenantGatewayConfigured = Boolean(
+                    tenant?.paymentAccount?.accountStatus === 'ENABLED' &&
+                    (tenant?.paymentAccount?.chargesEnabled || tenant?.paymentAccount?.paystackSubaccountCode || tenant?.paymentAccount?.connectedAccountId)
+                  );
+                  const isPaystackProvider = tenant?.paymentAccount?.provider === 'paystack';
+                  const minOnlineThreshold = isPaystackProvider ? 100 : getMinStripeCents(bookingCurrency);
+                  const isOnlineBooking = isTenantGatewayConfigured && selectedServiceIds.some(sid => {
                     const s = services.find(x => x.id === sid);
                     const flow = (s as any)?.serviceFlow;
                     return flow?.isActive
                       ? (flow.paymentTiming === 'BOOKING' && (flow.checkinPayMode === 'STRIPE_ONLY' || flow.checkinPayMode === 'BOTH'))
                       : ((s as any)?.paymentMode === 'PREPAY');
                   });
-                  const isStripeViable = isStripeBooking && finalTotalCents >= minStripeThreshold;
+                  const isOnlineViable = isOnlineBooking && finalTotalCents >= minOnlineThreshold;
 
                   const taxLabel = bookingCurrency.toUpperCase() === 'ZAR'
                     ? `VAT (${taxRate}%${isTaxInclusive ? ' Included' : ''})`
@@ -1903,7 +1908,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       <div className="flex items-center justify-between pb-2 border-b border-gray-200/60 dark:border-zinc-800/60">
                         <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Payment & Taxes</span>
                         <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400">
-                          {isStripeViable ? 'Pay Online (Card)' : 'Pay at Counter'}
+                          {isOnlineViable ? 'Pay Online (Card / EFT)' : 'Pay at Counter'}
                         </span>
                       </div>
 
@@ -2000,8 +2005,13 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                     finalTotalCents += Math.round(rawSubtotalCents * (taxRate / 100));
                   }
 
-                  const minStripeThreshold = getMinStripeCents(bookingCurrency);
-                  const isStripeBooking = selectedServiceIds.some((sid) => {
+                  const isTenantGatewayConfigured = Boolean(
+                    tenant?.paymentAccount?.accountStatus === 'ENABLED' &&
+                    (tenant?.paymentAccount?.chargesEnabled || tenant?.paymentAccount?.paystackSubaccountCode || tenant?.paymentAccount?.connectedAccountId)
+                  );
+                  const isPaystackProvider = tenant?.paymentAccount?.provider === 'paystack';
+                  const minOnlineThreshold = isPaystackProvider ? 100 : getMinStripeCents(bookingCurrency);
+                  const isOnlineBooking = isTenantGatewayConfigured && selectedServiceIds.some((sid) => {
                     const s = services.find((x) => x.id === sid);
                     const flow = (s as any)?.serviceFlow;
                     return flow?.isActive
@@ -2010,18 +2020,21 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                             flow.checkinPayMode === 'BOTH')
                       : (s as any)?.paymentMode === 'PREPAY';
                   });
-                  const isStripeViable =
-                    isStripeBooking && finalTotalCents >= minStripeThreshold;
+                  const isOnlineViable =
+                    isOnlineBooking && finalTotalCents >= minOnlineThreshold;
 
-                  const allowsPayAtCounter = selectedServiceIds.every((sid) => {
+                  const allowsPayAtCounter = !isOnlineViable || selectedServiceIds.every((sid) => {
                     const s = services.find((x) => x.id === sid);
                     const flow = (s as any)?.serviceFlow;
                     return flow?.isActive
                       ? flow.checkinPayMode !== 'STRIPE_ONLY'
                       : (s as any)?.paymentMode !== 'PREPAY';
+                  }) || selectedServiceIds.some(sid => {
+                    const s = services.find(x => x.id === sid);
+                    return (s as any)?.allowOfflinePayment !== false;
                   });
 
-                  if (isStripeViable && finalTotalCents > 0) {
+                  if (isOnlineViable && finalTotalCents > 0) {
                     return (
                       <div className="flex-1 flex flex-col gap-2">
                         <button

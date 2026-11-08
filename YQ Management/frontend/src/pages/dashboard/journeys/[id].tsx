@@ -630,8 +630,10 @@ export default function JourneyBuilder() {
     queryKey: ["tenant-payment-status"],
     queryFn: () => fetchApi("/tenant-payments/status").catch(() => null),
   });
-  const stripeConnected = !!(
-    paymentStatus?.chargesEnabled && paymentStatus?.payoutsEnabled
+  const onlinePaymentsActive = Boolean(
+    (paymentStatus?.isOnlinePaymentsEnabled ?? true) &&
+    (paymentStatus?.chargesEnabled || paymentStatus?.status === "ENABLED") &&
+    (paymentStatus?.stripe?.connected || paymentStatus?.paystack?.connected || paymentStatus?.accountId)
   );
 
   const recommendedKeys = useMemo(() => {
@@ -1228,6 +1230,21 @@ export default function JourneyBuilder() {
                     className="overflow-hidden border-b border-border dark:border-zinc-800 shrink-0"
                   >
                     <div className="px-5 py-3.5 bg-white dark:bg-zinc-900 shadow-sm space-y-3">
+                      {!onlinePaymentsActive && (
+                        <div className="p-3 bg-amber-500/10 border border-amber-500/20 rounded-xl text-xs text-amber-600 dark:text-amber-400 flex items-start gap-2">
+                          <AlertCircle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <div>
+                            <span className="font-bold">Online Payments Paused or Not Connected:</span>{" "}
+                            <span>
+                              Bookings will default to Pay at Counter. Connect your payout gateway in{" "}
+                              <a href="/dashboard/settings/payments" className="underline font-bold" target="_blank" rel="noreferrer">
+                                Settings &gt; Payments
+                              </a>.
+                            </span>
+                          </div>
+                        </div>
+                      )}
+
                       {/* Row 1: How to collect (Payment Medium) */}
                       <div className="flex flex-wrap items-center gap-3">
                         <span className="text-xs font-semibold text-zinc-700 dark:text-zinc-300 w-28 shrink-0">
@@ -1252,9 +1269,9 @@ export default function JourneyBuilder() {
 
                           <button
                             type="button"
-                            disabled={!stripeConnected}
+                            disabled={!onlinePaymentsActive}
                             onClick={() => {
-                              if (stripeConnected) {
+                              if (onlinePaymentsActive) {
                                 updateFlowMutation.mutate({
                                   checkinPayMode: "STRIPE_ONLY",
                                   paymentTiming:
@@ -1265,12 +1282,12 @@ export default function JourneyBuilder() {
                               }
                             }}
                             title={
-                              !stripeConnected
-                                ? "Connect Stripe in Settings to enable online payments"
+                              !onlinePaymentsActive
+                                ? "Enable online payments in Settings > Payments"
                                 : undefined
                             }
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                              !stripeConnected
+                              !onlinePaymentsActive
                                 ? "opacity-50 cursor-not-allowed bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-400"
                                 : flow.paymentTiming !== "NONE" &&
                                   (flow.checkinPayMode || "COUNTER_ONLY") === "STRIPE_ONLY"
@@ -1278,7 +1295,7 @@ export default function JourneyBuilder() {
                                   : "bg-surface-container-low dark:bg-zinc-800 border-border dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-700/60 cursor-pointer"
                             }`}
                           >
-                            Pay via Stripe Online
+                            Pay Online (Card / Instant EFT)
                           </button>
 
                           <button
@@ -1304,9 +1321,9 @@ export default function JourneyBuilder() {
 
                           <button
                             type="button"
-                            disabled={!stripeConnected}
+                            disabled={!onlinePaymentsActive}
                             onClick={() => {
-                              if (stripeConnected) {
+                              if (onlinePaymentsActive) {
                                 updateFlowMutation.mutate({
                                   checkinPayMode: "BOTH",
                                   paymentTiming:
@@ -1317,12 +1334,12 @@ export default function JourneyBuilder() {
                               }
                             }}
                             title={
-                              !stripeConnected
-                                ? "Connect Stripe in Settings to enable online payments"
+                              !onlinePaymentsActive
+                                ? "Enable online payments in Settings > Payments"
                                 : undefined
                             }
                             className={`px-3 py-1.5 rounded-lg text-xs font-semibold border transition-colors ${
-                              !stripeConnected
+                              !onlinePaymentsActive
                                 ? "opacity-50 cursor-not-allowed bg-zinc-100 dark:bg-zinc-800 border-zinc-200 dark:border-zinc-700 text-zinc-400"
                                 : flow.paymentTiming !== "NONE" &&
                                   (flow.checkinPayMode || "COUNTER_ONLY") === "BOTH"

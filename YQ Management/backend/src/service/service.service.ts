@@ -95,6 +95,7 @@ export class ServiceService {
       breachThresholdMins?: number;
       escalationPhones?: string[];
       enableCatalog?: boolean;
+      allowOfflinePayment?: boolean;
       maxOverdueMinutes?: number;
     },
   ) {
@@ -148,7 +149,10 @@ export class ServiceService {
       priceCurrency: data.priceCurrency,
       paymentMode: data.paymentMode || 'NONE',
       requiresPayment: Boolean(data.basePrice && data.basePrice > 0),
-      allowOfflinePayment: Boolean(data.basePrice && data.basePrice > 0),
+      allowOfflinePayment:
+        data.allowOfflinePayment !== undefined
+          ? Boolean(data.allowOfflinePayment)
+          : true,
     };
 
     if (data.slaMode && data.slaMode !== 'Disabled') {
@@ -455,6 +459,7 @@ export class ServiceService {
       allowUnpaidCheckout?: boolean;
       autoSendInvoice?: boolean;
       enableCatalog?: boolean;
+      allowOfflinePayment?: boolean;
       maxOverdueMinutes?: number;
     },
   ) {
@@ -517,8 +522,11 @@ export class ServiceService {
       updateData.basePrice = data.basePrice;
       if (data.basePrice && data.basePrice > 0) {
         updateData.requiresPayment = true;
-        updateData.allowOfflinePayment = true;
       }
+    }
+
+    if (data.allowOfflinePayment !== undefined) {
+      updateData.allowOfflinePayment = Boolean(data.allowOfflinePayment);
     }
 
     if (data.maxOverdueMinutes !== undefined) {

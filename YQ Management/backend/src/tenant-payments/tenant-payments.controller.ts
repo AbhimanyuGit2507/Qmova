@@ -63,6 +63,30 @@ export class TenantPaymentsController {
     return this.tenantPaymentsService.resetConnectAccount(req.user.tenantId);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Post('toggle-enabled')
+  toggleOnlinePayments(
+    @Req() req: any,
+    @Body() body: { enabled: boolean },
+  ) {
+    return this.tenantPaymentsService.toggleOnlinePayments(
+      req.user.tenantId,
+      body.enabled,
+    );
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('select-provider')
+  setActiveProvider(
+    @Req() req: any,
+    @Body() body: { provider: 'stripe' | 'paystack' },
+  ) {
+    return this.tenantPaymentsService.setActiveProvider(
+      req.user.tenantId,
+      body.provider,
+    );
+  }
+
   // ── Paystack Direct Bank Payout Endpoints ─────────────────────────────────
 
   @UseGuards(JwtAuthGuard)

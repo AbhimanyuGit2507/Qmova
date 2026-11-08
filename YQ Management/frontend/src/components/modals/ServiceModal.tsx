@@ -49,6 +49,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
   const [allowUnpaidCheckout, setAllowUnpaidCheckout] = useState(false);
   const [autoSendInvoice, setAutoSendInvoice] = useState(false);
   const [enableCatalog, setEnableCatalog] = useState(false);
+  const [allowOfflinePayment, setAllowOfflinePayment] = useState(true);
 
   const queryClient = useQueryClient();
 
@@ -56,7 +57,11 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
     queryKey: ['tenant-payment-status'],
     queryFn: () => fetchApi('/tenant-payments/status').catch(() => null),
   });
-  const stripeConnected = !!(paymentStatus?.chargesEnabled && paymentStatus?.payoutsEnabled);
+  const onlinePaymentsActive = Boolean(
+    (paymentStatus?.isOnlinePaymentsEnabled ?? true) &&
+    (paymentStatus?.chargesEnabled || paymentStatus?.status === 'ENABLED') &&
+    (paymentStatus?.stripe?.connected || paymentStatus?.paystack?.connected || paymentStatus?.accountId)
+  );
 
   useEffect(() => {
     if (service) {
@@ -88,6 +93,7 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       setBasePrice(service.basePrice ? (service.basePrice / 100).toString() : '');
       setPriceCurrency(service.priceCurrency || 'ZAR');
       setEnableCatalog(service.enableCatalog || false);
+      setAllowOfflinePayment(service.allowOfflinePayment !== false);
       
       if (service.serviceFlow) {
         setPaymentTiming(service.serviceFlow.paymentTiming || 'NONE');
@@ -252,7 +258,8 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
       basePrice: basePrice ? Math.round(parseFloat(basePrice) * 100) : null,
       priceCurrency,
       paymentTiming,
-      checkinPayMode: (!stripeConnected || !checkinPayMode) ? 'COUNTER_ONLY' : checkinPayMode,
+      checkinPayMode: (!onlinePaymentsActive || !checkinPayMode) ? 'COUNTER_ONLY' : checkinPayMode,
+      allowOfflinePayment,
       allowUnpaidCheckout,
       autoSendInvoice,
       enableCatalog,
@@ -420,6 +427,21 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
                     <label className="block text-xs font-semibold text-gray-700 dark:text-zinc-300 mb-1.5">
                       How to Collect
                     </label>
+                    {!onlinePaymentsActive && (
+                      <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/40 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                        <AlertCircle className="w-4 h-4 shrink-0 mt-0.5 text-amber-600 dark:text-amber-400" />
+                        <div>
+                          <p className="font-bold">Online Payments Paused or Not Connected</p>
+                          <p className="mt-0.5 opacity-90">
+                            Bookings will safely use Pay at Counter. To accept cards or instant EFT, activate payments in{' '}
+                            <a href="/dashboard/settings/payments" className="underline font-bold hover:opacity-80" target="_blank" rel="noreferrer">
+                              Settings &gt; Payments
+                            </a>.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <button
                         type="button"
@@ -435,9 +457,9 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
 
                       <button
                         type="button"
-                        disabled={!stripeConnected}
+                        disabled={!onlinePaymentsActive}
                         onClick={() => {
-                          if (stripeConnected) {
+                          if (onlinePaymentsActive) {
                             setCheckinPayMode("STRIPE_ONLY");
                             if (paymentTiming === "NONE" || paymentTiming === "CHECKIN") {
                               setPaymentTiming("BOOKING");
@@ -445,19 +467,19 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
                           }
                         }}
                         title={
-                          !stripeConnected
-                            ? "Connect Stripe in Settings to enable online payments"
+                          !onlinePaymentsActive
+                            ? "Enable online payments in Settings > Payments"
                             : undefined
                         }
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                          !stripeConnected
+                          !onlinePaymentsActive
                             ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-400"
                             : paymentTiming !== "NONE" && checkinPayMode === "STRIPE_ONLY"
                               ? "bg-indigo-600 text-white border-indigo-600"
                               : "bg-white dark:bg-zinc-800 border-gray-200 dark:border-white/10 text-gray-700 dark:text-zinc-300 hover:bg-gray-100 dark:hover:bg-zinc-700"
                         }`}
                       >
-                        Pay via Stripe Online
+                        Pay Online (Card / Instant EFT)
                       </button>
 
                       <button
@@ -479,9 +501,9 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
 
                       <button
                         type="button"
-                        disabled={!stripeConnected}
+                        disabled={!onlinePaymentsActive}
                         onClick={() => {
-                          if (stripeConnected) {
+                          if (onlinePaymentsActive) {
                             setCheckinPayMode("BOTH");
                             if (paymentTiming === "NONE") {
                               setPaymentTiming("BOOKING");
@@ -489,12 +511,12 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
                           }
                         }}
                         title={
-                          !stripeConnected
-                            ? "Connect Stripe in Settings to enable online payments"
+                          !onlinePaymentsActive
+                            ? "Enable online payments in Settings > Payments"
                             : undefined
                         }
                         className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-colors ${
-                          !stripeConnected
+                          !onlinePaymentsActive
                             ? "opacity-50 cursor-not-allowed bg-gray-100 dark:bg-zinc-800 border-gray-200 dark:border-zinc-700 text-gray-400"
                             : paymentTiming !== "NONE" && checkinPayMode === "BOTH"
                               ? "bg-indigo-600 text-white border-indigo-600"
@@ -505,6 +527,27 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
                       </button>
                     </div>
                   </div>
+
+                  {/* Pay-at-Counter Fallback Architecture Toggle */}
+                  {paymentTiming !== "NONE" && checkinPayMode !== "COUNTER_ONLY" && (
+                    <div className="pt-3 border-t border-gray-200 dark:border-white/10 flex items-start gap-3">
+                      <input
+                        type="checkbox"
+                        id="allowOfflinePayment"
+                        checked={allowOfflinePayment}
+                        onChange={(e) => setAllowOfflinePayment(e.target.checked)}
+                        className="mt-1 h-4 w-4 rounded border-gray-300 text-indigo-600 focus:ring-indigo-500 cursor-pointer"
+                      />
+                      <label htmlFor="allowOfflinePayment" className="cursor-pointer space-y-0.5">
+                        <span className="block text-xs font-bold text-gray-900 dark:text-white">
+                          Enable Pay-at-Counter Fallback
+                        </span>
+                        <span className="block text-[11px] text-gray-500 dark:text-zinc-400 leading-relaxed">
+                          If online payment gateways experience downtime or a network error, automatically allow customers to complete their reservation and pay at the counter. Recommended to eliminate abandoned bookings.
+                        </span>
+                      </label>
+                    </div>
+                  )}
 
                   {/* Row 2: When to Collect (Dynamic) */}
                   {paymentTiming !== "NONE" && (

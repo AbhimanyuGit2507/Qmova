@@ -74,7 +74,13 @@ export class TenantService {
           include: { plan: true },
         },
         paymentAccount: {
-          select: { connectedAccountId: true, chargesEnabled: true },
+          select: {
+            connectedAccountId: true,
+            chargesEnabled: true,
+            provider: true,
+            accountStatus: true,
+            paystackSubaccountCode: true,
+          },
         },
       },
     });
