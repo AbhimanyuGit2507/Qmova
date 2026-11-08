@@ -640,16 +640,23 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     return dates;
   }, [currentService]);
 
+  // Extract safe array of custom form questions regardless of whether formConfig is array or object
+  const extractFormFields = (raw: any): any[] => {
+    if (!raw) return [];
+    if (Array.isArray(raw)) return raw;
+    if (typeof raw === 'object' && Array.isArray(raw.customFields)) return raw.customFields;
+    return [];
+  };
+
   const formConfig = React.useMemo(() => {
-    if (!currentService || !currentQueue) return [];
+    if (!currentService) return [];
     // 2. Add service-specific or queue-specific custom questions
-    let customConfig: AnyFixMe[] = [];
-    if (currentService.formConfig && currentService.formConfig.length > 0) {
-      customConfig = currentService.formConfig;
-    } else if (currentQueue.formConfig && currentQueue.formConfig.length > 0) {
-      customConfig = currentQueue.formConfig;
+    const sFields = extractFormFields(currentService.formConfig);
+    if (sFields.length > 0) return sFields;
+    if (currentQueue) {
+      return extractFormFields(currentQueue.formConfig);
     }
-    return customConfig;
+    return [];
   }, [currentService, currentQueue]);
 
   const handleNextStep2 = (e: React.FormEvent) => {
@@ -752,38 +759,39 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
       const bookings = selectedServiceIds.map((sid) => {
         const d = serviceDetails[sid] || {};
         const s = services.find((x) => x.id === sid);
-        const cfg =
-          s && s.formConfig && s.formConfig.length > 0
-            ? s.formConfig
-            : currentQueue?.formConfig || [];
+        const sFields = extractFormFields(s?.formConfig);
+        const qFields = extractFormFields(currentQueue?.formConfig);
+        const cfg = sFields.length > 0 ? sFields : qFields;
         const rawResponses = d.responses || {};
         const enrichedResponses: Record<string, any> = { ...rawResponses };
 
-        cfg.forEach((f: any) => {
-          if (f && f.id && rawResponses[f.id] !== undefined) {
-            const val = rawResponses[f.id];
-            if (f.label) {
-              enrichedResponses[f.label] = val;
-              const normalized = f.label
-                .toLowerCase()
-                .replace(/[^a-z0-9]/g, '_');
-              enrichedResponses[normalized] = val;
-              if (
-                normalized.includes('date_of_birth') ||
-                normalized === 'dob' ||
-                normalized.includes('birthday') ||
-                normalized.includes('birth_date')
-              ) {
-                enrichedResponses['dob'] = val;
-                enrichedResponses['dateOfBirth'] = val;
-                enrichedResponses['date_of_birth'] = val;
-              }
-              if (normalized === 'age' || normalized.includes('age')) {
-                enrichedResponses['age'] = val;
+        if (Array.isArray(cfg)) {
+          cfg.forEach((f: any) => {
+            if (f && f.id && rawResponses[f.id] !== undefined) {
+              const val = rawResponses[f.id];
+              if (f.label) {
+                enrichedResponses[f.label] = val;
+                const normalized = f.label
+                  .toLowerCase()
+                  .replace(/[^a-z0-9]/g, '_');
+                enrichedResponses[normalized] = val;
+                if (
+                  normalized.includes('date_of_birth') ||
+                  normalized === 'dob' ||
+                  normalized.includes('birthday') ||
+                  normalized.includes('birth_date')
+                ) {
+                  enrichedResponses['dob'] = val;
+                  enrichedResponses['dateOfBirth'] = val;
+                  enrichedResponses['date_of_birth'] = val;
+                }
+                if (normalized === 'age' || normalized.includes('age')) {
+                  enrichedResponses['age'] = val;
+                }
               }
             }
-          }
-        });
+          });
+        }
 
         return {
           serviceId: sid,

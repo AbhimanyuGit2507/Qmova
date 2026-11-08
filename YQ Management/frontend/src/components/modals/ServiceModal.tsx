@@ -100,11 +100,17 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
         setAllowUnpaidCheckout(false);
         setAutoSendInvoice(false);
       }
-      let initialFormConfig = service.formConfig || [];
+      const extractFields = (raw: any): any[] => {
+        if (!raw) return [];
+        if (Array.isArray(raw)) return raw;
+        if (typeof raw === 'object' && Array.isArray(raw.customFields)) return raw.customFields;
+        return [];
+      };
+      let initialFormConfig = extractFields(service.formConfig);
       if (initialFormConfig.length === 0 && service.queues && service.queues.length > 0) {
-        const queueWithConfig = service.queues.find((q: AnyFixMe) => q.formConfig && q.formConfig.length > 0);
+        const queueWithConfig = service.queues.find((q: AnyFixMe) => extractFields(q.formConfig).length > 0);
         if (queueWithConfig) {
-          initialFormConfig = queueWithConfig.formConfig;
+          initialFormConfig = extractFields(queueWithConfig.formConfig);
         }
       }
       setFormConfig(initialFormConfig);
