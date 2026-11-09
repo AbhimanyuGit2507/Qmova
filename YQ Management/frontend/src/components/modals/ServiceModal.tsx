@@ -62,6 +62,9 @@ export function ServiceModal({ isOpen, onClose, locationId, service }: ServiceMo
     (paymentStatus?.chargesEnabled || paymentStatus?.status === 'ENABLED') &&
     (paymentStatus?.stripe?.connected || paymentStatus?.paystack?.connected || paymentStatus?.accountId)
   );
+  const stripeConnected = Boolean(
+    paymentStatus?.stripe?.connected || paymentStatus?.paystack?.connected || paymentStatus?.chargesEnabled || paymentStatus?.accountId
+  );
 
   useEffect(() => {
     if (service) {

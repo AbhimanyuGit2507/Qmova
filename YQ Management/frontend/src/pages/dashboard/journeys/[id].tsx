@@ -635,6 +635,9 @@ export default function JourneyBuilder() {
     (paymentStatus?.chargesEnabled || paymentStatus?.status === "ENABLED") &&
     (paymentStatus?.stripe?.connected || paymentStatus?.paystack?.connected || paymentStatus?.accountId)
   );
+  const stripeConnected = Boolean(
+    paymentStatus?.stripe?.connected || paymentStatus?.paystack?.connected || paymentStatus?.chargesEnabled || paymentStatus?.accountId
+  );
 
   const recommendedKeys = useMemo(() => {
     const bt = tenant?.businessType || "";
