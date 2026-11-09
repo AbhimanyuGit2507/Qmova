@@ -15,3 +15,4 @@ DELETE FROM "Customer" WHERE email IN (
     'vandermerwe@example.com',
     'patel.family@example.com'
 ) OR email LIKE '%@example.com';
+
