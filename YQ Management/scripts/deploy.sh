@@ -57,6 +57,9 @@ docker compose -f docker-compose.production.yml run --rm backend npx prisma migr
 echo "====> Seeding/Updating Industry Blueprints..."
 docker compose -f docker-compose.production.yml run --rm backend node dist/service-flow/seed-blueprints.js
 
+echo "====> Setting up School Annual Function & Catering Demo Account..."
+docker compose -f docker-compose.production.yml run --rm backend node dist/scripts/setup-production-school-demo.js
+
 echo "====> Starting new containers..."
 # Recreate only the containers that have changed images or configs
 docker compose -f docker-compose.production.yml up -d --remove-orphans --wait

@@ -67,6 +67,9 @@ jobs:
           echo "====> Seeding/Updating Industry Blueprints..."
           docker compose -f docker-compose.production.yml run --rm backend node dist/service-flow/seed-blueprints.js
           
+          echo "====> Setting up School Annual Function & Catering Demo Account..."
+          docker compose -f docker-compose.production.yml run --rm backend node dist/scripts/setup-production-school-demo.js
+          
           echo "====> Restarting services with updated images..."
           docker compose -f docker-compose.production.yml up -d --remove-orphans
           
