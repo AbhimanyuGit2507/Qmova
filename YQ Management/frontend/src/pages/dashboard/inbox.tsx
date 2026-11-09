@@ -990,22 +990,6 @@ export default function InboxPage() {
                                 </span>
                               </span>
                             )}
-                            {is24hExpired && (
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDismissed24hWarnings((prev) => ({
-                                    ...prev,
-                                    [selectedPhone]: !prev[selectedPhone],
-                                  }))
-                                }
-                                className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold bg-amber-500/10 dark:bg-amber-500/15 text-amber-700 dark:text-amber-400 border border-amber-500/20 hover:bg-amber-500/20 transition-colors cursor-pointer"
-                                title="Click to view/hide 24-hour window alert"
-                              >
-                                <ClockIcon className="w-3 h-3 text-amber-500 shrink-0" />
-                                <span>Window Expired ({Math.round(lastCustomerMsgAgeHours || 0)}h)</span>
-                              </button>
-                            )}
                           </div>
                           <p className="text-[11px] text-outline font-mono truncate">
                             {selectedPhone}
@@ -1321,7 +1305,13 @@ export default function InboxPage() {
                       value={input}
                       onChange={(e) => setInput(e.target.value)}
                       onKeyDown={handleKeyDown}
-                      placeholder={media ? 'Add an optional caption...' : 'Type a reply to customer... (Enter to send)'}
+                      placeholder={
+                        is24hExpired
+                          ? '24h window closed — choose a quick template or wait for reply'
+                          : media
+                          ? 'Add an optional caption...'
+                          : 'Type a reply to customer... (Enter to send)'
+                      }
                       className="w-full bg-surface-container-low dark:bg-dark-canvas border border-border dark:border-dark-border rounded-xl px-4 py-2.5 text-xs sm:text-sm focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none max-h-32 text-on-surface dark:text-white placeholder:text-outline"
                     />
                   </div>

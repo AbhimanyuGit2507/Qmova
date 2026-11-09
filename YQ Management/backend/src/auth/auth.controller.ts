@@ -15,6 +15,7 @@ import {
   Delete,
   Param,
   ConflictException,
+  BadRequestException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
@@ -750,5 +751,31 @@ export class AuthController {
     });
 
     return { success: true, message: 'Password reset successfully' };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  async changePassword(
+    @Req() req: AuthenticatedRequest,
+    @Body() body: { currentPassword?: string; newPassword: string },
+  ) {
+    const userId = (req.user as any)?.id || (req.user as any)?.userId;
+    if (!userId) throw new UnauthorizedException();
+    if (!body.newPassword || body.newPassword.length < 6) {
+      throw new BadRequestException('New password must be at least 6 characters.');
+    }
+    const user = await this.usersService.findOneById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+    const bcrypt = require('bcrypt');
+    if (user.password && body.currentPassword) {
+      const match = await bcrypt.compare(body.currentPassword, user.password);
+      if (!match) throw new BadRequestException('Current password does not match.');
+    }
+    const hashedPassword = await bcrypt.hash(body.newPassword, 10);
+    await this.usersService['prisma'].user.update({
+      where: { id: user.id },
+      data: { password: hashedPassword },
+    });
+    return { success: true, message: 'Password updated successfully' };
   }
 }

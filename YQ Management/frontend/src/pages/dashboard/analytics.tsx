@@ -308,26 +308,26 @@ export default function Analytics() {
             </div>
           </div>
 
-          {/* KPI Ribbon */}
+          {/* KPI Ribbon - Symmetric 6-Card Grid */}
           <motion.div
             initial="hidden" animate="visible"
             variants={{ visible: { transition: { staggerChildren: 0.08 } } }}
-            className="grid grid-cols-2 lg:grid-cols-4 gap-4"
+            className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4"
           >
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
               <div className="flex items-center justify-between mb-1">
                 <p className="text-on-surface-variant text-xs uppercase tracking-wider font-semibold">Total Visits</p>
                 {Number(kpis.totalScheduled ?? 0) > 0 && (
                   <span className="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-purple-50 text-purple-700 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800/50">
-                    {kpis.totalScheduled} Scheduled
+                    {kpis.totalScheduled} Sched
                   </span>
                 )}
               </div>
               <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">{kpis.totalVisits}</p>
-              <p className="text-xs text-outline mt-1">
+              <p className="text-xs text-outline mt-1 truncate">
                 {timeRange === 'Today'
-                  ? `${kpis.totalVisits} arrived · ${kpis.totalScheduled || 0} scheduled bookings today`
-                  : `${timeframeLabel}${kpis.totalScheduled ? ` · ${kpis.totalScheduled} scheduled bookings` : ''}`}
+                  ? `${kpis.totalVisits} arrived · ${kpis.totalScheduled || 0} sched`
+                  : `${timeframeLabel}`}
               </p>
             </motion.div>
 
@@ -336,7 +336,15 @@ export default function Analytics() {
               <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">
                 {kpis.averageWaitTimeMins > 0 ? `${kpis.averageWaitTimeMins}m` : '—'}
               </p>
-              <p className="text-xs text-outline mt-1">Served customers</p>
+              <p className="text-xs text-outline mt-1">Queue to counter</p>
+            </motion.div>
+
+            <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
+              <p className="text-on-surface-variant text-xs mb-1 uppercase tracking-wider font-semibold">Avg Service Time</p>
+              <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">
+                {kpis.averageServiceTimeMins > 0 ? `${kpis.averageServiceTimeMins}m` : '—'}
+              </p>
+              <p className="text-xs text-outline mt-1">Active consultation</p>
             </motion.div>
 
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm relative overflow-hidden">
@@ -345,8 +353,9 @@ export default function Analytics() {
                 {kpis.csatScore > 0 ? kpis.csatScore : '—'} 
                 {kpis.csatScore > 0 && <Star className="w-5 h-5 fill-primary" />}
               </p>
-              <p className="text-xs text-outline mt-1">Customer satisfaction</p>
+              <p className="text-xs text-outline mt-1">Satisfaction rating</p>
             </motion.div>
+
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-alert/30 dark:border-alert/20 rounded-xl p-5 shadow-sm relative overflow-hidden">
               <div className="absolute top-0 left-0 w-1 h-full bg-alert rounded-l-xl" />
               <p className="text-on-surface-variant text-xs mb-1 uppercase tracking-wider font-semibold">SLA Violations</p>
@@ -359,9 +368,9 @@ export default function Analytics() {
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
               <p className="text-on-surface-variant text-xs mb-1 uppercase tracking-wider font-semibold">Walkaway Rate</p>
               <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">{kpis.dropOffRate}%</p>
-              <p className="text-xs text-outline mt-1">
+              <p className="text-xs text-outline mt-1 truncate">
                 {(kpis.totalCancelled !== undefined || kpis.totalNoShow !== undefined)
-                  ? `${kpis.totalCancelled || 0} cancelled · ${kpis.totalNoShow || 0} no-shows`
+                  ? `${kpis.totalCancelled || 0} can · ${kpis.totalNoShow || 0} no-show`
                   : 'No-shows & cancels'}
               </p>
             </motion.div>
@@ -552,7 +561,9 @@ export default function Analytics() {
                   </div>
                 ) : (
                   <div className="space-y-6">
-                    {servicePerformance.map((svc: any, i: number) => (
+                    {servicePerformance
+                      .filter((svc: any) => !(svc.name === 'Archived Services' && svc.count === 0))
+                      .map((svc: any, i: number) => (
                       <div key={svc.id} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
                         <div className="flex justify-between items-center mb-4 border-b border-border dark:border-dark-border pb-4">
                           <div>

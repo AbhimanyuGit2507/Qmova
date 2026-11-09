@@ -529,7 +529,7 @@ const CONFIGS: Record<BusinessType, IndustryConfig> = {
       appointment: 'Scheduled Event',
     },
     serviceDesk: {
-      pageTitle: 'Service Desk',
+      pageTitle: 'Kitchen Pipeline',
       pipelineTitle: 'Active Queues',
       poolTitle: 'Waiting List',
       emptyHeading: 'All events prepped!',

@@ -467,7 +467,7 @@ export default function BillingSettings() {
                     <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
                       <CheckCircle2 className="w-4 h-4" />
                     </div>
-                    Up to {limits.maxTokens > 0 ? limits.maxTokens : 'Unlimited'} Tokens/day
+                    Up to {limits.maxTokens > 0 ? limits.maxTokens : 'Unlimited'} Tokens/month
                   </li>
                   {currentSub?.plan?.features?.whatsappNotifications && (
                     <li className="flex items-center gap-4 text-white text-base font-medium">
@@ -652,7 +652,7 @@ export default function BillingSettings() {
                     Enterprise Tier Active
                   </h3>
                   <p className="text-zinc-300 text-base font-medium leading-relaxed max-w-md mx-auto md:mx-0">
-                    Your workspace is equipped with unlimited queues, high-throughput WhatsApp conduits, custom branding, and dedicated priority support.
+                    Your workspace is equipped with unlimited queues, unlimited automated WhatsApp notifications and 2-way client chat, custom branding, and dedicated priority support.
                   </p>
                 </div>
 
@@ -981,7 +981,7 @@ export default function BillingSettings() {
 
               <div className="space-y-3 mb-8">
                 <div className="flex items-center gap-3 text-on-surface dark:text-white font-body-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-primary" /> {checkoutPlan.limits?.maxServices || 1} Services & {checkoutPlan.limits?.maxTokens || 500} Tokens/day
+                  <CheckCircle2 className="w-4 h-4 text-primary" /> {checkoutPlan.limits?.maxServices || 1} Services & {checkoutPlan.limits?.maxTokens || 500} Tokens/month
                 </div>
                 {checkoutPlan.features?.whatsappNotifications && (
                   <div className="flex items-center gap-3 text-on-surface dark:text-white font-body-sm font-medium">

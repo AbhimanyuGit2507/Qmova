@@ -12,7 +12,9 @@ import {
   ArrowRight,
   Sparkles,
   ShieldAlert,
+  QrCode,
 } from "lucide-react";
+import PrintQRModal from "../PrintQRModal";
 import { useAuth } from "../AuthContext";
 import { fetchApi } from "../../lib/api";
 import { toast } from "sonner";
@@ -38,6 +40,7 @@ export default function WorkspaceSettingsPage() {
   const [subdomainError, setSubdomainError] = useState("");
   const [tenantId, setTenantId] = useState("");
   const [isTvModalOpen, setIsTvModalOpen] = useState(false);
+  const [isPrintQrOpen, setIsPrintQrOpen] = useState(false);
   const [businessType, setBusinessType] = useState("general");
   const [savingIndustry, setSavingIndustry] = useState(false);
   const [isChangeIndustryModalOpen, setIsChangeIndustryModalOpen] = useState(false);
@@ -204,7 +207,9 @@ export default function WorkspaceSettingsPage() {
                   className="flex-1 h-full bg-transparent font-data-mono text-body-md outline-none text-on-surface dark:text-white"
                   placeholder="your-company"
                 />
-                <span className="text-on-surface-variant dark:text-zinc-500 text-sm font-data-mono whitespace-nowrap shrink-0"></span>
+                <span className="text-on-surface-variant dark:text-zinc-500 text-sm font-data-mono whitespace-nowrap shrink-0">
+                  {isLocal ? ".localhost:3000" : `.${(process.env.NEXT_PUBLIC_APP_DOMAIN || "qmova.yqbuddy.com").replace(/^https?:\/\//, "")}`}
+                </span>
               </div>
               {subdomainError ? (
                 <p className="text-[12px] text-red-500 mt-2 flex items-center gap-1">
@@ -423,10 +428,17 @@ export default function WorkspaceSettingsPage() {
               description="Customers scan a QR or visit this URL to select a service and join the queue."
               url={portalUrl}
               onCopy={() => copyLink(portalUrl, "Customer portal link")}
+              onPrintQr={() => setIsPrintQrOpen(true)}
             />
           )}
         </div>
       </div>
+
+      <PrintQRModal
+        open={isPrintQrOpen}
+        onClose={() => setIsPrintQrOpen(false)}
+        queues={queues}
+      />
 
       <SelectServiceModal
         isOpen={isTvModalOpen}
@@ -790,6 +802,7 @@ function LinkRow({
   url,
   onCopy,
   onCustomClick,
+  onPrintQr,
 }: {
   icon: string;
   title: string;
@@ -797,6 +810,7 @@ function LinkRow({
   url: string;
   onCopy: () => void;
   onCustomClick?: () => void;
+  onPrintQr?: () => void;
 }) {
   return (
     <div className="flex items-center gap-4 p-4 bg-surface-container-low dark:bg-white/[0.02] border border-border dark:border-dark-border rounded-xl">
@@ -820,11 +834,21 @@ function LinkRow({
         <button
           type="button"
           onClick={onCopy}
-          className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-container dark:bg-white/5 hover:bg-surface-container-high dark:hover:bg-white/10 border border-border dark:border-dark-border transition-colors text-on-surface-variant"
+          className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-container dark:bg-white/5 hover:bg-surface-container-high dark:hover:bg-white/10 border border-border dark:border-dark-border transition-colors text-on-surface-variant cursor-pointer"
           title="Copy Link"
         >
           <Copy strokeWidth={1.5} className="w-4 h-4" />
         </button>
+        {onPrintQr && (
+          <button
+            type="button"
+            onClick={onPrintQr}
+            className="w-8 h-8 flex items-center justify-center rounded-lg bg-surface-container dark:bg-white/5 hover:bg-surface-container-high dark:hover:bg-white/10 border border-border dark:border-dark-border transition-colors text-primary hover:text-primary cursor-pointer"
+            title="Download / Print QR Code"
+          >
+            <QrCode strokeWidth={1.5} className="w-4 h-4" />
+          </button>
+        )}
         {onCustomClick ? (
           <button
             type="button"

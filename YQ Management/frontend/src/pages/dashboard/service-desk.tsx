@@ -1589,6 +1589,164 @@ export default function ServiceDeskToday() {
             </div>
           )}
 
+          {/* Active Services (Clients currently being served) - Prominently positioned above queues */}
+          <div className="mb-4">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-1.5">
+                {inServiceVisits.length > 0 && (
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                )}
+                <h3 className="font-label-caps text-label-caps text-on-surface dark:text-zinc-200 uppercase tracking-wider font-bold">
+                  Currently Serving ({inServiceVisits.length})
+                </h3>
+              </div>
+            </div>
+            <div className="flex flex-col gap-2">
+              {inServiceVisits.map((v: AnyFixMe) => {
+                const stepProg = getStepProgression(v);
+                const serviceStartTs = v.serviceStart
+                  ? new Date(v.serviceStart).getTime()
+                  : v.servedAt
+                    ? new Date(v.servedAt).getTime()
+                    : v.updatedAt
+                      ? new Date(v.updatedAt).getTime()
+                      : v.waitingStart
+                        ? new Date(v.waitingStart).getTime()
+                        : v.createdAt
+                          ? new Date(v.createdAt).getTime()
+                          : Date.now();
+                const nowMs = Date.now() + activeServiceTick * 0;
+                const totalSvcSecs = Math.max(
+                  0,
+                  Math.floor((nowMs - serviceStartTs) / 1000),
+                );
+                const stepStartTs = stepProg.current?.activatedAt
+                  ? new Date(stepProg.current.activatedAt).getTime()
+                  : serviceStartTs;
+                const stageSecs = Math.max(
+                  0,
+                  Math.floor((nowMs - stepStartTs) / 1000),
+                );
+                const stepEstMins =
+                  stepProg.current?.templateStep?.expectedDuration ||
+                  stepProg.current?.expectedDuration ||
+                  null;
+                const stepOverdue = stepEstMins && stageSecs > stepEstMins * 60;
+
+                const totalStepsCount = Math.max(1, stepProg.totalSteps || 1);
+                const currentStageNum = stepProg.isCompleted
+                  ? totalStepsCount
+                  : Math.min(stepProg.activeIndex + 1, totalStepsCount);
+                const percentComplete = stepProg.isCompleted
+                  ? 100
+                  : Math.round(((stepProg.activeIndex) / totalStepsCount) * 100);
+
+                return (
+                  <div
+                    key={v.id}
+                    data-testid={`visit-card-${v.id}`}
+                    onClick={() => setSelectedVisit(v)}
+                    className={`p-2.5 rounded-lg border cursor-pointer hover:border-primary transition-colors ${
+                      stepOverdue
+                        ? "bg-rose-50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-800"
+                        : "bg-surface-container dark:bg-inverse-surface border-border dark:border-dark-border"
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1.5">
+                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                        <div
+                          className={`w-2 h-2 rounded-full shrink-0 ${stepOverdue ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`}
+                        />
+                        <p className="text-xs font-semibold text-on-surface dark:text-white truncate">
+                          {v.customer?.name || industry.terminology.walkIn}
+                        </p>
+                        <span className="text-[10px] text-outline font-mono shrink-0">
+                          {v.displayId ||
+                            v.ticketNumber ||
+                            `#TKT-${v.id.substring(0, 4)}`}
+                        </span>
+                      </div>
+                      <span
+                        className={`text-[10px] font-mono font-bold shrink-0 ${
+                          totalSvcSecs > 3600
+                            ? "text-rose-600"
+                            : totalSvcSecs > 1800
+                              ? "text-amber-600"
+                              : "text-emerald-600"
+                        }`}
+                      >
+                        ⏱ {formatDuration(totalSvcSecs)}
+                      </span>
+                    </div>
+
+                    {stepProg.current && (
+                      <div className="flex items-center justify-between gap-1 mb-1.5">
+                        <div className="flex items-center gap-1 min-w-0 flex-1">
+                          <span
+                            className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border truncate ${
+                              stepOverdue
+                                ? "bg-rose-500/10 border-rose-400/40 text-rose-700 dark:text-rose-400"
+                                : "bg-primary/10 border-primary/30 text-primary"
+                            }`}
+                          >
+                            {stepProg.current.name ||
+                              stepProg.current.label ||
+                              "Stage"}
+                          </span>
+                          {stepOverdue && (
+                            <span className="text-[9px] text-rose-600 dark:text-rose-400 font-bold shrink-0">
+                              OVERDUE
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[10px] font-mono shrink-0 ${
+                            stepOverdue
+                              ? "text-rose-600 font-bold"
+                              : "text-outline"
+                          }`}
+                        >
+                          {formatDuration(stageSecs)}
+                          {stepEstMins ? `/${stepEstMins}m` : ""}
+                        </span>
+                      </div>
+                    )}
+
+                    <div className="flex flex-col gap-1 pt-1 mt-1 border-t border-border/50 dark:border-dark-border/50">
+                      <div className="flex items-center justify-between text-[10px] text-outline">
+                        <span className="font-medium truncate">
+                          {stepProg.next
+                            ? `Stage ${currentStageNum}/${totalStepsCount}: Next → ${stepProg.next.name || stepProg.next.label || "Next Stage"}`
+                            : `Stage ${currentStageNum}/${totalStepsCount}`}
+                        </span>
+                        <span className="font-mono font-bold text-on-surface dark:text-white shrink-0 ml-1">
+                          {percentComplete}%
+                        </span>
+                      </div>
+                      <div className="w-full bg-border/60 dark:bg-dark-border/60 h-1.5 rounded-full overflow-hidden">
+                        <div
+                          className="bg-primary h-full rounded-full transition-all duration-300"
+                          style={{ width: `${percentComplete}%` }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {inServiceVisits.length === 0 && (
+                <p className="text-body-sm text-outline italic py-0.5">
+                  No active services right now.
+                </p>
+              )}
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="font-label-caps text-label-caps text-outline uppercase tracking-wider">
+              Active Queues ({filteredQueues.length})
+            </h3>
+          </div>
+
           <div className="space-y-2 mb-4">
             {filteredQueues.length > 0 ? (
               filteredQueues.map((q: AnyFixMe) => {
@@ -1729,12 +1887,18 @@ export default function ServiceDeskToday() {
 
                           {!isPaused && (
                             <button
+                              disabled={waitingInQueueCount === 0}
                               onClick={(e) => {
                                 e.stopPropagation();
+                                if (waitingInQueueCount === 0) return;
                                 handleCallNextQueue(q.id);
                               }}
-                              title="Call next in queue"
-                              className="bg-primary hover:bg-primary/90 active:scale-[0.98] text-white px-2 py-1 rounded-md text-xs font-semibold transition-all shadow-xs flex items-center gap-1 shrink-0"
+                              title={waitingInQueueCount === 0 ? "No customers waiting in this queue" : "Call next in queue"}
+                              className={`px-2 py-1 rounded-md text-xs font-semibold transition-all shadow-xs flex items-center gap-1 shrink-0 ${
+                                waitingInQueueCount === 0
+                                  ? "bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 cursor-not-allowed opacity-40"
+                                  : "bg-primary hover:bg-primary/90 active:scale-[0.98] text-white cursor-pointer"
+                              }`}
                             >
                               <span className="material-symbols-outlined text-[14px] shrink-0">
                                 campaign
@@ -1780,164 +1944,6 @@ export default function ServiceDeskToday() {
                 No active queues.
               </p>
             )}
-          </div>
-
-
-          <div className="mt-3 pt-4 border-t border-border dark:border-dark-border">
-            <div>
-              <h3 className="font-label-caps text-label-caps text-outline uppercase tracking-wider mb-0.5">
-                Active Services
-              </h3>
-              <p className="text-[10px] text-outline mb-2.5">
-                Clients currently being served.
-              </p>
-            </div>
-            <div className="flex flex-col gap-2">
-              {inServiceVisits.map((v: AnyFixMe) => {
-                const stepProg = getStepProgression(v);
-                const serviceStartTs = v.serviceStart
-                  ? new Date(v.serviceStart).getTime()
-                  : v.servedAt
-                    ? new Date(v.servedAt).getTime()
-                    : v.updatedAt
-                      ? new Date(v.updatedAt).getTime()
-                      : v.waitingStart
-                        ? new Date(v.waitingStart).getTime()
-                        : v.createdAt
-                          ? new Date(v.createdAt).getTime()
-                          : Date.now();
-                const nowMs = Date.now() + activeServiceTick * 0; // reference tick so React re-renders every second
-                const totalSvcSecs = Math.max(
-                  0,
-                  Math.floor((nowMs - serviceStartTs) / 1000),
-                );
-                const stepStartTs = stepProg.current?.activatedAt
-                  ? new Date(stepProg.current.activatedAt).getTime()
-                  : serviceStartTs;
-                const stageSecs = Math.max(
-                  0,
-                  Math.floor((nowMs - stepStartTs) / 1000),
-                );
-                const stepEstMins =
-                  stepProg.current?.templateStep?.expectedDuration ||
-                  stepProg.current?.expectedDuration ||
-                  null;
-                const stepOverdue = stepEstMins && stageSecs > stepEstMins * 60;
-                const hasMoreSteps =
-                  !!stepProg.next ||
-                  (!stepProg.isCompleted &&
-                    stepProg.current &&
-                    stepProg.activeIndex < stepProg.totalSteps - 1);
-
-                const totalStepsCount = Math.max(1, stepProg.totalSteps || 1);
-                const currentStageNum = stepProg.isCompleted
-                  ? totalStepsCount
-                  : Math.min(stepProg.activeIndex + 1, totalStepsCount);
-                const percentComplete = stepProg.isCompleted
-                  ? 100
-                  : Math.round(((stepProg.activeIndex) / totalStepsCount) * 100);
-
-                return (
-                  <div
-                    key={v.id}
-                    data-testid={`visit-card-${v.id}`}
-                    onClick={() => setSelectedVisit(v)}
-                    className={`p-2.5 rounded-lg border cursor-pointer hover:border-primary transition-colors ${
-                      stepOverdue
-                        ? "bg-rose-50 dark:bg-rose-950/20 border-rose-300 dark:border-rose-800"
-                        : "bg-surface-container dark:bg-inverse-surface border-border dark:border-dark-border"
-                    }`}
-                  >
-                    {/* Row 1: Name + Ticket + Service timer */}
-                    <div className="flex items-center justify-between gap-2 mb-1.5">
-                      <div className="flex items-center gap-1.5 min-w-0 flex-1">
-                        <div
-                          className={`w-2 h-2 rounded-full shrink-0 ${stepOverdue ? "bg-rose-500 animate-pulse" : "bg-emerald-500"}`}
-                        />
-                        <p className="text-xs font-semibold text-on-surface dark:text-white truncate">
-                          {v.customer?.name || industry.terminology.walkIn}
-                        </p>
-                        <span className="text-[10px] text-outline font-mono shrink-0">
-                          {v.displayId ||
-                            v.ticketNumber ||
-                            `#TKT-${v.id.substring(0, 4)}`}
-                        </span>
-                      </div>
-                      <span
-                        className={`text-[10px] font-mono font-bold shrink-0 ${
-                          totalSvcSecs > 3600
-                            ? "text-rose-600"
-                            : totalSvcSecs > 1800
-                              ? "text-amber-600"
-                              : "text-emerald-600"
-                        }`}
-                      >
-                        ⏱ {formatDuration(totalSvcSecs)}
-                      </span>
-                    </div>
-
-                    {/* Row 2: Current stage + stage timer */}
-                    {stepProg.current && (
-                      <div className="flex items-center justify-between gap-1 mb-1.5">
-                        <div className="flex items-center gap-1 min-w-0 flex-1">
-                          <span
-                            className={`text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded border truncate ${
-                              stepOverdue
-                                ? "bg-rose-500/10 border-rose-400/40 text-rose-700 dark:text-rose-400"
-                                : "bg-primary/10 border-primary/30 text-primary"
-                            }`}
-                          >
-                            {stepProg.current.name ||
-                              stepProg.current.label ||
-                              "Stage"}
-                          </span>
-                          {stepOverdue && (
-                            <span className="text-[9px] text-rose-600 dark:text-rose-400 font-bold shrink-0">
-                              OVERDUE
-                            </span>
-                          )}
-                        </div>
-                        <span
-                          className={`text-[10px] font-mono shrink-0 ${
-                            stepOverdue
-                              ? "text-rose-600 font-bold"
-                              : "text-outline"
-                          }`}
-                        >
-                          {formatDuration(stageSecs)}
-                          {stepEstMins ? `/${stepEstMins}m` : ""}
-                        </span>
-                      </div>
-                    )}
-
-                    {/* Row 3: Progress Bar + Stage Count + Percentage Complete */}
-                    <div className="flex flex-col gap-1 pt-1 mt-1 border-t border-border/50 dark:border-dark-border/50">
-                      <div className="flex items-center justify-between text-[10px] text-outline">
-                        <span className="font-medium truncate">
-                          {stepProg.next
-                            ? `Stage ${currentStageNum}/${totalStepsCount}: Next → ${stepProg.next.name || stepProg.next.label || "Next Stage"}`
-                            : `Stage ${currentStageNum}/${totalStepsCount}`}
-                        </span>
-                        <span className="font-mono font-bold text-on-surface dark:text-white shrink-0 ml-1">
-                          {percentComplete}%
-                        </span>
-                      </div>
-                      <div className="w-full bg-border/60 dark:bg-dark-border/60 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className="bg-primary h-full rounded-full transition-all duration-300"
-                          style={{ width: `${percentComplete}%` }}
-                        />
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
-              {inServiceVisits.length === 0 && (
-                <p className="text-body-sm text-outline italic">
-                  No active services.
-                </p>
-              )}
-            </div>
           </div>
         </section>
 

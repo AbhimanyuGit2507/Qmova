@@ -69,9 +69,9 @@ export function LocationModal({ isOpen, onClose, location }: LocationModalProps)
   const [totalFloors, setTotalFloors] = useState<number | ''>('');
   const [timezone, setTimezone] = useState(() => {
     try {
-      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+      return Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Johannesburg';
     } catch {
-      return 'UTC';
+      return 'Africa/Johannesburg';
     }
   });
 
@@ -85,16 +85,17 @@ export function LocationModal({ isOpen, onClose, location }: LocationModalProps)
         setAddress(location.address || '');
         setCity(location.city || '');
         setTotalFloors(location.totalFloors || '');
-        setTimezone(location.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC');
+        setTimezone(location.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'Africa/Johannesburg');
 
         if (location.businessHours) {
           const newHours: AnyFixMe = { ...DEFAULT_HOURS };
           Object.keys(location.businessHours).forEach((day) => {
+            const lowerDay = day.toLowerCase();
             const val = location.businessHours[day];
             if (Array.isArray(val)) {
-              newHours[day] = val;
+              newHours[lowerDay] = val;
             } else if (val) {
-              newHours[day] = val.closed ? [] : [{ start: val.start, end: val.end }];
+              newHours[lowerDay] = val.closed ? [] : [{ start: val.start, end: val.end }];
             }
           });
           setBusinessHours(newHours);
@@ -196,7 +197,7 @@ export function LocationModal({ isOpen, onClose, location }: LocationModalProps)
         </div>
 
         {/* Content Body */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-8">
+        <div className="flex-1 overflow-y-auto px-6 pt-8 pb-6 space-y-8">
           <form id="location-form" onSubmit={handleSubmit} className="space-y-6">
             
             {/* General Info */}

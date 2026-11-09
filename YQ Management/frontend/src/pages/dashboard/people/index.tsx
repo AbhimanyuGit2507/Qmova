@@ -44,11 +44,13 @@ import { VisitDrawer } from '../../../components/VisitDrawer';
 import { InvoiceModal } from '../../../components/modals/InvoiceModal';
 import { downloadInvoicePdf, printInvoice, formatMoney } from '../../../lib/invoicePdf';
 import { useLocation } from '../../../components/LocationContext';
+import { useRouter } from 'next/router';
 import DatePicker from 'react-datepicker';
 import 'react-datepicker/dist/react-datepicker.css';
 import { toast } from 'sonner';
 
 export default function RecordsPage() {
+  const router = useRouter();
   const { user } = useAuth();
   const { allowedLocations: locations } = useLocation();
   const queryClient = useQueryClient();
@@ -581,13 +583,14 @@ export default function RecordsPage() {
     const avgVisitsPerCustomer = uniqueCount > 0 ? (totalVisitsCount / uniqueCount).toFixed(1) : '0';
 
     const completedVisits = filteredVisits.filter(
-      (v: any) => v.completedAt && (v.serviceStart || v.createdAt),
+      (v: any) => v.currentState === 'COMPLETED' && v.completedAt && v.serviceStart,
     );
     let avgDurationStr = '—';
     if (completedVisits.length > 0) {
       const totalMs = completedVisits.reduce((acc: number, v: any) => {
-        const start = v.serviceStart ? new Date(v.serviceStart).getTime() : new Date(v.createdAt).getTime();
-        return acc + (new Date(v.completedAt).getTime() - start);
+        const start = new Date(v.serviceStart).getTime();
+        const end = new Date(v.completedAt).getTime();
+        return acc + Math.max(0, end - start);
       }, 0);
       const mins = Math.round(totalMs / completedVisits.length / 60000);
       avgDurationStr = mins < 1 ? '<1 min' : `${mins} min`;
@@ -604,16 +607,16 @@ export default function RecordsPage() {
   const isLoading = isVisitsLoading || isCustomersLoading;
 
   return (
-    <AdminLayout pageTitle="Records">
+    <AdminLayout pageTitle="Customers & History">
       <Head>
-        <title>Records | Qmova</title>
+        <title>Customers & History | Qmova</title>
       </Head>
 
       <div className="w-full mx-auto space-y-6 p-4 sm:p-6 lg:p-8">
         {/* Top Header */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-bold text-on-surface dark:text-white tracking-tight">Customer Records</h1>
+            <h1 className="text-2xl font-bold text-on-surface dark:text-white tracking-tight">Customers & History</h1>
             <p className="text-sm text-on-surface-variant dark:text-zinc-400 mt-0.5">
               Visit history, customer reviews & ratings breakdown, date-wise timeline tracking, and customer profiles.
             </p>
@@ -1566,12 +1569,12 @@ export default function RecordsPage() {
                               <button
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  window.open(`https://wa.me/${person.phone.replace(/[^0-9]/g, '')}`);
+                                  router.push(`/dashboard/inbox?phone=${encodeURIComponent(person.phone)}`);
                                 }}
-                                className="p-2 text-[#25D366] hover:bg-[#25D366]/10 rounded-lg transition-colors cursor-pointer"
-                                title="Message on WhatsApp"
+                                className="p-2 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-500/10 rounded-lg transition-colors cursor-pointer"
+                                title="Open WhatsApp Chat in Inbox"
                               >
-                                <MessageSquare className="w-4 h-4" />
+                                <MessageSquare className="w-4 h-4 text-emerald-500" />
                               </button>
                             )}
                             <button
@@ -2049,10 +2052,18 @@ export default function RecordsPage() {
                                 {/* Contact snippet */}
                                 <div className="flex flex-wrap items-center gap-3 text-xs text-on-surface-variant">
                                   {visit.customer?.phone && (
-                                    <span className="flex items-center gap-1 font-mono text-[11px]">
-                                      <Phone className="w-3 h-3 text-outline" />
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        router.push(`/dashboard/inbox?phone=${encodeURIComponent(visit.customer.phone)}`);
+                                      }}
+                                      className="flex items-center gap-1 font-mono text-[11px] text-emerald-600 dark:text-emerald-400 hover:underline cursor-pointer"
+                                      title="Open WhatsApp chat in Inbox"
+                                    >
+                                      <MessageSquare className="w-3 h-3 text-emerald-500" />
                                       {visit.customer.phone}
-                                    </span>
+                                    </button>
                                   )}
                                   {visit.customer?.email && (
                                     <span className="flex items-center gap-1 text-[11px] truncate max-w-[200px]">
@@ -2104,9 +2115,19 @@ export default function RecordsPage() {
                                 <ArrowRight className="w-3 h-3 text-outline" />
 
                                 <div className="text-center px-1.5">
-                                  <p className="text-[9px] text-outline uppercase font-sans font-bold">Done</p>
-                                  <p className="font-semibold text-emerald-600 dark:text-emerald-400">
-                                    {visit.completedAt
+                                  <p className="text-[9px] text-outline uppercase font-sans font-bold">
+                                    {visit.currentState === 'NO_SHOW' ? 'Status' : visit.currentState === 'CANCELLED' ? 'Status' : 'Done'}
+                                  </p>
+                                  <p className={`font-semibold ${
+                                    visit.currentState === 'NO_SHOW' || visit.currentState === 'CANCELLED'
+                                      ? 'text-zinc-500 dark:text-zinc-400 text-xs'
+                                      : 'text-emerald-600 dark:text-emerald-400'
+                                  }`}>
+                                    {visit.currentState === 'NO_SHOW'
+                                      ? 'No-Show'
+                                      : visit.currentState === 'CANCELLED'
+                                      ? 'Cancelled'
+                                      : visit.completedAt
                                       ? new Date(visit.completedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
                                       : visit.currentState === 'IN_SERVICE'
                                       ? (durationMins > 0 ? `${durationMins}m` : 'Active')

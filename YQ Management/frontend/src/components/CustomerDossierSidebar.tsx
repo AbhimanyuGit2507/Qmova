@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Link from 'next/link';
 import {
   X,
   Phone,
@@ -22,6 +23,7 @@ import {
   Check,
   History,
   CreditCard,
+  Plus,
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchApi } from '../lib/api';
@@ -539,16 +541,26 @@ export function CustomerDossierSidebar({
                 </p>
               </div>
             ) : (
-              <div className="p-3 rounded-2xl bg-surface-container-low dark:bg-white/5 border border-border dark:border-dark-border flex items-center gap-3">
-                <div className="w-8 h-8 rounded-xl bg-surface-container dark:bg-white/10 flex items-center justify-center shrink-0 text-outline">
-                  <Ticket className="w-4 h-4 opacity-70" />
+              <div className="p-3 rounded-2xl bg-surface-container-low dark:bg-white/5 border border-border dark:border-dark-border flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-surface-container dark:bg-white/10 flex items-center justify-center shrink-0 text-outline">
+                    <Ticket className="w-4 h-4 opacity-70" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-on-surface-variant dark:text-zinc-300">
+                      No Active Ticket Today
+                    </p>
+                    <p className="text-[10px] text-outline">Customer is not currently queued.</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-xs font-semibold text-on-surface-variant dark:text-zinc-300">
-                    No Active Ticket Today
-                  </p>
-                  <p className="text-[10px] text-outline">Customer is not currently queued.</p>
-                </div>
+                <Link
+                  href={`/dashboard/service-desk?new=true&phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(customerName || '')}`}
+                  className="px-2.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs transition-colors shrink-0 cursor-pointer"
+                  title="Queue or book this customer now"
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Queue</span>
+                </Link>
               </div>
             )}
 

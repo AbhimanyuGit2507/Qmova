@@ -285,10 +285,10 @@ export class AnalyticsService {
         : 0;
     const csatScore =
       ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : 0;
+    const denominator =
+      totalVisitsCount > 0 ? totalVisitsCount : totalCompleted + totalMissed;
     const dropOffRate =
-      totalCompleted + totalMissed > 0
-        ? Math.round((totalMissed / (totalCompleted + totalMissed)) * 100)
-        : 0;
+      denominator > 0 ? Math.round((totalMissed / denominator) * 100) : 0;
 
     const SLA_THRESHOLD_MINS = 15;
 
@@ -727,7 +727,9 @@ export class AnalyticsService {
     // Sort leaderboard by most served
     staffPerformance.sort((a, b) => b.served - a.served);
 
-    const servicePerformance = Array.from(svcMap.values()).map((s) => ({
+    const servicePerformance = Array.from(svcMap.values())
+      .filter((s) => !(s.name === 'Archived Services' && s.count === 0))
+      .map((s) => ({
       ...s,
       avgMins:
         s.count > 0 && s.totalWaitMs > 0

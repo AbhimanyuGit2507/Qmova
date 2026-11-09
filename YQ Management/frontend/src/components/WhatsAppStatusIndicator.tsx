@@ -41,16 +41,16 @@ export function WhatsAppStatusIndicator() {
           <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500"></span>
         </div>
         <MessageCircle className="w-3.5 h-3.5 text-red-600 dark:text-red-400" />
-        <span className="text-xs font-medium text-red-600 dark:text-red-400">Disconnected</span>
+        <span className="text-xs font-medium text-red-600 dark:text-red-400">WhatsApp Offline</span>
       </div>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20" title="WhatsApp connected successfully">
+    <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/20" title="WhatsApp connected and operational">
       <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.8)]"></div>
       <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-      <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">Connected</span>
+      <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">WhatsApp Live</span>
     </div>
   );
 }

@@ -54,36 +54,53 @@ export function ScheduleEditor({ schedule, onChange, exceptionDates, onChangeExc
   const [activeTab, setActiveTab] = useState<'weekly' | 'exceptions'>('weekly');
   const [selectedDateStr, setSelectedDateStr] = useState<string>('');
 
+  // Normalize schedule keys to lowercase so 'Monday' and 'monday' don't create duplicate rows
+  const normalizedSchedule: WeeklySchedule = React.useMemo(() => {
+    const norm: WeeklySchedule = {};
+    if (!schedule) return norm;
+    Object.keys(schedule).forEach((k) => {
+      const lower = k.toLowerCase();
+      if (!norm[lower] || norm[lower].length === 0) {
+        norm[lower] = schedule[k];
+      }
+    });
+    return norm;
+  }, [schedule]);
+
   const updateDay = (day: string, newSlots: DaySchedule) => {
-    onChange({ ...schedule, [day]: newSlots });
+    const lower = day.toLowerCase();
+    const clean: WeeklySchedule = { ...normalizedSchedule, [lower]: newSlots };
+    const cap = day.charAt(0).toUpperCase() + day.slice(1);
+    delete (clean as any)[cap];
+    onChange(clean);
   };
 
   const addSlot = (day: string) => {
-    const slots = schedule[day] || [];
+    const slots = normalizedSchedule[day.toLowerCase()] || [];
     updateDay(day, [...slots, { ...DEFAULT_SLOT }]);
   };
 
   const removeSlot = (day: string, index: number) => {
-    const slots = [...(schedule[day] || [])];
+    const slots = [...(normalizedSchedule[day.toLowerCase()] || [])];
     slots.splice(index, 1);
     updateDay(day, slots);
   };
 
   const updateSlot = (day: string, index: number, field: 'start' | 'end', value: string) => {
-    const slots = [...(schedule[day] || [])];
+    const slots = [...(normalizedSchedule[day.toLowerCase()] || [])];
     slots[index] = { ...slots[index], [field]: value };
     updateDay(day, slots);
   };
 
   const copyToAll = (sourceDay: string) => {
-    const sourceSlots = schedule[sourceDay] || [];
-    const newSchedule = { ...schedule };
+    const sourceSlots = normalizedSchedule[sourceDay.toLowerCase()] || [];
+    const newSchedule: WeeklySchedule = { ...normalizedSchedule };
     
     // By default, 'Copy to All' should only overwrite days that are currently open.
     // It is a very common bug/complaint that copying weekday hours accidentally opens weekends.
     DAYS.forEach(day => {
-      const isCurrentlyClosed = !schedule[day] || schedule[day].length === 0;
-      if (day === sourceDay || !isCurrentlyClosed) {
+      const isCurrentlyClosed = !normalizedSchedule[day] || normalizedSchedule[day].length === 0;
+      if (day === sourceDay.toLowerCase() || !isCurrentlyClosed) {
         newSchedule[day] = sourceSlots.map(s => ({ ...s }));
       }
     });
@@ -216,14 +233,14 @@ export function ScheduleEditor({ schedule, onChange, exceptionDates, onChangeExc
                             type="time"
                             value={base.start}
                             onChange={(e) => handleBaseChange('start', e.target.value)}
-                            className="bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500 w-[110px] dark:text-white"
+                            className="bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500 w-[135px] min-w-[135px] dark:text-white"
                           />
                           <span className="text-gray-500 text-sm">to</span>
                           <input
                             type="time"
                             value={base.end}
                             onChange={(e) => handleBaseChange('end', e.target.value)}
-                            className="bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500 w-[110px] dark:text-white"
+                            className="bg-white dark:bg-zinc-900 border border-gray-300 dark:border-zinc-700 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-indigo-500 w-[135px] min-w-[135px] dark:text-white"
                           />
                         </div>
 
@@ -236,14 +253,14 @@ export function ScheduleEditor({ schedule, onChange, exceptionDates, onChangeExc
                                   type="time"
                                   value={brk.start}
                                   onChange={(e) => updateBreak(i, 'start', e.target.value)}
-                                  className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-amber-500 w-[110px] dark:text-amber-100"
+                                  className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-amber-500 w-[135px] min-w-[135px] dark:text-amber-100"
                                 />
                                 <span className="text-gray-500 text-sm">to</span>
                                 <input
                                   type="time"
                                   value={brk.end}
                                   onChange={(e) => updateBreak(i, 'end', e.target.value)}
-                                  className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-amber-500 w-[110px] dark:text-amber-100"
+                                  className="bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 rounded-lg px-3 py-1.5 text-sm outline-none focus:border-amber-500 w-[135px] min-w-[135px] dark:text-amber-100"
                                 />
                                 <button
                                   type="button"

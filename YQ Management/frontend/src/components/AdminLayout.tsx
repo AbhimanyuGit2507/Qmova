@@ -204,12 +204,13 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
 
   const navItems = [
     { label: industry.navLabel, href: '/dashboard/service-desk', icon: industry.industryIcon, pageId: 'service-desk' },
-    { label: 'Scanner', href: '/dashboard/scan', icon: 'qr_code_scanner', pageId: 'service-desk' },
-    { label: 'Customer Care Portal', href: '/dashboard/inbox', icon: 'support_agent', pageId: 'inbox' },
+    { label: 'My Station', href: '/dashboard/my-desk', icon: 'desktop_windows', pageId: 'service-desk' },
+    { label: 'Quick Check-In', href: '/dashboard/scan', icon: 'qr_code_scanner', pageId: 'service-desk' },
+    { label: 'WhatsApp Inbox', href: '/dashboard/inbox', icon: 'support_agent', pageId: 'inbox' },
     { label: 'Schedule', href: '/dashboard/appointments', icon: 'calendar_today', pageId: 'appointments' },
     { label: 'Journeys', href: '/dashboard/journeys', icon: 'route', pageId: 'journeys', id: 'tour-journeys-nav' },
     { label: 'Queues', href: '/dashboard/queues', icon: 'list_alt', pageId: 'queues', id: 'tour-queues-nav' },
-    { label: 'People', href: '/dashboard/people', icon: 'people', pageId: 'people' },
+    { label: 'Customers & History', href: '/dashboard/people', icon: 'people', pageId: 'people' },
     { label: 'Analytics', href: '/dashboard/analytics', icon: 'analytics', pageId: 'analytics' },
   ];
 
@@ -467,10 +468,11 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                     setPreviewOpen(!previewOpen);
                     if (previewOpen) setBookingPreviewExpanded(false);
                   }}
-                  className="bg-surface-container-low text-on-surface hover:bg-surface-container-high px-4 h-[38px] rounded-lg font-body-sm font-semibold transition-colors flex items-center gap-2 text-sm border border-border"
+                  className="bg-transparent hover:bg-surface-container-low text-on-surface hover:text-primary px-3.5 h-[38px] rounded-lg font-body-sm font-medium transition-colors flex items-center gap-2 text-sm border border-border/80 shadow-xs cursor-pointer"
+                  title="View customer-facing live portals"
                 >
-                  <span className="material-symbols-outlined text-[16px]">visibility</span>
-                  <span>Preview</span>
+                  <span className="material-symbols-outlined text-[16px] text-primary">open_in_new</span>
+                  <span>View Live Portal ↗</span>
                 </button>
                 {previewOpen && (
                   <div className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-lg shadow-black/5 z-[100] py-1 animate-in fade-in" onClick={e => e.stopPropagation()}>

@@ -932,92 +932,99 @@ export function ScannerInterface({
             {/* Left Column (Scanner) */}
             <div className="flex flex-col gap-6">
               <div className="bg-card dark:bg-dark-card rounded-2xl border border-border dark:border-dark-border p-6 shadow-sm flex-1 flex flex-col">
-                <div className="aspect-square max-h-[340px] w-full mx-auto rounded-xl bg-zinc-950 relative overflow-hidden mb-6 shadow-inner flex items-center justify-center">
-                  <div
-                    id="reader"
-                    className="absolute inset-0 w-full h-full flex items-center justify-center"
-                  ></div>
-
-                  {isInitializing && (
-                    <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-white bg-black/50">
-                      <Loader2
-                        strokeWidth={1.5}
-                        className="w-8 h-8 animate-spin mb-2"
-                      />
-                      <span className="text-sm">Initializing Camera...</span>
+                {hasCheckedCameras && availableCameras.length === 0 && !isInitializing ? (
+                  <div className="flex items-center justify-between p-4 rounded-xl bg-surface-container-low dark:bg-white/[0.03] border border-border dark:border-dark-border mb-6">
+                    <div className="flex items-center gap-3">
+                      <div className="w-9 h-9 rounded-lg bg-zinc-200 dark:bg-zinc-800 flex items-center justify-center shrink-0 text-zinc-500">
+                        <CameraOff className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-on-surface dark:text-zinc-200">No Camera Detected</p>
+                        <p className="text-[11px] text-outline">Fast keyboard / barcode scanner entry active below.</p>
+                      </div>
                     </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => getCameras()}
+                      className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-surface-container dark:bg-white/10 hover:bg-surface-container-high dark:hover:bg-white/15 text-on-surface dark:text-white transition-all flex items-center gap-1.5 border border-border dark:border-white/10 cursor-pointer"
+                    >
+                      <RefreshCcw className="w-3.5 h-3.5" />
+                      <span>Retry</span>
+                    </button>
+                  </div>
+                ) : (
+                  <div className="aspect-square max-h-[340px] w-full mx-auto rounded-xl bg-zinc-950 relative overflow-hidden mb-6 shadow-inner flex items-center justify-center">
+                    <div
+                      id="reader"
+                      className="absolute inset-0 w-full h-full flex items-center justify-center"
+                    ></div>
 
-                  {hasCheckedCameras &&
-                    availableCameras.length === 0 &&
-                    !isInitializing && (
-                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-zinc-400 bg-zinc-900/90 p-4 text-center">
-                        <CameraOff className="w-10 h-10 mb-2 opacity-60 text-zinc-400" />
-                        <span className="text-sm font-semibold text-zinc-200">
-                          No Camera Detected
-                        </span>
-                        <span className="text-xs text-zinc-400 mt-1 max-w-[240px]">
-                          No video camera was found on this system. You can look
-                          up tickets manually below.
-                        </span>
+                    {isInitializing && (
+                      <div className="absolute inset-0 z-10 flex flex-col items-center justify-center text-white bg-black/50">
+                        <Loader2
+                          strokeWidth={1.5}
+                          className="w-8 h-8 animate-spin mb-2"
+                        />
+                        <span className="text-sm">Initializing Camera...</span>
                       </div>
                     )}
 
-                  <div className="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-white/80 rounded-tl-lg pointer-events-none z-10"></div>
-                  <div className="absolute top-8 right-8 w-8 h-8 border-t-2 border-r-2 border-white/80 rounded-tr-lg pointer-events-none z-10"></div>
-                  <div className="absolute bottom-8 left-8 w-8 h-8 border-b-2 border-l-2 border-white/80 rounded-bl-lg pointer-events-none z-10"></div>
-                  <div className="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-white/80 rounded-br-lg pointer-events-none z-10"></div>
+                    <div className="absolute top-8 left-8 w-8 h-8 border-t-2 border-l-2 border-white/80 rounded-tl-lg pointer-events-none z-10"></div>
+                    <div className="absolute top-8 right-8 w-8 h-8 border-t-2 border-r-2 border-white/80 rounded-tr-lg pointer-events-none z-10"></div>
+                    <div className="absolute bottom-8 left-8 w-8 h-8 border-b-2 border-l-2 border-white/80 rounded-bl-lg pointer-events-none z-10"></div>
+                    <div className="absolute bottom-8 right-8 w-8 h-8 border-b-2 border-r-2 border-white/80 rounded-br-lg pointer-events-none z-10"></div>
 
-                  {availableCameras.length > 1 && (
-                    <div className="absolute top-4 right-4 z-20">
-                      <button
-                        onClick={() => {
-                          setUseFrontCamera(!useFrontCamera);
-                          stopScanning().then(() =>
-                            setTimeout(() => startScanning(), 100),
-                          );
-                        }}
-                        className="bg-black/60 backdrop-blur-sm text-white p-2 rounded-full border border-white/20 hover:bg-black/80 transition-colors shadow-lg"
-                      >
-                        <RefreshCcw strokeWidth={1.5} className="w-5 h-5" />
-                      </button>
+                    {availableCameras.length > 1 && (
+                      <div className="absolute top-4 right-4 z-20">
+                        <button
+                          onClick={() => {
+                            setUseFrontCamera(!useFrontCamera);
+                            stopScanning().then(() =>
+                              setTimeout(() => startScanning(), 100),
+                            );
+                          }}
+                          className="bg-black/60 backdrop-blur-sm text-white p-2 rounded-full border border-white/20 hover:bg-black/80 transition-colors shadow-lg"
+                        >
+                          <RefreshCcw strokeWidth={1.5} className="w-5 h-5" />
+                        </button>
+                      </div>
+                    )}
+
+                    {scannerStatus === "scanning" && (
+                      <div className="absolute left-[12.5%] top-1/2 -translate-y-1/2 h-0.5 w-3/4 bg-primary/80 shadow-[0_0_15px_rgba(0,97,148,0.5)] z-10 pointer-events-none"></div>
+                    )}
+
+                    <div className="absolute bottom-4 z-10 w-full flex justify-between px-4 items-center">
+                      <span className="text-white text-xs font-data-mono tracking-widest uppercase bg-black/50 px-2 py-1 rounded">
+                        {availableCameras.length === 0
+                          ? "Manual Mode"
+                          : scannerStatus === "scanning"
+                            ? "Awaiting QR..."
+                            : scannerStatus === "processing"
+                              ? "Validating..."
+                              : "Stopped"}
+                      </span>
+                      {availableCameras.length > 0 &&
+                        (scannerStatus === "scanning" ? (
+                          <button
+                            onClick={stopScanning}
+                            className="bg-red-500 text-white p-1 rounded-full"
+                          >
+                            <StopCircle className="w-5 h-5" />
+                          </button>
+                        ) : (
+                          <button
+                            onClick={startScanning}
+                            className="bg-primary text-white p-1 rounded-full"
+                          >
+                            <PlayCircle className="w-5 h-5" />
+                          </button>
+                        ))}
                     </div>
-                  )}
-
-                  {scannerStatus === "scanning" && (
-                    <div className="absolute left-[12.5%] top-1/2 -translate-y-1/2 h-0.5 w-3/4 bg-primary/80 shadow-[0_0_15px_rgba(0,97,148,0.5)] z-10 pointer-events-none"></div>
-                  )}
-
-                  <div className="absolute bottom-4 z-10 w-full flex justify-between px-4 items-center">
-                    <span className="text-white text-xs font-data-mono tracking-widest uppercase bg-black/50 px-2 py-1 rounded">
-                      {availableCameras.length === 0
-                        ? "Manual Mode"
-                        : scannerStatus === "scanning"
-                          ? "Awaiting QR..."
-                          : scannerStatus === "processing"
-                            ? "Validating..."
-                            : "Stopped"}
-                    </span>
-                    {availableCameras.length > 0 &&
-                      (scannerStatus === "scanning" ? (
-                        <button
-                          onClick={stopScanning}
-                          className="bg-red-500 text-white p-1 rounded-full"
-                        >
-                          <StopCircle className="w-5 h-5" />
-                        </button>
-                      ) : (
-                        <button
-                          onClick={startScanning}
-                          className="bg-primary text-white p-1 rounded-full"
-                        >
-                          <PlayCircle className="w-5 h-5" />
-                        </button>
-                      ))}
                   </div>
-                </div>
+                )}
 
-                {error && (
+                {error && !(hasCheckedCameras && availableCameras.length === 0 && error.includes("No camera device detected")) && (
                   <div className="p-3 mb-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-amber-700 dark:text-amber-400 text-xs flex items-center gap-2">
                     <AlertCircle className="w-4 h-4 shrink-0" />
                     <span>{error}</span>
@@ -1048,6 +1055,7 @@ export function ScannerInterface({
                     <div className="flex flex-col gap-3">
                       <input
                         type="text"
+                        autoFocus
                         value={manualTokenId}
                         onChange={(e) => setManualTokenId(e.target.value)}
                         onKeyDown={(e) => {
