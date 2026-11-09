@@ -65,37 +65,6 @@ async function main() {
     },
   });
 
-  // Plan 3: Pro
-  await prisma.plan.upsert({
-    where: { id: 'pro-plan' },
-    update: {},
-    create: {
-      id: 'pro-plan',
-      name: 'Pro',
-      description: 'Advanced features and high volume for growing businesses.',
-      type: 'premium',
-      price: 20,
-      currency: 'USD',
-      billingInterval: 'monthly',
-      trialDays: 0,
-
-      maxVisits: 10000,
-      active: true,
-      sortOrder: 3,
-      features: {
-        textToSpeech: true,
-        whatsappNotifications: true,
-        customBranding: true,
-      },
-      limits: {
-        maxServices: 20,
-        maxLocations: 10,
-        maxStaff: 50,
-        maxVisits: 10000,
-      },
-    },
-  });
-
   console.log('Default plans seeded successfully.');
 }
 

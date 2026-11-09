@@ -14,41 +14,32 @@ const prisma = new PrismaClient({ adapter });
 async function main() {
   console.log('🚀 Starting School Annual Function & Catering Production Setup...');
 
-  // 1. Ensure Pro Plan exists with 14-day trial configuration
-  let proPlan = await prisma.plan.findFirst({
-    where: { id: 'pro-plan' },
+  // 1. Fetch official Starter (14 Days Trial) Plan
+  let trialPlan = await prisma.plan.findFirst({
+    where: { type: 'TRIAL' },
   });
 
-  if (!proPlan) {
-    proPlan = await prisma.plan.create({
-      data: {
-        id: 'pro-plan',
-        name: 'Pro Plan',
-        description: 'Advanced event workflows, multi-queue catering, high volume & custom branding',
-        type: 'premium',
-        price: 20,
-        currency: 'USD',
-        billingInterval: 'monthly',
-        trialDays: 14,
-        maxVisits: 10000,
-        active: true,
-        sortOrder: 3,
-        features: {
-          textToSpeech: true,
-          whatsappNotifications: true,
-          customBranding: true,
-          serviceFlows: true,
-        },
-        limits: {
-          maxServices: 20,
-          maxLocations: 10,
-          maxStaff: 50,
-          maxVisits: 10000,
-        },
-      },
+  if (!trialPlan) {
+    trialPlan = await prisma.plan.findFirst({
+      where: { price: 0 },
     });
-    console.log('✅ Created Pro Plan:', proPlan.id);
   }
+
+  if (!trialPlan) {
+    throw new Error('Default Starter / Trial Plan not found in database');
+  }
+
+  console.log(`✅ Using Official Trial Plan: "${trialPlan.name}" (${trialPlan.id})`);
+
+  // Purge rogue pro-plan if it exists so it doesn't appear in the pricing table
+  await prisma.subscription.updateMany({
+    where: { planId: 'pro-plan' },
+    data: { planId: trialPlan.id },
+  });
+  await prisma.plan.deleteMany({
+    where: { id: 'pro-plan' },
+  });
+  console.log('🧹 Purged rogue "pro-plan" from plans database.');
 
   // 2. Upsert School Events Tenant
   const tenantSubdomain = 'school-events';
@@ -87,7 +78,7 @@ async function main() {
     console.log('✅ Updated Tenant:', tenant.id, tenant.name);
   }
 
-  // 3. Assign 14-Day Pro Trial Subscription
+  // 3. Assign 14-Day Trial Subscription (Starter Trial Plan)
   const now = new Date();
   const trialEnd = new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000);
 
@@ -95,7 +86,7 @@ async function main() {
     where: { tenantId: tenant.id },
     create: {
       tenantId: tenant.id,
-      planId: proPlan.id,
+      planId: trialPlan.id,
       status: 'TRIAL',
       trialStartDate: now,
       trialEndDate: trialEnd,
@@ -103,14 +94,14 @@ async function main() {
       currentPeriodEnd: trialEnd,
     },
     update: {
-      planId: proPlan.id,
+      planId: trialPlan.id,
       status: 'TRIAL',
       trialStartDate: now,
       trialEndDate: trialEnd,
       currentPeriodEnd: trialEnd,
     },
   });
-  console.log('✅ 14-Day Pro Trial Subscription active until:', trialEnd.toISOString());
+  console.log(`✅ 14-Day Trial Subscription on "${trialPlan.name}" active until:`, trialEnd.toISOString());
 
   // 4. Upsert Campus Location
   let location = await prisma.location.findFirst({
