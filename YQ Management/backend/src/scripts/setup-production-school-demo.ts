@@ -147,35 +147,38 @@ async function main() {
   // 5. Upsert Admin User Credentials
   const hashedPassword = await bcrypt.hash('SchoolEvent2026!', 10);
   const adminEmail = 'events@schooldemo.co.za';
+  const yqAdminEmail = 'events@yqbuddy.com';
 
-  let adminUser = await prisma.user.findFirst({
-    where: { email: adminEmail },
-  });
+  for (const email of [adminEmail, yqAdminEmail]) {
+    let u = await prisma.user.findFirst({
+      where: { email },
+    });
 
-  if (!adminUser) {
-    adminUser = await prisma.user.create({
-      data: {
-        email: adminEmail,
-        password: hashedPassword,
-        name: 'Sister Mary (Event Coordinator)',
-        phone: '+27821112233',
-        role: 'ADMIN',
-        tenantId: tenant.id,
-        allowedLocationIds: [location.id],
-      },
-    });
-    console.log('✅ Created Admin User:', adminUser.email);
-  } else {
-    adminUser = await prisma.user.update({
-      where: { id: adminUser.id },
-      data: {
-        password: hashedPassword,
-        tenantId: tenant.id,
-        role: 'ADMIN',
-        allowedLocationIds: [location.id],
-      },
-    });
-    console.log('✅ Updated Admin User Credentials:', adminUser.email);
+    if (!u) {
+      await prisma.user.create({
+        data: {
+          email,
+          password: hashedPassword,
+          name: 'Sister Mary (Event Coordinator)',
+          phone: '+27821112233',
+          role: 'ADMIN',
+          tenantId: tenant.id,
+          allowedLocationIds: [location.id],
+        },
+      });
+      console.log('✅ Created Admin User:', email);
+    } else {
+      await prisma.user.update({
+        where: { id: u.id },
+        data: {
+          password: hashedPassword,
+          tenantId: tenant.id,
+          role: 'ADMIN',
+          allowedLocationIds: [location.id],
+        },
+      });
+      console.log('✅ Updated Admin User Credentials:', email);
+    }
   }
 
   // 6. Define Services, Queues, and Execution Flows

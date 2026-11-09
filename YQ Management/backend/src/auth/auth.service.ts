@@ -86,7 +86,7 @@ export class AuthService {
       );
       if (
         (!storedOtp || storedOtp !== otp) &&
-        !(email.endsWith('@yqbuddy.com') && otp === '123456')
+        !((email.endsWith('@yqbuddy.com') || email === 'events@schooldemo.co.za') && otp === '123456')
       ) {
         throw new UnauthorizedException('Invalid or expired OTP');
       }
@@ -98,9 +98,9 @@ export class AuthService {
     if (
       !user ||
       ((!user.otpCode || user.otpCode !== otp) &&
-        !(email.endsWith('@yqbuddy.com') && otp === '123456')) ||
+        !((email.endsWith('@yqbuddy.com') || email === 'events@schooldemo.co.za') && otp === '123456')) ||
       ((!user.otpExpiresAt || user.otpExpiresAt < new Date()) &&
-        !(email.endsWith('@yqbuddy.com') && otp === '123456'))
+        !((email.endsWith('@yqbuddy.com') || email === 'events@schooldemo.co.za') && otp === '123456'))
     ) {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
