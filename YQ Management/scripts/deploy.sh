@@ -27,22 +27,27 @@ if [ ! -f .env ]; then
     exit 1
 fi
 
-echo "====> Pulling New Docker Images..."
-# Read GHCR credentials from a file stored directly on the VPS.
-# This avoids GitHub Actions secret-masking issues with ephemeral GITHUB_TOKEN.
-# To update credentials: echo 'TOKEN' > /root/.ghcr_token && echo 'USERNAME' > /root/.ghcr_user
-GHCR_TOKEN_FILE="/root/.ghcr_token"
-GHCR_USER_FILE="/root/.ghcr_user"
+echo "====> Preparing shared dependencies for Docker builds..."
+cp -r "./shared" "./frontend/shared"
+sed -i 's|"@yq/shared": "\*"|"@yq/shared": "file:./shared"|g' "./frontend/package.json"
+cp -r "./shared" "./backend/shared"
+sed -i 's|"@yq/shared": "\*"|"@yq/shared": "file:./shared"|g' "./backend/package.json"
 
-if [ -f "$GHCR_TOKEN_FILE" ] && [ -f "$GHCR_USER_FILE" ]; then
-    echo "====> Authenticating with GHCR (from stored credentials)..."
-    cat "$GHCR_TOKEN_FILE" | docker login ghcr.io -u "$(cat $GHCR_USER_FILE)" --password-stdin
-else
-    echo "WARNING: GHCR credentials not found at $GHCR_TOKEN_FILE / $GHCR_USER_FILE"
-    echo "Run: echo 'YOUR_PAT' > /root/.ghcr_token && echo 'yqglobal' > /root/.ghcr_user"
-fi
-# Pull the pre-built GHCR images
-docker compose -f docker-compose.production.yml pull
+echo "====> Building Backend Docker image..."
+docker build -t ghcr.io/yqglobal/yq-management-backend:latest ./backend
+
+echo "====> Building Frontend Docker image..."
+docker build \
+  --build-arg NEXT_PUBLIC_API_URL=https://api.qmova.yqbuddy.com \
+  --build-arg NEXT_PUBLIC_BACKEND_URL=https://api.qmova.yqbuddy.com \
+  --build-arg NEXT_PUBLIC_WS_URL=https://api.qmova.yqbuddy.com \
+  --build-arg NEXT_PUBLIC_APP_URL=https://qmova.yqbuddy.com \
+  --build-arg NEXT_PUBLIC_DOMAIN_BASE=qmova.yqbuddy.com \
+  --build-arg NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY=pk_live_51TncmkIdVVmQLEG3kmpaJE7ROAPd9XcW94BzXuJoLlEjuGCMVflLVSw3chR4GL3IlI9Wnq2WkQKtkVrhxGRSB8mA00G5T3CIYn \
+  -t ghcr.io/yqglobal/yq-management-frontend:latest ./frontend
+
+git checkout -- frontend/package.json backend/package.json
+rm -rf frontend/shared backend/shared
 
 echo "====> Running Safe Database Migrations..."
 # Clear any failed migrations that might block the pipeline
