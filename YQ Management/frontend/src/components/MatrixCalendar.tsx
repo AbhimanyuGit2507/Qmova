@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { format } from "date-fns";
-import { Clock, Coffee, Moon, Sun } from "lucide-react";
+import { Clock, Coffee, Moon, Sun, Plus } from "lucide-react";
 
 // ------- Constants -------
 const START_HOUR = 0;
@@ -348,12 +348,19 @@ function SlotPlaceholder({
       }}
     >
       {isHovered || isDragOver ? (
-        <div className="text-xs text-zinc-400 dark:text-zinc-500 font-medium flex items-center gap-1">
-          <span className="text-lg leading-none">+</span>
-          <span>Book</span>
+        <div
+          className="w-full h-full flex items-center justify-center text-zinc-400 dark:text-zinc-500 font-medium select-none px-0.5 overflow-hidden"
+          title="Available slot"
+        >
+          <Plus className="w-3.5 h-3.5 shrink-0" />
+          {widthPct >= 4 && (
+            <span className="text-[10px] font-semibold tracking-tight ml-1 truncate">
+              Book
+            </span>
+          )}
         </div>
       ) : (
-        <div className="w-6 h-6 rounded-full border-2 border-dashed border-zinc-300/50 dark:border-zinc-700/40" />
+        <div className="w-5 h-5 rounded-full border-2 border-dashed border-zinc-300/50 dark:border-zinc-700/40" />
       )}
     </div>
   );
