@@ -2275,7 +2275,6 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   }
                   redirectToStatus(createdVisits);
                 }}
-                primaryColor={primaryColor}
               />
             </motion.div>
           )}

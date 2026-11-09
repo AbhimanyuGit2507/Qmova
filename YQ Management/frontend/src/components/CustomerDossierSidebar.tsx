@@ -554,7 +554,7 @@ export function CustomerDossierSidebar({
                   </div>
                 </div>
                 <Link
-                  href={`/dashboard/service-desk?new=true&phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(customerName || '')}`}
+                  href={`/dashboard/service-desk?new=true&phone=${encodeURIComponent(phone)}&name=${encodeURIComponent(customer?.name || '')}`}
                   className="px-2.5 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-[11px] font-semibold flex items-center gap-1 shadow-xs transition-colors shrink-0 cursor-pointer"
                   title="Queue or book this customer now"
                 >

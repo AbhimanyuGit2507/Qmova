@@ -2783,6 +2783,7 @@ export class VisitService {
         completedSteps,
         lastCompletedStep,
         allSteps: visit.visitSteps || [],
+        metadata: visit.metadata,
       };
     }
 
@@ -2908,6 +2909,7 @@ export class VisitService {
       completedSteps,
       lastCompletedStep,
       allSteps: visit.visitSteps || [],
+      metadata: visit.metadata,
     };
   }
 

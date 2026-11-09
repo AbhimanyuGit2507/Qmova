@@ -2279,6 +2279,13 @@ export default function JourneyBuilder() {
                                           "metadata.",
                                         ),
                                     },
+                                    {
+                                      id: "unlimited",
+                                      label: "Unlimited Passes",
+                                      desc: "No quota ceiling (∞)",
+                                      active:
+                                        stepForm.entitlementFormula === "unlimited",
+                                    },
                                   ].map((opt) => (
                                     <button
                                       key={opt.id}
@@ -2290,12 +2297,14 @@ export default function JourneyBuilder() {
                                             entitlementFormula: "",
                                             entitlementFixed:
                                               stepForm.entitlementFixed || "1",
+                                            preventDoubleRedemption: true,
                                           });
                                         } else if (opt.id === "party") {
                                           setStepForm({
                                             ...stepForm,
                                             entitlementFormula:
                                               "accompanyingGuests + 1",
+                                            preventDoubleRedemption: true,
                                           });
                                         } else if (opt.id === "formField") {
                                           setStepForm({
@@ -2303,6 +2312,14 @@ export default function JourneyBuilder() {
                                             entitlementFormula: "formField:portions",
                                             entitlementFixed:
                                               stepForm.entitlementFixed || "1",
+                                            preventDoubleRedemption: true,
+                                          });
+                                        } else if (opt.id === "unlimited") {
+                                          setStepForm({
+                                            ...stepForm,
+                                            entitlementFormula: "unlimited",
+                                            entitlementFixed: "",
+                                            preventDoubleRedemption: false,
                                           });
                                         } else {
                                           setStepForm({
@@ -2311,6 +2328,7 @@ export default function JourneyBuilder() {
                                               "custom_quantity",
                                             entitlementFixed:
                                               stepForm.entitlementFixed || "1",
+                                            preventDoubleRedemption: true,
                                           });
                                         }
                                       }}
@@ -2332,6 +2350,15 @@ export default function JourneyBuilder() {
                                     </button>
                                   ))}
                                 </div>
+
+                                {stepForm.entitlementFormula === "unlimited" && (
+                                  <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-100 dark:border-purple-900/50 rounded-xl text-xs text-purple-900 dark:text-purple-200 flex items-start gap-2">
+                                    <span className="text-base">♾️</span>
+                                    <div>
+                                      <span className="font-semibold">Unlimited Quota:</span> Attendees can redeem or scan this pass as many times as they want (e.g. all-day carnival ride wristbands, open water refills).
+                                    </div>
+                                  </div>
+                                )}
 
                                 {(!stepForm.entitlementFormula ||
                                   stepForm.entitlementFormula === "") && (
@@ -2427,43 +2454,49 @@ export default function JourneyBuilder() {
                                 )}
                               </div>
                               <div className="flex flex-col gap-2">
-                                {[
-                                  {
-                                    key: "allowPartialRedemption",
-                                    label: "Allow partial redemption",
-                                    desc: "Customer can collect less than their full entitlement.",
-                                  },
-                                  {
-                                    key: "preventDoubleRedemption",
-                                    label: "Prevent double collection",
-                                    desc: "Block the same ticket from collecting twice.",
-                                  },
-                                ].map(({ key, label, desc }) => (
-                                  <label
-                                    key={key}
-                                    className="flex items-center gap-3 cursor-pointer p-3 border border-border dark:border-zinc-700 rounded-xl"
-                                  >
-                                    <input
-                                      type="checkbox"
-                                      checked={(stepForm as any)[key]}
-                                      onChange={(e) =>
-                                        setStepForm({
-                                          ...stepForm,
-                                          [key]: e.target.checked,
-                                        })
-                                      }
-                                      className="w-4 h-4 rounded text-indigo-600"
-                                    />
-                                    <div>
-                                      <div className="font-semibold text-xs text-on-surface dark:text-white">
-                                        {label}
-                                      </div>
-                                      <div className="text-[10px] text-zinc-500">
-                                        {desc}
-                                      </div>
+                                <label className="flex items-center gap-3 cursor-pointer p-3 border border-border dark:border-zinc-700 rounded-xl hover:bg-surface-container-lowest/50 transition-colors">
+                                  <input
+                                    type="checkbox"
+                                    checked={Boolean(stepForm.allowPartialRedemption)}
+                                    onChange={(e) =>
+                                      setStepForm({
+                                        ...stepForm,
+                                        allowPartialRedemption: e.target.checked,
+                                      })
+                                    }
+                                    className="w-4 h-4 rounded text-indigo-600"
+                                  />
+                                  <div>
+                                    <div className="font-semibold text-xs text-on-surface dark:text-white">
+                                      Allow partial redemption
                                     </div>
-                                  </label>
-                                ))}
+                                    <div className="text-[10px] text-zinc-500">
+                                      Customer can collect less than their full entitlement in one scan (e.g. 1 plate now, 3 plates later).
+                                    </div>
+                                  </div>
+                                </label>
+
+                                <label className="flex items-center gap-3 p-3 border border-border dark:border-zinc-700 rounded-xl bg-surface-container-lowest/40 dark:bg-zinc-800/30">
+                                  <input
+                                    type="checkbox"
+                                    checked={stepForm.entitlementFormula !== "unlimited"}
+                                    disabled={true}
+                                    className="w-4 h-4 rounded text-indigo-600 opacity-90 cursor-default"
+                                  />
+                                  <div>
+                                    <div className="font-semibold text-xs text-on-surface dark:text-white flex items-center gap-1.5">
+                                      <span>Prevent double collection</span>
+                                      <span className="text-[9px] font-mono px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-bold uppercase">
+                                        {stepForm.entitlementFormula === "unlimited" ? "Bypassed (Unlimited)" : "Always Enforced"}
+                                      </span>
+                                    </div>
+                                    <div className="text-[10px] text-zinc-500">
+                                      {stepForm.entitlementFormula === "unlimited"
+                                        ? "Disabled: unlimited passes allow repeatable usage without quota blocking."
+                                        : "Always strictly enforced: blocks duplicate portions once the allocated quota has been redeemed."}
+                                    </div>
+                                  </div>
+                                </label>
                               </div>
                             </section>
                           )}

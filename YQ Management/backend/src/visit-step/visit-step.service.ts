@@ -35,6 +35,9 @@ export class VisitStepService {
     } | null,
   ): number | null {
     if (!template) return null;
+    if (template.entitlementFormula === 'unlimited') {
+      return null; // null signifies unlimited quota
+    }
     let allocated = template.entitlementFixed ?? null;
 
     if (template.entitlementFormula === 'accompanyingGuests + 1') {
@@ -706,25 +709,41 @@ export class VisitStepService {
     if (step.type !== 'COLLECTION')
       throw new BadRequestException('Not a collection step');
 
-    const totalAllowed = step.quantityAllocated ?? 1;
+    const isUnlimited =
+      step.templateStep?.entitlementFormula === 'unlimited' ||
+      step.quantityAllocated === null;
 
-    // Use atomic update to prevent race conditions (over-redemption)
-    const result = await this.prisma.visitStep.updateMany({
-      where: {
-        id: step.id,
-        quantityRedeemed: { lte: totalAllowed - dto.quantity },
-      },
-      data: {
-        quantityRedeemed: { increment: dto.quantity },
-        lastRedeemedAt: new Date(),
-        lastRedeemedBy: staffId,
-      },
-    });
+    let result;
+    if (isUnlimited) {
+      result = await this.prisma.visitStep.updateMany({
+        where: { id: step.id },
+        data: {
+          quantityRedeemed: { increment: dto.quantity },
+          lastRedeemedAt: new Date(),
+          lastRedeemedBy: staffId,
+        },
+      });
+    } else {
+      const totalAllowed = step.quantityAllocated ?? 1;
 
-    if (result.count === 0) {
-      throw new BadRequestException(
-        `Cannot redeem ${dto.quantity}. Limit exceeded or already fulfilled.`,
-      );
+      // Use atomic update to prevent race conditions (over-redemption)
+      result = await this.prisma.visitStep.updateMany({
+        where: {
+          id: step.id,
+          quantityRedeemed: { lte: totalAllowed - dto.quantity },
+        },
+        data: {
+          quantityRedeemed: { increment: dto.quantity },
+          lastRedeemedAt: new Date(),
+          lastRedeemedBy: staffId,
+        },
+      });
+
+      if (result.count === 0) {
+        throw new BadRequestException(
+          `Cannot redeem ${dto.quantity}. Limit exceeded or already fulfilled.`,
+        );
+      }
     }
 
     // Fetch the updated step to check if it's completed
@@ -733,7 +752,8 @@ export class VisitStepService {
     });
 
     const newRedeemed = updated!.quantityRedeemed || 0;
-    const isCompleted = newRedeemed >= totalAllowed;
+    const isCompleted =
+      !isUnlimited && newRedeemed >= (step.quantityAllocated ?? 1);
 
     if (isCompleted) {
       await this.prisma.visitStep.update({
@@ -751,7 +771,9 @@ export class VisitStepService {
       staffId,
       {
         redeemed: dto.quantity,
-        remaining: totalAllowed - newRedeemed,
+        remaining: isUnlimited
+          ? 'UNLIMITED'
+          : (step.quantityAllocated ?? 1) - newRedeemed,
         notes: dto.notes,
       },
     );

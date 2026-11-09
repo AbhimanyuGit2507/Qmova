@@ -3026,11 +3026,15 @@ export default function ServiceDeskToday() {
                         s.status !== "CANCELLED" &&
                         s.status !== "SKIPPED"
                     );
-                    if (!orderStep) return null;
-                    const items = (orderStep.selectedItems as any[]) || [];
+                    const items =
+                      (orderStep?.selectedItems as any[]) ||
+                      ((selectedVisit.metadata as any)?.selectedItems as any[]) ||
+                      [];
+                    if (!orderStep && items.length === 0) return null;
                     const hasItems = items.length > 0;
                     const totalCents =
-                      orderStep.amountCharged ||
+                      orderStep?.amountCharged ||
+                      (selectedVisit.metadata as any)?.menuTotal ||
                       items.reduce(
                         (acc, i) =>
                           acc +
@@ -4188,7 +4192,7 @@ export default function ServiceDeskToday() {
         onClose={() => setStartServiceModal(null)}
         onOpenScanner={() => setIsScannerOpen(true)}
         isLoading={startServiceLoading}
-        formatAppointmentTime={formatAppointmentTime}
+        formatAppointmentTime={(d: string | Date) => formatAppointmentTime(d) || ''}
         onStartManual={async (v, e) => {
           try {
             setStartServiceLoading(true);

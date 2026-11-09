@@ -1,0 +1,3 @@
+-- AlterTable
+ALTER TABLE "Service" ADD COLUMN IF NOT EXISTS "maxOverdueMinutes" INTEGER NOT NULL DEFAULT 60;
+

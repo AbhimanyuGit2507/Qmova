@@ -60,7 +60,10 @@ export default function PaymentsSettings() {
 
   const { data: banksData } = useQuery<SouthAfricanBank[]>({
     queryKey: ['sa-banks-list'],
-    queryFn: () => fetchApi('/tenant-payments/banks'),
+    queryFn: async (): Promise<SouthAfricanBank[]> => {
+      const res = await fetchApi('/tenant-payments/banks');
+      return (res as SouthAfricanBank[]) || DEFAULT_SA_BANKS;
+    },
     initialData: DEFAULT_SA_BANKS,
   });
 
@@ -698,7 +701,7 @@ export default function PaymentsSettings() {
         title="Disconnect Payout Account?"
         description="Disconnecting your account will pause online card and bank checkout on your public booking forms until a new bank account is linked."
         confirmText="Disconnect Account"
-        isDanger={true}
+        variant="danger"
       />
     </div>
   );

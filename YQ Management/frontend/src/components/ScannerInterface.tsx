@@ -50,6 +50,7 @@ interface ValidationResult {
   isPast?: boolean;
   isFuture?: boolean;
   canOverride?: boolean;
+  metadata?: AnyFixMe;
 }
 
 const SCANNER_CONFIG = {
@@ -1270,14 +1271,18 @@ export function ScannerInterface({
                                     </div>
                                     <span
                                       className={`text-[10px] px-2 py-0.5 rounded-full font-bold uppercase tracking-wider ${
-                                        (validationResult.activeStep
-                                          .quantityRedeemed || 0) > 0
+                                        validationResult.activeStep.templateStep?.entitlementFormula === "unlimited" || validationResult.activeStep.quantityAllocated === null
+                                          ? "bg-purple-100 text-purple-800 dark:bg-purple-950/60 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                                          : (validationResult.activeStep
+                                              .quantityRedeemed || 0) > 0
                                           ? "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
                                           : "bg-indigo-100 text-indigo-800 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800"
                                       }`}
                                     >
-                                      {(validationResult.activeStep
-                                        .quantityRedeemed || 0) > 0
+                                      {validationResult.activeStep.templateStep?.entitlementFormula === "unlimited" || validationResult.activeStep.quantityAllocated === null
+                                        ? "Unlimited Access"
+                                        : (validationResult.activeStep
+                                            .quantityRedeemed || 0) > 0
                                         ? "Partial Pickup"
                                         : "Awaiting Pickup"}
                                     </span>
@@ -1289,8 +1294,10 @@ export function ScannerInterface({
                                         Entitled
                                       </div>
                                       <div className="text-base font-bold text-on-surface dark:text-white">
-                                        {validationResult.activeStep
-                                          .quantityAllocated ?? 1}
+                                        {validationResult.activeStep.templateStep?.entitlementFormula === "unlimited" || validationResult.activeStep.quantityAllocated === null
+                                          ? "∞"
+                                          : validationResult.activeStep
+                                              .quantityAllocated ?? 1}
                                       </div>
                                     </div>
                                     <div>
@@ -1307,26 +1314,60 @@ export function ScannerInterface({
                                         Remaining
                                       </div>
                                       <div className="text-base font-bold text-emerald-600 dark:text-emerald-400">
-                                        {Math.max(
-                                          0,
-                                          (validationResult.activeStep
-                                            .quantityAllocated || 1) -
-                                            (validationResult.activeStep
-                                              .quantityRedeemed || 0),
-                                        )}
+                                        {validationResult.activeStep.templateStep?.entitlementFormula === "unlimited" || validationResult.activeStep.quantityAllocated === null
+                                          ? "∞"
+                                          : Math.max(
+                                              0,
+                                              (validationResult.activeStep
+                                                .quantityAllocated || 1) -
+                                                (validationResult.activeStep
+                                                  .quantityRedeemed || 0),
+                                            )}
                                       </div>
                                     </div>
                                   </div>
 
-                                  {(validationResult.activeStep
-                                    .quantityAllocated || 0) <=
+                                  {!(validationResult.activeStep.templateStep?.entitlementFormula === "unlimited" || validationResult.activeStep.quantityAllocated === null) &&
                                     (validationResult.activeStep
-                                      .quantityRedeemed || 0) && (
+                                      .quantityAllocated || 0) <=
+                                      (validationResult.activeStep
+                                        .quantityRedeemed || 0) && (
                                     <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-semibold rounded-lg text-center text-xs border border-emerald-200 dark:border-emerald-800 flex items-center justify-center gap-1.5">
                                       <CheckCircle2 className="w-4 h-4 text-emerald-600" />{" "}
                                       Fully Redeemed / Collected
                                     </div>
                                   )}
+
+                                  {/* Pre-Ordered Items / Dish Selection */}
+                                  {(() => {
+                                    const items =
+                                      (validationResult.activeStep?.selectedItems as any[]) ||
+                                      ((validationResult.metadata as any)?.selectedItems as any[]) ||
+                                      [];
+                                    if (!items || items.length === 0) return null;
+                                    return (
+                                      <div className="p-2.5 bg-surface dark:bg-zinc-900/80 rounded-lg border border-border dark:border-zinc-800 space-y-1.5 text-left">
+                                        <div className="text-[10px] font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
+                                          <span>Menu Pre-Orders:</span>
+                                          <span className="font-mono text-zinc-400">{items.length} item{items.length > 1 ? 's' : ''}</span>
+                                        </div>
+                                        <div className="divide-y divide-border/40 dark:divide-zinc-800/50 text-xs">
+                                          {items.map((item: any, idx: number) => (
+                                            <div key={idx} className="py-1 flex items-center justify-between">
+                                              <span className="truncate pr-2 font-medium text-on-surface dark:text-zinc-200">
+                                                <span className="font-bold text-primary">{item.qty}x</span> {item.name}
+                                              </span>
+                                              {item.category && (
+                                                <span className="text-[10px] text-zinc-400 shrink-0">
+                                                  {item.category}
+                                                </span>
+                                              )}
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                    );
+                                  })()}
                                 </div>
                               )}
                             </div>
@@ -1402,6 +1443,19 @@ export function ScannerInterface({
                                 <CheckCircle2 className="w-5 h-5" /> Check In /
                                 Clear Attendance
                               </button>
+                            ) : validationResult.activeStep.templateStep?.type === "COLLECTION" &&
+                              (validationResult.activeStep.templateStep?.entitlementFormula === "unlimited" ||
+                                validationResult.activeStep.quantityAllocated === null) ? (
+                              <div className="flex flex-col gap-2 w-full">
+                                <button
+                                  onClick={() => handleRedeem(1)}
+                                  className="w-full h-12 bg-primary text-white hover:bg-primary/90 font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
+                                >
+                                  <CheckCircle2 className="w-5 h-5" /> Redeem / Log 1{" "}
+                                  {validationResult.activeStep.templateStep
+                                    ?.entitlementUnit || "Pass"}
+                                </button>
+                              </div>
                             ) : validationResult.activeStep.templateStep
                                 ?.type === "COLLECTION" &&
                               (validationResult.activeStep.quantityAllocated ||
