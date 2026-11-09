@@ -192,6 +192,15 @@ export class OutboxProcessorService implements OnModuleInit {
         );
       }
 
+      // 1b. Publish invalidation event to Redis Pub/Sub for SSE clients
+      this.redisService.publishVisitUpdate({
+        visitId: payload.visitId as string,
+        accessToken: payload.accessToken as string,
+        queueId: payload.queueId as string,
+        tenantId: payload.tenantId as string,
+        type,
+      });
+
       // Also broadcast to the tenant-wide room for global lobby displays
       if (payload.tenantId) {
         this.queueGateway.broadcastTenantUpdate(

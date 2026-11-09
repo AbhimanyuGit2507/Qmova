@@ -14,40 +14,41 @@ export class ApiError extends Error {
 
 let router: NextRouter | null = null;
 let redirecting = false;
+let inMemoryToken: string | null = null;
 
 export function setApiRouter(r: NextRouter) {
   router = r;
 }
 
+/**
+ * AuthStorage: Uses secure in-memory storage to prevent XSS token exposure.
+ * The primary authentication mechanism is the browser's HttpOnly cookie.
+ * LocalStorage token caching has been deprecated and purged to neutralize XSS credential theft.
+ */
 export const AuthStorage = {
   set: (token: string) => {
-    if (typeof window !== 'undefined' && token) {
-      localStorage.setItem('qmover_auth_token', token);
-      // also write legacy key for older onboarding flows
-      try { localStorage.setItem('token', token); } catch (e) {}
-      // NOTE: Do NOT write document.cookie here. The backend sets an httpOnly
-      // `token` cookie on login. Writing a non-httpOnly cookie with the same
-      // name causes browser collisions (one shadows the other depending on
-      // browser path rules). The httpOnly cookie is the authoritative one.
+    inMemoryToken = token || null;
+    if (typeof window !== 'undefined') {
+      // Purge any lingering tokens from localStorage to eliminate XSS surface
+      try {
+        localStorage.removeItem('qmover_auth_token');
+        localStorage.removeItem('token');
+      } catch (e) {}
     }
   },
   get: (): string | null => {
-    if (typeof window !== 'undefined') {
-      return (
-        localStorage.getItem('qmover_auth_token') ||
-        localStorage.getItem('token') ||
-        null
-      );
-    }
-    return null;
+    return inMemoryToken;
   },
   clear: () => {
+    inMemoryToken = null;
     if (typeof window !== 'undefined') {
-      localStorage.removeItem('qmover_auth_token');
-      // clear legacy key too
-      try { localStorage.removeItem('token'); } catch (e) {}
-      sessionStorage.removeItem('qmover_auth_token');
-      document.cookie = 'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      try {
+        localStorage.removeItem('qmover_auth_token');
+        localStorage.removeItem('token');
+        sessionStorage.removeItem('qmover_auth_token');
+        document.cookie =
+          'token=; path=/; expires=Thu, 01 Jan 1970 00:00:00 GMT';
+      } catch (e) {}
     }
   },
 };

@@ -18,7 +18,10 @@ import { nodeProfilingIntegration } from '@sentry/profiling-node';
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  const app = await NestFactory.create(AppModule, {
+    bufferLogs: true,
+    rawBody: true,
+  });
 
   // Trust the first proxy (Caddy/Nginx) so we get real client IPs
   // instead of the reverse-proxy's internal IP

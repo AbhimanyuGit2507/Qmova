@@ -44,6 +44,7 @@ export function DeleteServiceModal({ isOpen, onClose, service, services }: Delet
       // Actually fetchApi parses json if content-type is json. Let's do a direct authenticated fetch for binary:
       const token = AuthStorage.get();
       const directRes = await fetch(`${getBackendUrl()}/service/${service.id}/export`, {
+        credentials: 'include',
         headers: {
           ...(token ? { Authorization: `Bearer ${token}` } : {})
         }

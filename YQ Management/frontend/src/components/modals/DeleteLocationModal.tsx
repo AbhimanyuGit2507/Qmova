@@ -51,8 +51,9 @@ export function DeleteLocationModal({ isOpen, onClose, location }: DeleteLocatio
     try {
       const token = AuthStorage.get();
       const res = await fetch(`${getBackendUrl()}/location/${location.id}/export`, {
+        credentials: 'include',
         headers: {
-          Authorization: `Bearer ${token}`,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
       });
 

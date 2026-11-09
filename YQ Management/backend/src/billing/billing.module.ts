@@ -18,6 +18,7 @@ import { BillingConfigService } from './config/billing-config.service';
 import { WebhookProcessService } from '../webhooks/webhook-process.service';
 import { EnterpriseInquiryController } from './enterprise-inquiry.controller';
 import { EnterpriseInquiryService } from './enterprise-inquiry.service';
+import { BillingWebhookController } from './billing-webhook.controller';
 import { EmailModule } from '../email/email.module';
 import { SystemLogModule } from '../system-log/system-log.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
@@ -31,7 +32,11 @@ import { SubscriptionModule } from '../subscription/subscription.module';
     EmailModule,
     forwardRef(() => SubscriptionModule),
   ],
-  controllers: [BillingController, EnterpriseInquiryController],
+  controllers: [
+    BillingController,
+    EnterpriseInquiryController,
+    BillingWebhookController,
+  ],
   providers: [
     PlansService,
 

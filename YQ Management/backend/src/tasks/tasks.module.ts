@@ -7,6 +7,7 @@ import { WebhooksModule } from '../webhooks/webhooks.module';
 import { CommunicationModule } from '../communication/communication.module';
 import { NotificationsModule } from '../notifications/notifications.module';
 import { VisitStepModule } from '../visit-step/visit-step.module';
+import { TenantPaymentsModule } from '../tenant-payments/tenant-payments.module';
 
 import { BullModule } from '@nestjs/bullmq';
 import { WebhookConsumer } from './consumers/webhook.consumer';
@@ -20,6 +21,7 @@ import { WhatsappConsumer } from './consumers/whatsapp.consumer';
     CommunicationModule,
     forwardRef(() => NotificationsModule),
     forwardRef(() => VisitStepModule),
+    forwardRef(() => TenantPaymentsModule),
     BullModule.registerQueue(
       { name: 'queue_webhooks' },
       { name: 'queue_whatsapp' },

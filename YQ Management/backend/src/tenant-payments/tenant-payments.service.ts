@@ -2,10 +2,12 @@ import {
   Injectable,
   NotFoundException,
   BadRequestException,
+  UnauthorizedException,
   Logger,
   Inject,
   forwardRef,
 } from '@nestjs/common';
+import * as crypto from 'crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { VisitStepService } from '../visit-step/visit-step.service';
 import { InvoiceService } from '../invoice/invoice.service';
@@ -1858,15 +1860,47 @@ export class TenantPaymentsService {
   }
 
   /**
-   * Handle incoming Paystack webhooks
+   * Handle incoming Paystack webhooks with cryptographic HMAC SHA-512 signature verification.
    */
-  async handlePaystackWebhook(body: any) {
-    if (!body || !body.event) {
+  async handlePaystackWebhook(
+    signature?: string,
+    rawBody?: Buffer,
+    body?: any,
+  ) {
+    const paystackSecret =
+      process.env.PAYSTACK_SECRET_KEY || process.env.PAYSTACK_SECRET;
+
+    if (paystackSecret && signature && rawBody) {
+      const hash = crypto
+        .createHmac('sha512', paystackSecret)
+        .update(rawBody)
+        .digest('hex');
+
+      if (hash !== signature) {
+        this.logger.error(
+          `Paystack webhook HMAC SHA-512 signature mismatch. Received: ${signature}`,
+        );
+        throw new UnauthorizedException('Invalid Paystack webhook signature');
+      }
+    } else if (process.env.NODE_ENV === 'production') {
+      throw new UnauthorizedException(
+        'Paystack webhook signature verification is mandatory in production.',
+      );
+    } else {
+      this.logger.warn(
+        'Paystack webhook received without cryptographic verification in non-production.',
+      );
+    }
+
+    const payload =
+      body || (rawBody ? JSON.parse(rawBody.toString('utf8')) : {});
+
+    if (!payload || !payload.event) {
       return { received: true };
     }
 
-    if (body.event === 'charge.success') {
-      const reference = body.data?.reference;
+    if (payload.event === 'charge.success') {
+      const reference = payload.data?.reference;
       if (reference) {
         try {
           await this.verifyPublicPaystackPayment(reference);
@@ -1879,6 +1913,31 @@ export class TenantPaymentsService {
     }
 
     return { received: true };
+  }
+
+  /**
+   * Retrieve Stripe PaymentIntent status directly from Stripe API to prevent sweeper race conditions.
+   */
+  async retrieveStripePaymentIntent(
+    paymentIntentId: string,
+    connectedAccountId?: string | null,
+  ): Promise<Stripe.PaymentIntent | null> {
+    if (!this.stripe || !paymentIntentId) return null;
+    try {
+      const opts = connectedAccountId
+        ? { stripeAccount: connectedAccountId }
+        : undefined;
+      return await this.stripe.paymentIntents.retrieve(
+        paymentIntentId,
+        undefined,
+        opts,
+      );
+    } catch (err: any) {
+      this.logger.warn(
+        `Failed to retrieve Stripe PaymentIntent ${paymentIntentId}: ${err.message}`,
+      );
+      return null;
+    }
   }
 
   /**

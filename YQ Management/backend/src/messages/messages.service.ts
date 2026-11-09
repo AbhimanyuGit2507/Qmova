@@ -638,6 +638,13 @@ export class MessagesService {
       );
     }
 
+    // Auto-pause bot and lock in human mode for 2 hours when staff dispatches a manual reply
+    try {
+      await this.toggleBot(tenantId, phone, true);
+    } catch (e) {
+      // Non-blocking if chat session cannot be created
+    }
+
     this.queueGateway.broadcastTenantUpdate(tenantId, 'NEW_INBOX_MESSAGE', {
       phone,
     });
@@ -1146,6 +1153,22 @@ export class MessagesService {
         lastActive: new Date(),
       },
     });
+
+    // Enforce 2-hour human handover lock in Redis
+    try {
+      if (targetPaused) {
+        await this.redisService.client.set(
+          `bot_muted:${tenantId}:${phone}`,
+          '1',
+          'EX',
+          7200,
+        );
+      } else {
+        await this.redisService.client.del(`bot_muted:${tenantId}:${phone}`);
+      }
+    } catch (e) {
+      // Ignore Redis errors
+    }
 
     this.queueGateway.broadcastTenantUpdate(tenantId, 'NEW_INBOX_MESSAGE', {
       phone,

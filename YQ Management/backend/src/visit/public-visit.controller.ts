@@ -64,24 +64,51 @@ export class PublicVisitController {
       .map((t: string) => t.trim())
       .filter(Boolean);
 
-    // Data stream: poll every 5 seconds, starting immediately
-    const dataStream$ = timer(0, 5000).pipe(
-      switchMap(() => this.visitService.findMultiplePublic(tokenArray)),
+    if (tokenArray.length === 0) {
+      return from([]);
+    }
+
+    // 1. Initial snapshot emitted immediately on connection so waiting screen renders instantly
+    const initial$ = from(
+      this.visitService.findMultiplePublic(tokenArray),
+    ).pipe(
       map((visits) => ({
         data: visits,
-        // type omitted — default SSE "message" event consumed by browser EventSource
       })),
     );
 
-    // Heartbeat stream: every 15 seconds, send a comment-only SSE message.
+    // 2. Event-driven updates triggered via Redis Pub/Sub: Only queries DB when state change occurs!
+    const updates$ = this.redisService.visitEvents$.pipe(
+      filter((event) => {
+        if (!event) return false;
+        if (event.accessToken && tokenArray.includes(event.accessToken))
+          return true;
+        if (event.visitId && tokenArray.includes(event.visitId)) return true;
+        // Broadcast invalidation without specific token (e.g. queue order change)
+        if (!event.accessToken && !event.visitId) return true;
+        return false;
+      }),
+      switchMap(() => this.visitService.findMultiplePublic(tokenArray)),
+      map((visits) => ({
+        data: visits,
+      })),
+    );
+
+    // 3. Fallback low-frequency poll (every 60s) for eventual consistency
+    const fallbackPoll$ = timer(60000, 60000).pipe(
+      switchMap(() => this.visitService.findMultiplePublic(tokenArray)),
+      map((visits) => ({
+        data: visits,
+      })),
+    );
+
+    // 4. Heartbeat stream: every 15 seconds, send a comment-only SSE message.
     // This keeps the HTTP connection alive through reverse proxies (Caddy/nginx)
-    // that close idle connections after their default timeout (typically 60s).
-    // SSE comment lines (starting with ':') are silently ignored by EventSource.
     const heartbeat$ = interval(15000).pipe(
       map(() => ({ data: ':heartbeat', type: 'ping' })),
     );
 
-    return merge(dataStream$, heartbeat$);
+    return merge(initial$, updates$, fallbackPoll$, heartbeat$);
   }
 
   @Post('request-recovery-otp')

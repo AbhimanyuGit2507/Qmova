@@ -34,7 +34,11 @@ export class PaymentsController {
   }
 
   @Post('webhook')
-  async handleWebhook(@Body() body: any, @Headers() headers: any) {
+  async handleWebhook(
+    @Body() body: any,
+    @Headers() headers: any,
+    @Req() req: any,
+  ) {
     return this.paymentsService.handleWebhook(body, headers);
   }
 }

@@ -1718,10 +1718,21 @@ export class WhatsappService implements OnModuleInit {
               where: { id: session.id },
               data: {
                 lastActive: new Date(),
-                context: { ...currentContext, isHumanPaused: true },
+                context: {
+                  ...currentContext,
+                  isHumanPaused: true,
+                  botMutedUntil: new Date(Date.now() + 7200 * 1000).toISOString(),
+                },
               },
             });
           }
+          // Enforce strict 2-hour bot muted lock in Redis
+          await this.redisService.client.set(
+            `bot_muted:${tenant.id}:${phone}`,
+            '1',
+            'EX',
+            7200,
+          );
         } catch (sessionErr) {
           this.logger.warn(
             `Failed to auto-pause bot on outgoing staff message: ${sessionErr}`,
@@ -1894,6 +1905,35 @@ export class WhatsappService implements OnModuleInit {
         return { handled: true, action: 'logged_only' };
       }
 
+      // 2a) Strict per-conversation rate limits in Redis: max 6 messages per 30 seconds
+      const rateLimitKey = `ratelimit:chat:${tenant.id}:${phone}`;
+      const currentRateCount = await this.redisService.client.incr(rateLimitKey);
+      if (currentRateCount === 1) {
+        await this.redisService.client.expire(rateLimitKey, 30);
+      }
+      if (currentRateCount > 6) {
+        this.logger.warn(
+          `Chat rate limit exceeded for ${phone} on tenant ${tenant.id} (${currentRateCount} msgs / 30s). Throttling bot reply.`,
+        );
+        return { handled: true, action: 'rate_limited' };
+      }
+
+      // 2b) Enforce 2-hour botMutedUntil human-handover lock
+      const botMutedKey = `bot_muted:${tenant.id}:${phone}`;
+      const isBotMuted = await this.redisService.client.get(botMutedKey);
+      const upperMessageText = rawText.trim().toUpperCase();
+      const isResetKeyword = ['MENU', 'BOT', 'START', 'RESET', '0'].includes(upperMessageText);
+
+      if (isBotMuted && !isResetKeyword) {
+        this.logger.debug(
+          `Chatbot response suppressed for customer ${phone}: human handover active (muted until 2-hour lock expires).`,
+        );
+        return { handled: true, action: 'bot_muted_human_mode' };
+      } else if (isBotMuted && isResetKeyword) {
+        await this.redisService.client.del(botMutedKey);
+        this.logger.log(`Customer ${phone} resumed bot with keyword: ${upperMessageText}`);
+      }
+
       const subscription = tenant.subscriptions;
       const plan = subscription?.plan;
       let planFeatures = plan?.features as any;
@@ -1931,6 +1971,8 @@ export class WhatsappService implements OnModuleInit {
         new WhatsappChatbot(
           this.prisma,
           async (jidToSend, textToSend) => {
+            // Simulate realistic typing presence before dispatching bot reply
+            await this.sendPresence(instanceName, phone, 'composing', 1500);
             await this.sendMessage(instanceName, jidToSend, textToSend);
 
             // Log outgoing bot message to Inbox
@@ -1998,6 +2040,8 @@ export class WhatsappService implements OnModuleInit {
             jid,
             rawText,
             async (jidToSend, textToSend) => {
+              // Simulate realistic typing presence before dispatching AI bot reply
+              await this.sendPresence(instanceName, phone, 'composing', 1800);
               await this.sendMessage(instanceName, jidToSend, textToSend);
 
               // Log outgoing bot message to Inbox
@@ -2035,6 +2079,9 @@ export class WhatsappService implements OnModuleInit {
       }
 
       if ((processed as any)?.isHandoverEvent) {
+        // Enforce strict 2-hour human handover lock in Redis
+        await this.redisService.client.set(botMutedKey, '1', 'EX', 7200);
+
         const cfg = (tenant.chatbotConfig as any) || {};
         const assignedName =
           cfg.agentName && cfg.agentName !== 'Support Team'
@@ -2279,6 +2326,41 @@ export class WhatsappService implements OnModuleInit {
       return { success: true, messageId: data.messages?.[0]?.id };
     } catch (e) {
       return { success: false, error: e.message };
+    }
+  }
+
+  /**
+   * Simulate realistic WhatsApp typing presence ("typing...") via Evolution API.
+   * Dispatches the presence indicator and waits for the delay before returning,
+   * allowing bot responses to feel natural instead of immediate.
+   */
+  async sendPresence(
+    instanceName: string,
+    recipient: string,
+    presence: 'composing' | 'available' | 'paused' = 'composing',
+    delayMs: number = 1800,
+  ) {
+    if (!instanceName || !recipient) return;
+    try {
+      const normalizedNumber = recipient.replace(/\D/g, '');
+      await this.fetchEvo(
+        `/chat/sendPresence/${instanceName}`,
+        'POST',
+        {
+          number: normalizedNumber,
+          presence,
+          delay: delayMs,
+        },
+        5000,
+        true,
+      );
+      if (delayMs > 0) {
+        await new Promise((resolve) => setTimeout(resolve, delayMs));
+      }
+    } catch (e: any) {
+      this.logger.debug(
+        `sendPresence failed for ${recipient} on ${instanceName}: ${e?.message}`,
+      );
     }
   }
 

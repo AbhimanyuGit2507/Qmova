@@ -135,8 +135,21 @@ export class TenantPaymentsController {
   }
 
   @Post('webhook/paystack')
-  handlePaystackWebhook(@Body() body: any) {
-    return this.tenantPaymentsService.handlePaystackWebhook(body);
+  handlePaystackWebhook(
+    @Headers('x-paystack-signature') signature: string,
+    @Req() req: any,
+    @Body() body: any,
+  ) {
+    const rawBody =
+      req.rawBody ||
+      (Buffer.isBuffer(req.body)
+        ? req.body
+        : Buffer.from(req.body ? JSON.stringify(req.body) : ''));
+    return this.tenantPaymentsService.handlePaystackWebhook(
+      signature,
+      rawBody,
+      body,
+    );
   }
 
   @UseGuards(JwtAuthGuard)
@@ -243,6 +256,19 @@ export class TenantPaymentsController {
 
   @Post('stripe-webhook')
   async handleStripeWebhookAlias(
+    @Headers('stripe-signature') signature: string,
+    @Req() req: any,
+  ) {
+    const rawBody =
+      req.rawBody ||
+      (Buffer.isBuffer(req.body)
+        ? req.body
+        : Buffer.from(req.body ? JSON.stringify(req.body) : ''));
+    return this.tenantPaymentsService.handleStripeWebhook(signature, rawBody);
+  }
+
+  @Post('webhook/stripe')
+  async handleStripeWebhookExplicit(
     @Headers('stripe-signature') signature: string,
     @Req() req: any,
   ) {
