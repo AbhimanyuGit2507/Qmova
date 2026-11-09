@@ -772,10 +772,7 @@ export class AuthController {
       if (!match) throw new BadRequestException('Current password does not match.');
     }
     const hashedPassword = await bcrypt.hash(body.newPassword, 10);
-    await this.usersService['prisma'].user.update({
-      where: { id: user.id },
-      data: { password: hashedPassword },
-    });
+    await this.usersService.updatePassword(user.id, hashedPassword);
     return { success: true, message: 'Password updated successfully' };
   }
 }

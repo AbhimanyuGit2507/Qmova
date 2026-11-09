@@ -29,6 +29,19 @@ export class UsersService {
     });
   }
 
+  async findOneById(id: string) {
+    return this.prisma.user.findUnique({
+      where: { id },
+    });
+  }
+
+  async updatePassword(id: string, hashedPassword: string) {
+    return this.prisma.user.update({
+      where: { id },
+      data: { password: hashedPassword },
+    });
+  }
+
   async create(data: Prisma.UserUncheckedCreateInput) {
     let hashedPassword = null;
     if (data.password) {
