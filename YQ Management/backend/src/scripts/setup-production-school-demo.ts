@@ -122,7 +122,7 @@ async function main() {
     name: 'Main Campus & Sports Grounds',
     address: '124 Ridgeview Road, Sandton, Johannesburg',
     timezone: 'Africa/Johannesburg',
-    operatingHours: {
+    businessHours: {
       monday: { open: '08:00', close: '22:00', closed: false },
       tuesday: { open: '08:00', close: '22:00', closed: false },
       wednesday: { open: '08:00', close: '22:00', closed: false },
