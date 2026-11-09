@@ -19,6 +19,7 @@ import { LocationStep } from '../../../../components/booking/LocationStep';
 import { ServiceStep } from '../../../../components/booking/ServiceStep';
 import { ContactStep } from '../../../../components/booking/ContactStep';
 import { PaymentStep } from '../../../../components/booking/PaymentStep';
+import { BookingErrorBoundary } from '../../../../components/booking/BookingErrorBoundary';
 import { slugify } from '../../../../lib/utils';
 import { detectCountryCode, getInitialCountryIso } from '../../../../lib/country-codes';
 
@@ -1003,6 +1004,30 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
       </header>
 
       <main className="w-full max-w-2xl px-2 sm:px-6 py-4 sm:py-6 flex-1 flex flex-col">
+        <BookingErrorBoundary
+          tenant={tenant}
+          selectedLocationId={selectedLocationId}
+          primaryColor={primaryColor}
+          onRetry={() => {
+            setErrorMsg('');
+            setLoading(false);
+          }}
+          onPayAtCounter={() => {
+            setIsPayAtCounter(true);
+            setErrorMsg('');
+            setLoading(false);
+            if (step < 3.5) {
+              goToStep(3.5);
+            } else if (step === 3.5 || step === 4 || step === 4.5) {
+              goToStep(5);
+            }
+          }}
+          onReset={() => {
+            setErrorMsg('');
+            setLoading(false);
+            goToStep(selectedLocationId ? 2 : 1);
+          }}
+        >
         <AnimatePresence mode="wait" initial={false}>
           
           {/* STEP 1: Location Selection */}
@@ -1887,7 +1912,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                     (tenant?.paymentAccount?.chargesEnabled || tenant?.paymentAccount?.paystackSubaccountCode || tenant?.paymentAccount?.connectedAccountId)
                   );
                   const isPaystackProvider = tenant?.paymentAccount?.provider === 'paystack';
-                  const minOnlineThreshold = isPaystackProvider ? 100 : getMinStripeCents(bookingCurrency);
+                  const minOnlineThreshold = isPaystackProvider ? 100 : (typeof getMinStripeCents === 'function' ? getMinStripeCents(bookingCurrency) : 100);
                   const isOnlineBooking = isTenantGatewayConfigured && selectedServiceIds.some(sid => {
                     const s = services.find(x => x.id === sid);
                     const flow = (s as any)?.serviceFlow;
@@ -1896,6 +1921,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       : ((s as any)?.paymentMode === 'PREPAY');
                   });
                   const isOnlineViable = isOnlineBooking && finalTotalCents >= minOnlineThreshold;
+                  const isStripeBooking = isOnlineBooking;
+                  const isStripeViable = isOnlineViable;
+                  const minStripeThreshold = minOnlineThreshold;
 
                   const taxLabel = bookingCurrency.toUpperCase() === 'ZAR'
                     ? `VAT (${taxRate}%${isTaxInclusive ? ' Included' : ''})`
@@ -1958,9 +1986,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                         </p>
                       </div>
 
-                      {isStripeBooking && !isStripeViable && (
+                      {isOnlineBooking && !isOnlineViable && (
                         <p className="text-[11px] text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200/60 dark:border-amber-900/50">
-                          Note: Amount is below card processor minimum ({currSymbol}{(minStripeThreshold / 100).toFixed(2)}). You can complete booking and pay in cash or card at the counter upon arrival.
+                          Note: Amount is below card processor minimum ({currSymbol}{(minOnlineThreshold / 100).toFixed(2)}). You can complete booking and pay in cash or card at the counter upon arrival.
                         </p>
                       )}
                     </div>
@@ -2010,7 +2038,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                     (tenant?.paymentAccount?.chargesEnabled || tenant?.paymentAccount?.paystackSubaccountCode || tenant?.paymentAccount?.connectedAccountId)
                   );
                   const isPaystackProvider = tenant?.paymentAccount?.provider === 'paystack';
-                  const minOnlineThreshold = isPaystackProvider ? 100 : getMinStripeCents(bookingCurrency);
+                  const minOnlineThreshold = isPaystackProvider ? 100 : (typeof getMinStripeCents === 'function' ? getMinStripeCents(bookingCurrency) : 100);
                   const isOnlineBooking = isTenantGatewayConfigured && selectedServiceIds.some((sid) => {
                     const s = services.find((x) => x.id === sid);
                     const flow = (s as any)?.serviceFlow;
@@ -2022,6 +2050,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   });
                   const isOnlineViable =
                     isOnlineBooking && finalTotalCents >= minOnlineThreshold;
+                  const isStripeBooking = isOnlineBooking;
+                  const isStripeViable = isOnlineViable;
+                  const minStripeThreshold = minOnlineThreshold;
 
                   const allowsPayAtCounter = !isOnlineViable || selectedServiceIds.every((sid) => {
                     const s = services.find((x) => x.id === sid);
@@ -2400,6 +2431,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
             </motion.div>
           )}
         </AnimatePresence>
+        </BookingErrorBoundary>
 
         <AnimatePresence>
           {enlargedQrTokenId && (
