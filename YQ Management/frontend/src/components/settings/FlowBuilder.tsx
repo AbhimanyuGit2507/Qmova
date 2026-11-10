@@ -14,17 +14,17 @@ import {
   MiniMap,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Settings2, ScanLine, Package, CreditCard, LayoutGrid, LogIn, LogOut, Bell, Clock, ClipboardList } from 'lucide-react';
+import { Settings2, ScanLine, Package, CreditCard, LayoutGrid, LogIn, LogOut, Bell, Clock, ClipboardList, Sparkles } from 'lucide-react';
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; darkColor: string; icon: any }> = {
-  CHECK_IN:    { label: 'Check-In',     color: '#4f46e5', darkColor: '#818cf8', icon: LogIn },
-  CHECK_OUT:   { label: 'Check-Out',    color: '#059669', darkColor: '#34d399', icon: LogOut },
+  CHECK_IN:    { label: 'Booking Verification (QR Scan)',     color: '#4f46e5', darkColor: '#818cf8', icon: LogIn },
+  CHECK_OUT:   { label: 'Completed Stage',    color: '#059669', darkColor: '#34d399', icon: LogOut },
   CHECKPOINT:  { label: 'Checkpoint',   color: '#6366f1', darkColor: '#818cf8', icon: ScanLine },
   SERVICE:     { label: 'Service Area', color: '#7c3aed', darkColor: '#a78bfa', icon: LayoutGrid },
   COLLECTION:  { label: 'Collection',   color: '#0891b2', darkColor: '#22d3ee', icon: Package },
   PAYMENT:     { label: 'Payment',      color: '#d97706', darkColor: '#fbbf24', icon: CreditCard },
   NOTIFICATION:{ label: 'Notify',       color: '#db2777', darkColor: '#f472b6', icon: Bell },
-  WAITING_PERIOD:{ label: 'Waiting',    color: '#64748b', darkColor: '#94a3b8', icon: Clock },
+  WAITING_PERIOD:{ label: 'Waiting / Prep Stage', color: '#64748b', darkColor: '#94a3b8', icon: Clock },
   FORM:        { label: 'Form',         color: '#0284c7', darkColor: '#38bdf8', icon: ClipboardList },
 };
 
@@ -119,7 +119,7 @@ const CustomNode = ({ data, selected }: any) => {
   );
 };
 
-// ── System node (locked Check-In / Check-Out) ─────────────────────────────────
+// ── System node (locked Booking Verification / Completed Stage) ───────────────
 const SystemNode = ({ data, selected }: any) => {
   const isCheckIn = data.type === 'CHECK_IN';
   const cfg = TYPE_CONFIG[data.type] || TYPE_CONFIG.CHECK_IN;
@@ -142,15 +142,13 @@ const SystemNode = ({ data, selected }: any) => {
         transition: 'all 450ms cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
-      {/* Only Check-Out gets a target handle (incoming arrows) */}
-      {!isCheckIn && (
-        <Handle
-          type="target"
-          position={Position.Top}
-          className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
-          style={{ background: cfg.color, top: -7 }}
-        />
-      )}
+      {/* Top Handle: Check-In connects from Booking Channel, Check-Out connects from last stage */}
+      <Handle
+        type="target"
+        position={Position.Top}
+        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+        style={{ background: cfg.color, top: -7 }}
+      />
 
       <div
         className="px-4 py-3 flex items-center gap-3 rounded-[14px]"
@@ -165,17 +163,23 @@ const SystemNode = ({ data, selected }: any) => {
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 mb-0.5">
             <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: cfg.color }}>
-              {isCheckIn ? '🔒 Journey Start' : '🔒 Journey End'}
+              {isCheckIn ? '🔒 Verification Gate' : '🔒 Completed'}
             </span>
           </div>
-          <span className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">{data.name}</span>
+          <span className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
+            {isCheckIn && (data.name === 'Check-In' || data.name === 'Booking Verification')
+              ? 'Booking Verification (QR Scan)'
+              : !isCheckIn && (data.name === 'Check-Out' || data.name === 'Completed')
+              ? 'Completed Stage'
+              : data.name}
+          </span>
           {data.description && (
             <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2 leading-relaxed">{data.description}</p>
           )}
         </div>
       </div>
 
-      {/* Only Check-In gets a source handle (outgoing arrows) */}
+      {/* Only Check-In gets an outgoing source handle to middle stages */}
       {isCheckIn && (
         <Handle
           type="source"
@@ -184,14 +188,56 @@ const SystemNode = ({ data, selected }: any) => {
           style={{ background: cfg.color, bottom: -7 }}
         />
       )}
-      {!isCheckIn && (
-        <Handle
-          type="source"
-          position={Position.Bottom}
-          className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10 opacity-30"
-          style={{ background: cfg.color, bottom: -7 }}
-        />
-      )}
+    </div>
+  );
+};
+
+// ── Booking Channel node (Stage 0 Entry: Walk-in & Appointments) ──────────────
+const BookingChannelNode = ({ data }: any) => {
+  const allowAppointments = Boolean(data.allowAppointments);
+  const allowWalkins = data.allowWalkins !== false;
+
+  return (
+    <div
+      className="relative w-[230px] rounded-2xl border-2 border-indigo-400/80 dark:border-indigo-500/80 bg-white dark:bg-zinc-900 shadow-md p-3 space-y-2"
+      style={{
+        transition: 'all 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+      }}
+    >
+      <div className="flex items-center justify-between">
+        <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+          <Sparkles className="w-3 h-3" /> Booking Channel
+        </span>
+        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+          Stage 0
+        </span>
+      </div>
+
+      <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+        Customer Intake / Booking
+      </p>
+
+      <div className="space-y-1 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
+        <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+          <span className="flex items-center gap-1">🚶 Walk-in Kiosk / Gate</span>
+          <span className={`font-bold ${allowWalkins ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}`}>
+            {allowWalkins ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+        <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
+          <span className="flex items-center gap-1">📅 Online Appointments</span>
+          <span className={`font-bold ${allowAppointments ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}`}>
+            {allowAppointments ? 'Enabled' : 'Disabled'}
+          </span>
+        </div>
+      </div>
+
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+        style={{ background: '#4f46e5', bottom: -7 }}
+      />
     </div>
   );
 };
@@ -212,7 +258,12 @@ const EmptyStagePrompt = ({ data }: any) => (
   </div>
 );
 
-const nodeTypes = { custom: CustomNode, system: SystemNode, emptyPrompt: EmptyStagePrompt };
+const nodeTypes = {
+  custom: CustomNode,
+  system: SystemNode,
+  emptyPrompt: EmptyStagePrompt,
+  bookingChannel: BookingChannelNode,
+};
 
 interface FlowBuilderProps {
   flow: any; // includes ALL steps (system + custom)
@@ -259,6 +310,18 @@ export function FlowBuilder(props: FlowBuilderProps) {
     const CENTER_X = 100;
     let y = 0;
     const nodes: any[] = [];
+
+    // 0. Booking Channel Card (Stage 0 Entry: Walk-in & Appointments)
+    const allowAppointments = Boolean(flow.service?.allowAppointments);
+    nodes.push({
+      id: '__booking_channel__',
+      type: 'bookingChannel',
+      position: { x: CENTER_X, y },
+      data: { allowAppointments, allowWalkins: true },
+      draggable: false,
+      selectable: false,
+    });
+    y += 140;
 
     // Check-In (always first)
     if (checkIn) {
@@ -322,6 +385,22 @@ export function FlowBuilder(props: FlowBuilderProps) {
     if (!flow?.steps) return [];
     const sorted = [...flow.steps].sort((a: any, b: any) => a.stepOrder - b.stepOrder);
     const edges: any[] = [];
+
+    // Always connect Booking Channel -> Check-In (Booking Verification)
+    const checkInNode = sorted.find((s: any) => s.type === 'CHECK_IN');
+    if (checkInNode) {
+      edges.push({
+        id: 'e-booking-checkin',
+        source: '__booking_channel__',
+        target: checkInNode.id,
+        label: 'Arrival & QR Pass',
+        animated: true,
+        style: { stroke: '#4f46e5', strokeWidth: 2 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+        labelStyle: { fontSize: 9, fontWeight: 700, fill: '#4f46e5' },
+        labelBgStyle: { fill: '#e0e7ff', borderRadius: 4 },
+      });
+    }
 
     // For nodes without explicit transitions, auto-connect sequentially
     const hasPlaceholder = sorted.filter((s: any) => s.type !== 'CHECK_IN' && s.type !== 'CHECK_OUT').length === 0;

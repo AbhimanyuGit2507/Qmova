@@ -61,8 +61,8 @@ async function main() {
 
       newSteps.unshift({
         stepOrder: 0,
-        name: 'Check-in (Booking)',
-        description: 'Customer books online or at kiosk and gets a ticket.',
+        name: 'Booking Verification (QR Scan)',
+        description: 'Customer checks in via QR pass or ticket verification.',
         type: 'CHECK_IN',
         trigger: 'AUTOMATIC',
         isSystem: true,
@@ -71,8 +71,8 @@ async function main() {
 
       newSteps.push({
         stepOrder: 99,
-        name: 'Check-out (Completion)',
-        description: 'Staff completes the visit at the counter.',
+        name: 'Completed Stage',
+        description: 'Staff completes the visit.',
         type: 'CHECK_OUT',
         trigger: 'MANUAL_STAFF',
         isSystem: true,

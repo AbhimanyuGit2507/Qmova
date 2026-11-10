@@ -502,8 +502,8 @@ const WA_VARS = [
 const STAGE_TYPES = [
   {
     value: "CHECKPOINT",
-    label: "📍 Check-In Point",
-    info: "A scan or arrival gate. Customer shows up here to register their presence (e.g. front gate, reception).",
+    label: "🔍 Booking Verification (QR Scan)",
+    info: "Initial check-in & verification gate. Scans customer QR pass or verifies ticket before service commences.",
   },
   {
     value: "SERVICE",
@@ -522,8 +522,8 @@ const STAGE_TYPES = [
   },
   {
     value: "WAITING_PERIOD",
-    label: "⏳ Waiting Room",
-    info: "Customer waits here before being called. Useful for deferred or timed stages.",
+    label: "⏳ Waiting / Preparation Stage",
+    info: "Order prep time, kitchen queue, or waiting room. Smart wait time calculates live prep time or auto-advances.",
   },
   {
     value: "NOTIFICATION",

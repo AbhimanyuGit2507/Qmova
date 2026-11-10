@@ -890,7 +890,8 @@ export default function QueueConfirmation() {
                   Est. Wait Time
                 </span>
                 <span className="text-2xl sm:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono block">
-                  ~{estimatedWaitTime || 5}m
+                  ~{typeof estimatedWaitTime === 'number' ? estimatedWaitTime : 0}
+                  <span className="text-xs sm:text-sm font-medium text-slate-400 ml-1">min</span>
                 </span>
                 <span className="text-[9px] sm:text-[10px] text-slate-400 dark:text-zinc-500 truncate block">Live dynamic</span>
               </div>

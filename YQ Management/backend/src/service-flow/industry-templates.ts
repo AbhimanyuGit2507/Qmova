@@ -468,13 +468,14 @@ export const INDUSTRY_TEMPLATES: FlowTemplate[] = [
         name: 'Food Preparation',
         description:
           'Order is being prepared in the kitchen. Guest is notified when ready.',
-        type: 'SERVICE',
+        type: 'WAITING_PERIOD',
         trigger: 'AUTOMATIC',
         requiresQrScan: false,
         requiresStaffAction: false,
         customerInstruction:
-          'Your order is being prepared. We will notify you when it is ready.',
-        notifyCustomerOnActivation: false,
+          'Your food is being freshly prepared in the kitchen. We will notify you when it is ready for collection.',
+        locationDescription: 'Kitchen & Preparation Station',
+        notifyCustomerOnActivation: true,
       },
       {
         stepOrder: 7,

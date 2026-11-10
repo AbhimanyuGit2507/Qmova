@@ -95,6 +95,7 @@ interface VisitStepItem {
   amountCharged?: number | null;
   paymentStatus?: string | null;
   templateStep?: TemplateStep;
+  deferredUntil?: string | Date | null;
 }
 
 async function fetchVisitStatus(accessToken: string) {
@@ -500,12 +501,31 @@ export default function CustomerLiveStatus() {
     }
   };
 
-  // Step Progress Calculation
-  const totalSteps = visitSteps.length;
-  const completedStepsCount = visitSteps.filter(
-    (s: VisitStepItem) => s.status === 'DONE' || s.status === 'SKIPPED'
+  // Completed visit turnaround duration
+  const completedDurationMins = (() => {
+    if (!isCompleted || !data.token?.completedAt) return null;
+    const start = data.token?.checkInTime || data.token?.createdAt;
+    if (!start) return null;
+    const diff =
+      (new Date(data.token.completedAt).getTime() - new Date(start).getTime()) /
+      60000;
+    return Math.max(1, Math.round(diff));
+  })();
+
+  // Step Progress Calculation — Exclude pre-placed ORDER steps from on-site fulfillment count
+  const fulfillmentSteps = visitSteps.filter(
+    (s: VisitStepItem) => s.type !== 'ORDER',
+  );
+  const totalSteps =
+    fulfillmentSteps.length > 0 ? fulfillmentSteps.length : visitSteps.length;
+  const completedStepsCount = fulfillmentSteps.filter(
+    (s: VisitStepItem) => s.status === 'DONE' || s.status === 'SKIPPED',
   ).length;
-  const progressPercent = totalSteps > 0 ? Math.round((completedStepsCount / totalSteps) * 100) : 0;
+  const progressPercent = isCompleted
+    ? 100
+    : totalSteps > 0
+      ? Math.round((completedStepsCount / totalSteps) * 100)
+      : 0;
 
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 text-slate-900 dark:text-zinc-100 font-sans selection:bg-indigo-500/20">
@@ -731,6 +751,41 @@ export default function CustomerLiveStatus() {
                   </div>
                   <span className="text-[10px] sm:text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate block">
                     Live calculated
+                  </span>
+                </div>
+              </div>
+            )}
+
+            {/* ── Completed Turnaround Stats ── */}
+            {isCompleted && (
+              <div className="grid grid-cols-2 gap-2 sm:gap-3">
+                <div className="bg-emerald-50/60 dark:bg-emerald-950/20 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-emerald-200/80 dark:border-emerald-800/60 flex flex-col justify-center min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5 sm:mb-1">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <span className="text-[10px] sm:text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider truncate">
+                      Status
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-extrabold text-emerald-700 dark:text-emerald-300 truncate">
+                    Fulfilled ✓
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-emerald-700/80 dark:text-emerald-400/80 mt-0.5 truncate block">
+                    All stages completed
+                  </span>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-zinc-900 rounded-xl sm:rounded-2xl p-3 sm:p-4 border border-slate-100 dark:border-zinc-800 flex flex-col justify-center min-w-0">
+                  <div className="flex items-center gap-1.5 mb-0.5 sm:mb-1">
+                    <Clock className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+                    <span className="text-[10px] sm:text-[11px] font-bold text-slate-400 dark:text-zinc-400 uppercase tracking-wider truncate">
+                      Turnaround
+                    </span>
+                  </div>
+                  <div className="text-xl sm:text-2xl font-extrabold text-slate-900 dark:text-white truncate">
+                    {completedDurationMins ? `~${completedDurationMins} min` : 'Completed'}
+                  </div>
+                  <span className="text-[10px] sm:text-[11px] text-slate-400 dark:text-zinc-500 mt-0.5 truncate block">
+                    Total duration
                   </span>
                 </div>
               </div>
@@ -1312,6 +1367,25 @@ export default function CustomerLiveStatus() {
                             <MapPin className="w-3 h-3 text-slate-400 shrink-0" />
                             <span className="truncate">{step.templateStep.locationDescription}</span>
                           </p>
+                        )}
+
+                        {/* Waiting Period / Food Prep Stage Live Details */}
+                        {step.type === 'WAITING_PERIOD' && isStepActive && !isDone && (
+                          <div className="mt-2.5 p-3 rounded-xl bg-indigo-50/80 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-800/60 space-y-2">
+                            <div className="flex items-center gap-2 text-indigo-950 dark:text-indigo-200 font-bold text-xs">
+                              <span className="text-base animate-bounce">🍳</span>
+                              <span>{step.templateStep?.customerInstruction || "Your order is being freshly prepared"}</span>
+                            </div>
+                            <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80 leading-relaxed">
+                              {step.templateStep?.locationDescription || "Our team is preparing your order. You will be called as soon as it's ready for collection."}
+                            </p>
+                            {step.deferredUntil && (
+                              <div className="flex items-center justify-between text-[10px] font-bold text-indigo-700 dark:text-indigo-300 pt-1 border-t border-indigo-200/50 dark:border-indigo-800/40">
+                                <span>Est. Ready Time:</span>
+                                <span>{new Date(step.deferredUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                              </div>
+                            )}
+                          </div>
                         )}
                       </div>
                     </div>

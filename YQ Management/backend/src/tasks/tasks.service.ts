@@ -625,4 +625,50 @@ export class TasksService {
       }
     });
   }
+
+  /**
+   * WAITING_PERIOD Auto-Advance: runs every minute to check if timed preparation/waiting stages have expired.
+   */
+  @Cron('* * * * *')
+  async handleWaitingPeriodAutoAdvance() {
+    await this.withDistributedLock('handleWaitingPeriodAutoAdvance', 55, async () => {
+      const now = new Date();
+      const expiredSteps = await this.prisma.visitStep.findMany({
+        where: {
+          status: 'ACTIVE',
+          type: 'WAITING_PERIOD',
+          deferredUntil: { lte: now },
+        },
+        include: { visit: true },
+        take: 50,
+      });
+
+      for (const step of expiredSteps) {
+        if (
+          !step.visit ||
+          step.visit.currentState === 'COMPLETED' ||
+          step.visit.currentState === 'CANCELLED' ||
+          step.visit.currentState === 'NO_SHOW'
+        ) {
+          continue;
+        }
+        try {
+          await this.visitStepService.advanceStep(
+            step.tenantId,
+            step.id,
+            'SYSTEM',
+            { outcome: 'TIMER_ELAPSED' },
+          );
+          this.logger.log(
+            `Auto-advanced waiting/prep step ${step.id} for visit ${step.visitId}`,
+          );
+        } catch (e) {
+          this.logger.error(
+            `Failed to auto-advance waiting/prep step ${step.id}`,
+            e,
+          );
+        }
+      }
+    });
+  }
 }

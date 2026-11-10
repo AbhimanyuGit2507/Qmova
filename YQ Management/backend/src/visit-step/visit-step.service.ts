@@ -132,6 +132,86 @@ export class VisitStepService {
     return allocated;
   }
 
+  /**
+   * Smart Wait Time Calculation (AI / Analytics-driven):
+   * Computes dynamic stage preparation/waiting duration based on:
+   * 1. Average duration of completed visits for the service today
+   * 2. If first order of the day: 7-day historical average
+   * 3. Fallback: tenant configured default or 5 minutes
+   */
+  async calculateSmartWaitTime(
+    tenantId: string,
+    serviceId?: string | null,
+    fallbackMinutes: number = 5,
+  ): Promise<number> {
+    if (!serviceId) return fallbackMinutes;
+
+    try {
+      const now = new Date();
+      const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+      // 1. Check completed visits today
+      const todayVisits = await this.prisma.visit.findMany({
+        where: {
+          tenantId,
+          serviceId,
+          currentState: 'COMPLETED',
+          completedAt: { gte: startOfDay },
+        },
+        select: { createdAt: true, checkInTime: true, completedAt: true },
+        take: 50,
+      });
+
+      if (todayVisits.length > 0) {
+        const durations = todayVisits
+          .map((v) => {
+            const start = v.checkInTime || v.createdAt;
+            if (!v.completedAt || !start) return null;
+            return (v.completedAt.getTime() - start.getTime()) / 60000;
+          })
+          .filter((d): d is number => d !== null && d > 0 && d <= 180);
+
+        if (durations.length > 0) {
+          const avg = durations.reduce((a, b) => a + b, 0) / durations.length;
+          return Math.max(1, Math.round(avg));
+        }
+      }
+
+      // 2. Fallback to 7-day average
+      const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+      const pastVisits = await this.prisma.visit.findMany({
+        where: {
+          tenantId,
+          serviceId,
+          currentState: 'COMPLETED',
+          completedAt: { gte: sevenDaysAgo },
+        },
+        select: { createdAt: true, checkInTime: true, completedAt: true },
+        take: 100,
+      });
+
+      if (pastVisits.length > 0) {
+        const pastDurations = pastVisits
+          .map((v) => {
+            const start = v.checkInTime || v.createdAt;
+            if (!v.completedAt || !start) return null;
+            return (v.completedAt.getTime() - start.getTime()) / 60000;
+          })
+          .filter((d): d is number => d !== null && d > 0 && d <= 180);
+
+        if (pastDurations.length > 0) {
+          const avg = pastDurations.reduce((a, b) => a + b, 0) / pastDurations.length;
+          return Math.max(1, Math.round(avg));
+        }
+      }
+
+      return Math.max(1, fallbackMinutes);
+    } catch (err) {
+      this.logger.error('Failed to calculate smart wait time', err);
+      return Math.max(1, fallbackMinutes);
+    }
+  }
+
   async instantiateStepsForVisit(
     tenantId: string,
     visitId: string,
@@ -1201,12 +1281,29 @@ export class VisitStepService {
           const activeStaff =
             staffId || oldVisit?.operatorId || completedStep.assignedStaffId;
 
+          let stepDeferredUntil = nextStepToActivate.deferredUntil;
+          if (nextStepToActivate.type === 'WAITING_PERIOD') {
+            const fallback =
+              nextStepToActivate.templateStep?.deferredByHours
+                ? nextStepToActivate.templateStep.deferredByHours * 60
+                : 5;
+            const smartWaitMins = await this.calculateSmartWaitTime(
+              completedStep.tenantId,
+              nextStepToActivate.serviceId || oldVisit?.serviceId,
+              fallback,
+            );
+            stepDeferredUntil = new Date(
+              activatedNow.getTime() + smartWaitMins * 60 * 1000,
+            );
+          }
+
           await tx.visitStep.update({
             where: { id: nextStepToActivate.id },
             data: {
               status: 'ACTIVE',
               activatedAt: activatedNow,
               unlockedAt: nextStepToActivate.unlockedAt || activatedNow,
+              deferredUntil: stepDeferredUntil,
               assignedStaffId: activeStaff,
             },
           });

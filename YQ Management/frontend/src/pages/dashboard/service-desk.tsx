@@ -3317,11 +3317,17 @@ export default function ServiceDeskToday() {
                           {stepProgression.next && (
                             <button
                               onClick={() => setStageModalVisit(selectedVisit)}
-                              className="flex-1 bg-sky-600 hover:bg-sky-500 text-white py-2.5 px-3 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-[0.99] cursor-pointer"
+                              className={`flex-1 ${
+                                stepProgression.current?.type === 'WAITING_PERIOD'
+                                  ? 'bg-amber-600 hover:bg-amber-500 shadow-md ring-2 ring-amber-400/40 animate-pulse'
+                                  : 'bg-sky-600 hover:bg-sky-500'
+                              } text-white py-2.5 px-3 rounded-xl font-bold text-xs md:text-sm flex items-center justify-center gap-1.5 transition-all shadow-sm active:scale-[0.99] cursor-pointer`}
                               title="Advance to next journey stage"
                             >
                               <ArrowRight className="w-4 h-4" />
-                              Advance Stage
+                              {stepProgression.current?.type === 'WAITING_PERIOD'
+                                ? '🍽️ Order Ready — Next Stage'
+                                : 'Advance Stage'}
                             </button>
                           )}
 
