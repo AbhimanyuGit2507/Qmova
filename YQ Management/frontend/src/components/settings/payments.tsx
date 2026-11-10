@@ -16,7 +16,10 @@ import {
   Sparkles,
   Power,
   Sliders,
-  Wallet
+  Wallet,
+  Store,
+  Receipt,
+  Banknote
 } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { toast } from 'sonner';
@@ -685,6 +688,73 @@ export default function PaymentsSettings() {
           )}
         </div>
       )}
+
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      {/* PAY AT COUNTER & ON-SITE PAYMENT POLICY                                     */}
+      {/* ────────────────────────────────────────────────────────────────────────── */}
+      <div className="bg-surface dark:bg-dark-surface border border-border dark:border-dark-border rounded-2xl overflow-hidden shadow-sm">
+        <div className="p-6 sm:p-8 bg-gradient-to-br from-surface-container-low via-surface to-surface-container-low dark:from-dark-card dark:via-dark-surface dark:to-dark-card border-b border-border/60 dark:border-dark-border/60">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-orange-500/10 dark:bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
+                <Store className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-lg font-bold text-gray-950 dark:text-white">
+                  Pay at Counter & On-Site Settlement
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-zinc-400 mt-0.5">
+                  Configure verification rules, payment gates, and accepted tender for physical counter transactions.
+                </p>
+              </div>
+            </div>
+            <span className="px-3 py-1 rounded-full text-xs font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 flex items-center gap-1.5 shrink-0">
+              <ShieldCheck className="w-3.5 h-3.5" /> Enforced Gate Active
+            </span>
+          </div>
+        </div>
+
+        <div className="p-6 sm:p-8 space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="p-4 rounded-xl border border-border/80 dark:border-dark-border/80 bg-white dark:bg-zinc-900/60 space-y-2">
+              <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 font-bold text-xs uppercase tracking-wider">
+                <Lock className="w-4 h-4" /> Check-in Payment Gate
+              </div>
+              <p className="text-xs text-gray-600 dark:text-zinc-400 leading-relaxed">
+                Customers selecting <strong>Pay at Counter</strong> are blocked from starting service or collecting items until staff confirms and records payment at the Service Desk.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl border border-border/80 dark:border-dark-border/80 bg-white dark:bg-zinc-900/60 space-y-2">
+              <div className="flex items-center gap-2 text-indigo-600 dark:text-indigo-400 font-bold text-xs uppercase tracking-wider">
+                <Receipt className="w-4 h-4" /> Multi-Tender Recording
+              </div>
+              <p className="text-xs text-gray-600 dark:text-zinc-400 leading-relaxed">
+                Staff can record on-site payments via <strong>Cash</strong>, <strong>Card Terminal / POS</strong>, or <strong>Instant EFT</strong> with optional receipt upload and WhatsApp dispatch.
+              </p>
+            </div>
+
+            <div className="p-4 rounded-xl border border-border/80 dark:border-dark-border/80 bg-white dark:bg-zinc-900/60 space-y-2">
+              <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold text-xs uppercase tracking-wider">
+                <ShieldCheck className="w-4 h-4" /> Zero Revenue Leakage
+              </div>
+              <p className="text-xs text-gray-600 dark:text-zinc-400 leading-relaxed">
+                Every scanned pass cross-references pending counter balances. The scanner interface triggers an instant orange alert if payment is outstanding.
+              </p>
+            </div>
+          </div>
+
+          <div className="p-4 rounded-xl bg-orange-50/60 dark:bg-orange-950/20 border border-orange-200/80 dark:border-orange-900/40 flex items-start gap-3">
+            <AlertCircle className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+            <div className="text-xs text-orange-900 dark:text-orange-200 space-y-1">
+              <p className="font-bold">Service-Level Payment Rules</p>
+              <p className="leading-relaxed opacity-90">
+                You can also customize whether individual services require prepayment online, allow customer choice, or enforce counter-only settlement in each service&apos;s details sidebar under <strong>Services &rarr; Edit Service &rarr; Payments</strong>.
+              </p>
+            </div>
+          </div>
+        </div>
+      </div>
 
       {/* Disconnect Modal */}
       <ConfirmModal
