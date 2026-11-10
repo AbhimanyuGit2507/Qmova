@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Save, Loader2, KeyRound, ShieldCheck } from 'lucide-react';
+import { Save, Loader2, KeyRound, ShieldCheck, LogOut } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { fetchApi } from '../../lib/api';
 import { toast } from 'sonner';
 import PhoneInput from '../PhoneInput';
 
 export default function ProfileSettingsPage() {
-  const { user, refetch } = useAuth();
+  const { user, refetch, logout } = useAuth();
   const [language, setLanguage] = useState('en');
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [savingPersonal, setSavingPersonal] = useState(false);
@@ -104,25 +104,44 @@ export default function ProfileSettingsPage() {
   return (
     <div className="space-y-8 mb-8">
       {/* ── User Avatar & Identity Header ── */}
-      <div className="bg-card dark:bg-dark-card rounded-[24px] border border-border dark:border-dark-border shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-center gap-6">
-        <div className="w-20 h-20 rounded-3xl bg-linear-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white font-extrabold text-2xl shadow-xl flex items-center justify-center shrink-0 border-2 border-white/20 select-none">
-          {initials}
-        </div>
-        <div className="text-center sm:text-left min-w-0 flex-1">
-          <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-            <h2 className="text-xl font-bold text-on-surface dark:text-white truncate">
-              {fullName || user?.name || email.split('@')[0] || 'User Profile'}
-            </h2>
-            <span className="inline-flex self-center sm:self-auto items-center px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold uppercase tracking-wider border border-primary/25">
-              {user?.role || 'Staff'}
-            </span>
+      <div className="bg-card dark:bg-dark-card rounded-[24px] border border-border dark:border-dark-border shadow-sm p-6 sm:p-8 flex flex-col sm:flex-row items-center sm:items-center justify-between gap-6">
+        <div className="flex flex-col sm:flex-row items-center gap-6 min-w-0 flex-1">
+          <div className="w-20 h-20 rounded-3xl bg-linear-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white font-extrabold text-2xl shadow-xl flex items-center justify-center shrink-0 border-2 border-white/20 select-none">
+            {initials}
           </div>
-          <p className="text-xs font-mono text-on-surface-variant dark:text-zinc-400 mt-1">
-            {email}
-          </p>
-          <p className="text-xs text-outline mt-1">
-            Account ID: <span className="font-mono">{user?.id?.substring(0, 8)}...</span>
-          </p>
+          <div className="text-center sm:text-left min-w-0 flex-1">
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <h2 className="text-xl font-bold text-on-surface dark:text-white truncate">
+                {fullName || user?.name || email.split('@')[0] || 'User Profile'}
+              </h2>
+              <span className="inline-flex self-center sm:self-auto items-center px-2.5 py-0.5 rounded-full bg-primary/10 text-primary text-[11px] font-bold uppercase tracking-wider border border-primary/25">
+                {user?.role || 'Staff'}
+              </span>
+            </div>
+            <p className="text-xs font-mono text-on-surface-variant dark:text-zinc-400 mt-1">
+              {email}
+            </p>
+            <p className="text-xs text-outline mt-1">
+              Account ID: <span className="font-mono">{user?.id?.substring(0, 8)}...</span>
+            </p>
+          </div>
+        </div>
+
+        <div className="shrink-0 w-full sm:w-auto flex items-center justify-center sm:justify-end">
+          <button
+            type="button"
+            onClick={async () => {
+              try {
+                await logout();
+              } catch (err: any) {
+                toast.error(err?.message || 'Failed to sign out');
+              }
+            }}
+            className="w-full sm:w-auto h-[42px] px-5 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 hover:bg-red-100/80 dark:bg-red-950/30 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 font-semibold text-sm transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer"
+          >
+            <LogOut className="w-4 h-4" />
+            <span>Sign Out</span>
+          </button>
         </div>
       </div>
 
@@ -303,6 +322,33 @@ export default function ProfileSettingsPage() {
             </button>
           </div>
         </form>
+      </div>
+
+      {/* ── Active Session & Sign Out Card ── */}
+      <div className="bg-card dark:bg-dark-card rounded-[24px] border border-border dark:border-dark-border shadow-sm p-8 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-6">
+        <div>
+          <div className="flex items-center gap-3 mb-1">
+            <span className="material-symbols-outlined text-red-500" style={{ fontVariationSettings: "'FILL' 1" }}>logout</span>
+            <h2 className="font-headline-md text-headline-md text-on-surface dark:text-white tracking-tight font-semibold">Sign Out of Account</h2>
+          </div>
+          <p className="font-body-md text-body-md text-on-surface-variant dark:text-outline max-w-xl">
+            Sign out of your active session on this device. You will be redirected to the login page and will need your credentials to sign back in.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={async () => {
+            try {
+              await logout();
+            } catch (err: any) {
+              toast.error(err?.message || 'Failed to sign out');
+            }
+          }}
+          className="shrink-0 h-[44px] px-6 rounded-xl border border-red-200 dark:border-red-900/60 bg-red-50 hover:bg-red-100 dark:bg-red-950/30 dark:hover:bg-red-950/60 text-red-600 dark:text-red-400 font-semibold text-sm transition-all shadow-xs flex items-center justify-center gap-2 cursor-pointer w-full sm:w-auto"
+        >
+          <LogOut className="w-4 h-4" />
+          <span>Sign Out</span>
+        </button>
       </div>
     </div>
   );

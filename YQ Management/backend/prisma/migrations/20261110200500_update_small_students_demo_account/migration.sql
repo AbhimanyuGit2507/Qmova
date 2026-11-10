@@ -102,3 +102,4 @@ BEGIN
         WHERE email = 'events@yqbuddy.com';
     END IF;
 END $$;
+
