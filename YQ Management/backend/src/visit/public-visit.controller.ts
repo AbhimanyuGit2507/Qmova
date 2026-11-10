@@ -437,7 +437,7 @@ export class PublicVisitController {
                 platformFeeAmount: 0, // No platform fee for offline payments
                 tenantNetAmount: totalBasePrice,
                 currency: service.priceCurrency || 'ZAR',
-                status: 'PENDING',
+                status: 'PENDING_COUNTER' as any,
                 stripePaymentMethodType: 'OFFLINE',
                 method: 'CASH',
                 description: 'Payment pending at counter',
@@ -531,7 +531,7 @@ export class PublicVisitController {
         await this.prisma.bookingPayment.update({
           where: { id: existingPayment.id },
           data: {
-            status: 'PENDING',
+            status: 'PENDING_COUNTER' as any,
             stripePaymentMethodType: 'OFFLINE',
             method: 'CASH',
             description: 'Payment pending at counter',
@@ -547,7 +547,7 @@ export class PublicVisitController {
             platformFeeAmount: 0,
             tenantNetAmount: totalAmount,
             currency: v.service?.priceCurrency || 'ZAR',
-            status: 'PENDING',
+            status: 'PENDING_COUNTER' as any,
             stripePaymentMethodType: 'OFFLINE',
             method: 'CASH',
             description: 'Payment pending at counter',

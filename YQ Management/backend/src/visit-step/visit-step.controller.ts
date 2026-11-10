@@ -121,4 +121,30 @@ export class VisitStepController {
       req.user.id,
     );
   }
+
+  /**
+   * POST /visit-steps/visits/:visitId/record-payment
+   * Staff records a counter payment for a visit with PENDING_COUNTER status.
+   * This unblocks subsequent QR scans / step advancement.
+   */
+  @Post('visits/:visitId/record-payment')
+  @RequirePagePermission('payments:record')
+  recordCounterPayment(
+    @Req() req: any,
+    @Param('visitId') visitId: string,
+    @Body()
+    dto: {
+      amount?: number;
+      method?: string;
+      proofUrl?: string;
+      notes?: string;
+    },
+  ) {
+    return this.visitStepService.recordCounterPayment(
+      req.user.tenantId,
+      visitId,
+      req.user.id,
+      dto,
+    );
+  }
 }

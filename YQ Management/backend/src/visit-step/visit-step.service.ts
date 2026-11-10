@@ -284,6 +284,39 @@ export class VisitStepService {
       throw new NotFoundException('Invalid or expired QR code.');
     }
 
+    // ── PAYMENT GATE ────────────────────────────────────────────────────────
+    // Before ANY step can be activated, check whether this visit has an
+    // outstanding counter payment that must be collected first.
+    // PENDING_COUNTER = customer chose "Pay at Counter" at booking time.
+    // The operator must record payment in the service desk before the visit
+    // can proceed through any stage.
+    const pendingCounterPayment = await this.prisma.bookingPayment.findFirst({
+      where: {
+        visitId: visit.id,
+        status: 'PENDING_COUNTER' as any,
+      },
+      select: {
+        id: true,
+        amount: true,
+        currency: true,
+        description: true,
+      },
+    });
+    if (pendingCounterPayment) {
+      return {
+        action: 'PAYMENT_REQUIRED',
+        payment: {
+          id: pendingCounterPayment.id,
+          amount: pendingCounterPayment.amount,
+          currency: pendingCounterPayment.currency,
+          description: pendingCounterPayment.description,
+          visitId: visit.id,
+          displayId: visit.displayId,
+        },
+      };
+    }
+    // ── END PAYMENT GATE ─────────────────────────────────────────────────────
+
     // First, sweep any expired steps for this visit
     const now = new Date();
     for (const step of visit.visitSteps) {
@@ -1516,5 +1549,70 @@ export class VisitStepService {
     );
 
     return updated;
+  }
+
+  /**
+   * Record a counter payment for a visit with an outstanding PENDING_COUNTER balance.
+   * Called by the operator from the service desk sidebar when collecting cash/EFT.
+   * Updates the BookingPayment status to SUCCEEDED so subsequent QR scans proceed.
+   */
+  async recordCounterPayment(
+    tenantId: string,
+    visitId: string,
+    staffId: string,
+    dto: {
+      amount?: number;
+      method?: string;
+      proofUrl?: string;
+      notes?: string;
+    },
+  ) {
+    const payment = await this.prisma.bookingPayment.findFirst({
+      where: { visitId, tenantId, status: 'PENDING_COUNTER' as any },
+    });
+
+    if (!payment) {
+      throw new BadRequestException(
+        'No pending counter payment found for this visit.',
+      );
+    }
+
+    const updated = await this.prisma.bookingPayment.update({
+      where: { id: payment.id },
+      data: {
+        status: 'SUCCEEDED',
+        method: (dto.method as any) || payment.method || 'CASH',
+        amount: dto.amount ?? payment.amount,
+        tenantNetAmount: dto.amount ?? payment.amount,
+        proofUrl: dto.proofUrl || null,
+        recordedByStaffId: staffId,
+        description: dto.notes
+          ? `Counter payment collected — ${dto.notes}`
+          : 'Counter payment collected',
+        updatedAt: new Date(),
+      },
+    });
+
+    // Log the payment event
+    await this.prisma.outboxEvent.create({
+      data: {
+        type: 'PAYMENT_RECORDED',
+        payload: {
+          visitId,
+          tenantId,
+          paymentId: updated.id,
+          amount: updated.amount,
+          currency: updated.currency,
+          method: updated.method,
+          recordedBy: staffId,
+        },
+      },
+    });
+
+    return {
+      success: true,
+      payment: updated,
+      message: `Payment of ${updated.currency} ${(updated.amount / 100).toFixed(2)} recorded successfully.`,
+    };
   }
 }

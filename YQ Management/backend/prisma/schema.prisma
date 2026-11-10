@@ -1405,6 +1405,7 @@ enum StepEventType {
 
 enum BookingPaymentStatus {
   PENDING
+  PENDING_COUNTER // Cash/offline payment owed at counter — service is gated until this becomes SUCCEEDED
   PROCESSING
   SUCCEEDED
   FAILED
