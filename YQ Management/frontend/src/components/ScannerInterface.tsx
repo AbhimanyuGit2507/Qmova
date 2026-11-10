@@ -12,6 +12,9 @@ import {
   X,
   CameraOff,
   AlertCircle,
+  AlertTriangle,
+  CreditCard,
+  ArrowRight,
 } from "lucide-react";
 import { fetchApi } from "../lib/api";
 import PhoneInput from "react-phone-number-input";
@@ -51,6 +54,13 @@ interface ValidationResult {
   isFuture?: boolean;
   canOverride?: boolean;
   metadata?: AnyFixMe;
+  pendingCounterPayment?: {
+    id: string;
+    amount: number;
+    currency: string;
+    method: string;
+    description?: string;
+  } | null;
 }
 
 const SCANNER_CONFIG = {
@@ -1430,7 +1440,46 @@ export function ScannerInterface({
                     </div>
 
                     <div className="mt-auto pt-4 border-t border-border flex flex-col gap-3">
-                      {validationResult.valid ? (
+                      {/* ⚠️ PAYMENT GATE — Must record counter payment before ANY step proceeds */}
+                      {validationResult.valid && validationResult.pendingCounterPayment ? (
+                        <div className="w-full flex flex-col gap-3">
+                          <div className="p-4 rounded-xl border-2 border-orange-400 dark:border-orange-500 bg-orange-50 dark:bg-orange-950/40 space-y-3">
+                            <div className="flex items-center gap-2 text-orange-800 dark:text-orange-300 font-bold text-sm">
+                              <AlertTriangle className="w-5 h-5 text-orange-600 dark:text-orange-400 shrink-0" />
+                              <span>PAYMENT REQUIRED BEFORE SERVICE</span>
+                            </div>
+                            <div className="flex items-center justify-between bg-white dark:bg-zinc-900 rounded-lg p-3 border border-orange-200 dark:border-orange-800">
+                              <div className="text-xs text-zinc-500 dark:text-zinc-400 uppercase tracking-wider font-medium">
+                                Amount Due
+                              </div>
+                              <div className="text-xl font-bold text-orange-700 dark:text-orange-300">
+                                {validationResult.pendingCounterPayment.currency || 'ZAR'}{' '}
+                                {((validationResult.pendingCounterPayment.amount || 0) / 100).toFixed(2)}
+                              </div>
+                            </div>
+                            <div className="text-xs text-orange-700 dark:text-orange-400">
+                              Customer selected <strong>Pay at Counter</strong>. Record payment in the Service Desk before scanning to advance this ticket.
+                            </div>
+                          </div>
+                          <button
+                            onClick={() => {
+                              stopScanning();
+                              onScanSuccess(validationResult);
+                            }}
+                            className="w-full h-12 bg-orange-600 hover:bg-orange-700 text-white font-semibold rounded-xl flex items-center justify-center gap-2 transition-colors shadow-sm"
+                          >
+                            <CreditCard className="w-5 h-5" />
+                            Go to Service Desk — Record Payment
+                            <ArrowRight className="w-4 h-4" />
+                          </button>
+                          <button
+                            onClick={() => { setValidationResult(null); startScanning(); }}
+                            className="w-full h-10 bg-surface text-on-surface border border-border font-medium rounded-xl flex items-center justify-center gap-2 hover:bg-surface-container transition-colors text-sm"
+                          >
+                            Scan Another Ticket
+                          </button>
+                        </div>
+                      ) : validationResult.valid ? (
                         validationResult.activeStep ? (
                           // SEF Step Actions
                           <div className="w-full flex flex-col gap-2">

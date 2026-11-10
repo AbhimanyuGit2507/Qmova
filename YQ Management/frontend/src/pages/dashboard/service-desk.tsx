@@ -2275,7 +2275,7 @@ export default function ServiceDeskToday() {
                             const isDue =
                               v.currentState === "PENDING_PAYMENT" ||
                               v.bookingPayments?.some(
-                                (p: any) => p.status === "PENDING",
+                                (p: any) => p.status === "PENDING" || p.status === "PENDING_COUNTER",
                               );
                             const isCounter =
                               v.service?.serviceFlow?.checkinPayMode ===
@@ -2848,6 +2848,42 @@ export default function ServiceDeskToday() {
                       )}
                     </div>
                   </div>
+
+                  {/* PAYMENT GATE BANNER */}
+                  {(() => {
+                    const pendingCounterPay = selectedVisit?.bookingPayments?.find(
+                      (p: any) => p.status === 'PENDING_COUNTER',
+                    );
+                    if (!pendingCounterPay) return null;
+                    const amountDue = ((pendingCounterPay.amount || 0) / 100).toFixed(2);
+                    const currency = pendingCounterPay.currency || 'ZAR';
+                    return (
+                      <div id={`payment-section-${selectedVisit?.id}`} className="flex items-center justify-between gap-2 p-3 bg-orange-500/10 dark:bg-orange-950/40 border-2 border-orange-500/60 rounded-xl text-xs md:text-sm">
+                        <div className="flex items-center gap-2 min-w-0 text-orange-800 dark:text-orange-200">
+                          <span className="material-symbols-outlined text-[18px] text-orange-500 shrink-0">payment</span>
+                          <div className="min-w-0">
+                            <div className="font-bold text-sm text-orange-900 dark:text-orange-100">PAYMENT REQUIRED</div>
+                            <div className="text-orange-700 dark:text-orange-300 font-medium">{currency} {amountDue} — Cash at Counter</div>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setRecordPaymentModalState({
+                              isOpen: true,
+                              initialMethod: 'CASH',
+                              amount: pendingCounterPay.amount || 0,
+                              currency: pendingCounterPay.currency || 'ZAR',
+                              visit: selectedVisit,
+                              pendingPaymentId: pendingCounterPay.id,
+                            });
+                          }}
+                          className="bg-orange-600 hover:bg-orange-700 text-white font-bold text-xs px-3 py-1.5 rounded-lg shrink-0 transition-colors cursor-pointer flex items-center gap-1 shadow-xs"
+                        >
+                          Record Payment
+                        </button>
+                      </div>
+                    );
+                  })()}
 
                   {/* 2. Customer Overdue Alert - Small, compact, easy to understand */}
                   {isLateOrNoShowEligible && (
@@ -3454,8 +3490,11 @@ export default function ServiceDeskToday() {
                       selectedVisit?.bookingPayments?.find(
                         (p: any) => p.status === "SUCCEEDED",
                       );
+                    const pendingCounterPayment = selectedVisit?.bookingPayments?.find(
+                      (p: any) => p.status === "PENDING_COUNTER",
+                    );
                     const pendingPayment = selectedVisit?.bookingPayments?.find(
-                      (p: any) => p.status === "PENDING",
+                      (p: any) => p.status === "PENDING" || p.status === "PENDING_COUNTER",
                     );
                     const isPendingPaymentState =
                       selectedVisit?.currentState === "PENDING_PAYMENT";
@@ -3526,6 +3565,7 @@ export default function ServiceDeskToday() {
                     if (
                       !succeededPayment &&
                       !pendingPayment &&
+                      !pendingCounterPayment &&
                       !isPendingPaymentState &&
                       !hasPaymentObligation
                     ) {
@@ -3544,7 +3584,7 @@ export default function ServiceDeskToday() {
                         : priceCurrency;
 
                     return (
-                      <div className="p-3.5 border border-border/80 dark:border-white/10 bg-surface-container-low dark:bg-zinc-900/60 rounded-xl space-y-3 text-xs">
+                      <div id={`payment-section-${selectedVisit?.id}`} className="p-3.5 border border-border/80 dark:border-white/10 bg-surface-container-low dark:bg-zinc-900/60 rounded-xl space-y-3 text-xs">
                         <div className="flex items-center justify-between">
                           <div className="flex items-center gap-1.5 font-bold text-zinc-900 dark:text-zinc-100">
                             <span className="material-symbols-outlined text-[16px] text-primary">
@@ -3555,6 +3595,11 @@ export default function ServiceDeskToday() {
                           {succeededPayment ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
                               <CheckCircle2 className="w-3 h-3" /> Paid
+                            </span>
+                          ) : pendingCounterPayment ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/10 text-orange-700 dark:text-orange-400 flex items-center gap-1">
+                              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-pulse" />{" "}
+                              Pay at Counter
                             </span>
                           ) : isPendingPaymentState || pendingPayment ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center gap-1">
@@ -3976,19 +4021,35 @@ export default function ServiceDeskToday() {
               : recordPaymentModalState.amount;
 
           if (pendingId) {
-            await fetchApi(
-              `/tenant-payments/public/payment/${pendingId}/complete`,
-              {
+            const isCounterPayment = recordPaymentModalState.visit?.bookingPayments?.some(
+              (p: any) => p.id === pendingId && p.status === 'PENDING_COUNTER',
+            );
+            if (isCounterPayment && visitId) {
+              await fetchApi(`/visit-steps/visits/${visitId}/record-payment`, {
                 method: "POST",
                 body: JSON.stringify({
+                  paymentId: pendingId,
                   method: data.method,
-                  proofUrl: data.proofUrl,
-                  description: data.description,
-                  staffId: user?.id,
+                  proofUrl: data.proofUrl || null,
+                  notes: data.description || null,
                   sendWhatsAppReceipt: data.sendReceipt,
                 }),
-              },
-            );
+              });
+            } else {
+              await fetchApi(
+                `/tenant-payments/public/payment/${pendingId}/complete`,
+                {
+                  method: "POST",
+                  body: JSON.stringify({
+                    method: data.method,
+                    proofUrl: data.proofUrl,
+                    description: data.description,
+                    staffId: user?.id,
+                    sendWhatsAppReceipt: data.sendReceipt,
+                  }),
+                },
+              );
+            }
           } else if (visitId) {
             await fetchApi(`/tenant-payments/manual`, {
               method: "POST",
@@ -4026,7 +4087,7 @@ export default function ServiceDeskToday() {
                       : prev.currentState,
                   bookingPayments: [
                     ...(prev.bookingPayments || []).filter(
-                      (p: any) => p.status !== "PENDING",
+                      (p: any) => p.status !== "PENDING" && p.status !== "PENDING_COUNTER",
                     ),
                     {
                       id: "temp-" + Date.now(),

@@ -2711,6 +2711,10 @@ export class VisitService {
           include: { templateStep: true },
           orderBy: { stepOrder: 'asc' },
         },
+        bookingPayments: {
+          where: { status: 'PENDING_COUNTER' as any },
+          take: 1,
+        },
       },
     });
 
@@ -2889,6 +2893,9 @@ export class VisitService {
     const activeStep =
       actionableSteps && actionableSteps.length > 0 ? actionableSteps[0] : null;
 
+    // Check for outstanding counter payment — operator must record payment before service starts
+    const pendingCounterPayment = (visit as any).bookingPayments?.[0] || null;
+
     return {
       valid: true,
       isCompleted: false,
@@ -2910,6 +2917,7 @@ export class VisitService {
       lastCompletedStep,
       allSteps: visit.visitSteps || [],
       metadata: visit.metadata,
+      pendingCounterPayment,
     };
   }
 
