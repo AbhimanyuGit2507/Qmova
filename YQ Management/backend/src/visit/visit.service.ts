@@ -2763,6 +2763,49 @@ export class VisitService {
         ? completedSteps[completedSteps.length - 1]
         : null);
 
+    // Payment status resolution — both paid and pending-at-counter
+    const payments = (visit as any).bookingPayments || [];
+    const pendingCounterPayment =
+      payments.find((p: any) => p.status === 'PENDING_COUNTER') || null;
+    const succeededPayment =
+      payments.find((p: any) => p.status === 'SUCCEEDED') || null;
+    const latestPayment = payments[0] || null;
+
+    const paymentSummary = {
+      isPaid: Boolean(succeededPayment),
+      isPendingCounter: Boolean(pendingCounterPayment),
+      status: pendingCounterPayment
+        ? 'PENDING_COUNTER'
+        : succeededPayment
+        ? 'SUCCEEDED'
+        : latestPayment
+        ? latestPayment.status
+        : 'NONE',
+      amount:
+        pendingCounterPayment?.amount ??
+        succeededPayment?.amount ??
+        latestPayment?.amount ??
+        0,
+      currency:
+        pendingCounterPayment?.currency ??
+        succeededPayment?.currency ??
+        latestPayment?.currency ??
+        'ZAR',
+      method:
+        pendingCounterPayment?.paymentMethod ??
+        succeededPayment?.paymentMethod ??
+        latestPayment?.paymentMethod ??
+        'NONE',
+      receiptUrl: succeededPayment?.receiptUrl ?? latestPayment?.receiptUrl ?? null,
+      paidAt: succeededPayment?.paidAt ?? null,
+    };
+
+    const selectedItems =
+      (visit.metadata as any)?.selectedItems ||
+      (visit.metadata as any)?.orderItems ||
+      (visit.metadata as any)?.cart ||
+      [];
+
     if (
       visit.currentState === 'COMPLETED' ||
       visit.currentState === 'CANCELLED' ||
@@ -2776,6 +2819,7 @@ export class VisitService {
         tokenId: visit.id,
         displayId: visit.displayId,
         customerName: visit.customer?.name || 'Unknown',
+        phone: visit.customer?.phone || null,
         queueName: visit.queue?.name || 'Unknown Queue',
         locationName: visit.queue?.location?.name || 'Unknown Location',
         serviceBooked: visit.service?.name || 'Unknown Service',
@@ -2788,6 +2832,8 @@ export class VisitService {
         lastCompletedStep,
         allSteps: visit.visitSteps || [],
         metadata: visit.metadata,
+        paymentSummary,
+        selectedItems,
       };
     }
 
@@ -2893,49 +2939,10 @@ export class VisitService {
     const activeStep =
       actionableSteps && actionableSteps.length > 0 ? actionableSteps[0] : null;
 
-    // Payment status resolution — both paid and pending-at-counter
-    const payments = (visit as any).bookingPayments || [];
-    const pendingCounterPayment =
-      payments.find((p: any) => p.status === 'PENDING_COUNTER') || null;
-    const succeededPayment =
-      payments.find((p: any) => p.status === 'SUCCEEDED') || null;
-    const latestPayment = payments[0] || null;
-
-    const paymentSummary = {
-      isPaid: Boolean(succeededPayment),
-      isPendingCounter: Boolean(pendingCounterPayment),
-      status: pendingCounterPayment
-        ? 'PENDING_COUNTER'
-        : succeededPayment
-        ? 'SUCCEEDED'
-        : latestPayment
-        ? latestPayment.status
-        : 'NONE',
-      amount:
-        pendingCounterPayment?.amount ??
-        succeededPayment?.amount ??
-        latestPayment?.amount ??
-        0,
-      currency:
-        pendingCounterPayment?.currency ??
-        succeededPayment?.currency ??
-        latestPayment?.currency ??
-        'ZAR',
-      method:
-        pendingCounterPayment?.paymentMethod ??
-        succeededPayment?.paymentMethod ??
-        latestPayment?.paymentMethod ??
-        'NONE',
-      receiptUrl: succeededPayment?.receiptUrl ?? latestPayment?.receiptUrl ?? null,
-      paidAt: succeededPayment?.paidAt ?? null,
-    };
-
-    const selectedItems =
-      (visit.metadata as any)?.selectedItems ||
-      (visit.metadata as any)?.orderItems ||
-      (visit.metadata as any)?.cart ||
-      (activeStep as any)?.selectedItems ||
-      [];
+    const activeSelectedItems =
+      selectedItems.length > 0
+        ? selectedItems
+        : (activeStep as any)?.selectedItems || [];
 
     return {
       valid: true,
@@ -2959,7 +2966,7 @@ export class VisitService {
       lastCompletedStep,
       allSteps: visit.visitSteps || [],
       metadata: visit.metadata,
-      selectedItems,
+      selectedItems: activeSelectedItems,
       paymentSummary,
       pendingCounterPayment,
     };

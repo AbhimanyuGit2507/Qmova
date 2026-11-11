@@ -601,9 +601,8 @@ export class ServiceFlowService {
     });
 
     if (flow) {
-      const hasCheckIn = flow.steps.some((s) => s.type === 'CHECK_IN');
       const hasCheckOut = flow.steps.some((s) => s.type === 'CHECK_OUT');
-      if (!hasCheckIn || !hasCheckOut) {
+      if (!hasCheckOut) {
         await this.ensureBookends(flow.id);
         flow = await this.prisma.serviceFlow.findUnique({
           where: { serviceId },

@@ -39,7 +39,7 @@ export class AuthController {
   ) {}
 
   @UseGuards(ThrottlerGuard)
-  @Throttle({ default: { limit: 5, ttl: 300000 } }) // 5 requests per 5 minutes
+  @Throttle({ default: { limit: 15, ttl: 60000 } }) // 15 requests per minute
   @Post('login')
   async login(
     @Body() body: any,

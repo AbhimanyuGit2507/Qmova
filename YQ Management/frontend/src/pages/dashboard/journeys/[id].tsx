@@ -1551,6 +1551,7 @@ export default function JourneyBuilder() {
                   selectedStepId={editingStep?.id}
                   fitViewTrigger={fitViewTrigger}
                   onEditStep={openEdit}
+                  onDeleteStep={(step) => setStepToDelete(step.id)}
                   onSaveTransitions={handleSaveTransitions}
                   onEditEdge={openEditEdge}
                   onAddStage={openAdd}
@@ -1760,6 +1761,22 @@ export default function JourneyBuilder() {
                           />
                         </div>
                       </section>
+
+                      {editingStep?.type === "CHECK_IN" && (
+                        <div className="p-3.5 bg-indigo-50/70 dark:bg-indigo-950/40 rounded-xl border border-indigo-200/80 dark:border-indigo-800/80 text-xs space-y-1.5">
+                          <div className="flex items-center justify-between font-bold text-indigo-900 dark:text-indigo-200">
+                            <span className="flex items-center gap-1.5">
+                              <span>📱</span> Arrival QR Gate (Optional)
+                            </span>
+                            <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 font-bold">
+                              Opt-In Stage
+                            </span>
+                          </div>
+                          <p className="text-zinc-600 dark:text-zinc-400 text-[11px] leading-relaxed">
+                            This stage scans a customer QR ticket or verifies ID upon arrival. If your workflow proceeds directly to order placement, kitchen prep, or walk-in service (such as catering stalls, school events, or fast-casual counters), you can safely <strong>remove this stage</strong> using the red remove button below.
+                          </p>
+                        </div>
+                      )}
 
                       {/* Stage Type & Trigger — skip for system steps */}
                       {!editingStep?.isSystem && (

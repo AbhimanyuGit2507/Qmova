@@ -31,6 +31,7 @@ import {
   Calendar,
   LayoutTemplate,
   RotateCcw,
+  Trash2,
 } from 'lucide-react';
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; darkColor: string; icon: any }> = {
@@ -195,10 +196,15 @@ const SystemNode = ({ data, selected }: any) => {
             <Icon className="w-5 h-5" style={{ color: cfg.color }} />
           </div>
           <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-1.5 mb-0.5">
+            <div className="flex items-center justify-between mb-0.5">
               <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: cfg.color }}>
-                {isCheckIn ? '🔒 Verification Gate' : '🏁 Completed Stage'}
+                {isCheckIn ? 'Optional Verification Gate' : '🏁 Completed Stage'}
               </span>
+              {isCheckIn && (
+                <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-800/80">
+                  Opt-In
+                </span>
+              )}
             </div>
             <h3 className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
               {isCheckIn && (data.name === 'Check-In' || data.name === 'Booking Verification')
@@ -220,19 +226,34 @@ const SystemNode = ({ data, selected }: any) => {
           <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400 font-medium">
             {isCheckIn ? '📱 QR Scan Gate' : '✅ Final Handover'}
           </span>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              data.onEdit(data.step);
-            }}
-            className={`flex items-center gap-1 py-1 px-2 rounded-lg text-[10px] font-semibold transition-all duration-200 border ${
-              isSelected ? 'opacity-100 font-bold' : 'opacity-0 group-hover:opacity-100'
-            }`}
-            style={{ color: cfg.color, background: `${cfg.color}15`, borderColor: `${cfg.color}30` }}
-          >
-            <Settings2 className="w-3 h-3" /> {isSelected ? 'Configuring' : 'Configure'}
-          </button>
+          <div className="flex items-center gap-1.5">
+            {isCheckIn && data.onDelete && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  data.onDelete(data.step);
+                }}
+                className="flex items-center gap-1 py-1 px-2 rounded-lg text-[10px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-900/40 transition-colors"
+                title="Remove Arrival QR Verification Gate (flow will proceed directly to service)"
+              >
+                <Trash2 className="w-3 h-3" /> Remove
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                data.onEdit(data.step);
+              }}
+              className={`flex items-center gap-1 py-1 px-2 rounded-lg text-[10px] font-semibold transition-all duration-200 border ${
+                isSelected ? 'opacity-100 font-bold' : 'opacity-80 hover:opacity-100'
+              }`}
+              style={{ color: cfg.color, background: `${cfg.color}15`, borderColor: `${cfg.color}30` }}
+            >
+              <Settings2 className="w-3 h-3" /> {isSelected ? 'Configuring' : 'Configure'}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -366,6 +387,7 @@ interface FlowBuilderProps {
   flow: any; // includes ALL steps (system + custom)
   selectedStepId?: string | null;
   onEditStep: (step: any) => void;
+  onDeleteStep?: (step: any) => void;
   onSaveTransitions: (fromStepId: string, transitions: any[]) => void;
   onEditEdge?: (edge: any) => void;
   onAddStage?: () => void;
@@ -373,7 +395,15 @@ interface FlowBuilderProps {
 }
 
 export function FlowBuilder(props: FlowBuilderProps) {
-  const { flow, selectedStepId, onEditStep, onSaveTransitions, onAddStage, fitViewTrigger } = props;
+  const {
+    flow,
+    selectedStepId,
+    onEditStep,
+    onDeleteStep,
+    onSaveTransitions,
+    onAddStage,
+    fitViewTrigger,
+  } = props;
   const [rfInstance, setRfInstance] = React.useState<any>(null);
   const [mousePos, setMousePos] = React.useState<{ x: number; y: number }>({ x: -1000, y: -1000 });
   const [isHovered, setIsHovered] = React.useState(false);
@@ -387,7 +417,21 @@ export function FlowBuilder(props: FlowBuilderProps) {
     try {
       const saved = localStorage.getItem(`yq_flow_positions_${flow.id}`);
       if (saved) {
-        positionsRef.current = JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        // Detect and clear legacy cramped spacing (< 260px gap between Booking Channel and next node)
+        const bPos = parsed['__booking_channel__'];
+        const otherPositions = Object.entries(parsed).filter(([k]) => k !== '__booking_channel__');
+        const hasCrampedY =
+          bPos &&
+          otherPositions.some(
+            ([_, p]: any) => p && typeof p.y === 'number' && p.y > bPos.y && p.y - bPos.y < 260
+          );
+        if (hasCrampedY) {
+          localStorage.removeItem(`yq_flow_positions_${flow.id}`);
+          positionsRef.current = {};
+        } else {
+          positionsRef.current = parsed;
+        }
       }
     } catch {
       // ignore storage access issues
@@ -440,7 +484,8 @@ export function FlowBuilder(props: FlowBuilderProps) {
       data: { allowAppointments, allowWalkins: true },
       draggable: true,
     });
-    y += 230;
+    // Advance by 320px: Card height is ~185px, providing ~135px vertical space for clean handles and edge badge
+    y += 320;
 
     // Check-In (Optional initial verification gate)
     if (checkIn) {
@@ -450,11 +495,19 @@ export function FlowBuilder(props: FlowBuilderProps) {
         id: checkIn.id,
         type: 'system',
         position: checkInPos,
-        data: { name: checkIn.name, description: checkIn.description, type: 'CHECK_IN', step: checkIn, onEdit: onEditStep, isSelected },
+        data: {
+          name: checkIn.name,
+          description: checkIn.description,
+          type: 'CHECK_IN',
+          step: checkIn,
+          onEdit: onEditStep,
+          onDelete: onDeleteStep,
+          isSelected,
+        },
         selected: isSelected,
         draggable: true,
       });
-      y += 230;
+      y += 310;
     }
 
     // Middle stages OR empty prompt
@@ -468,7 +521,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
         data: { onAddStage },
         draggable: true,
       });
-      y += 260;
+      y += 280;
     } else {
       for (const step of middleSteps) {
         const isSelected = selectedStepId === step.id;
@@ -477,12 +530,20 @@ export function FlowBuilder(props: FlowBuilderProps) {
           id: step.id,
           type: 'custom',
           position: stepPos,
-          data: { name: step.name, description: step.description, type: step.type, isOptional: step.isOptional, step, onEdit: onEditStep, isSelected },
+          data: {
+            name: step.name,
+            description: step.description,
+            type: step.type,
+            isOptional: step.isOptional,
+            step,
+            onEdit: onEditStep,
+            onDelete: onDeleteStep,
+            isSelected,
+          },
           selected: isSelected,
           draggable: true,
         });
-        // Middle cards are ~170px height; advancing by 280px provides ~110px space between cards
-        y += 280;
+        y += 290;
       }
     }
 
@@ -494,14 +555,21 @@ export function FlowBuilder(props: FlowBuilderProps) {
         id: checkOut.id,
         type: 'system',
         position: checkOutPos,
-        data: { name: checkOut.name, description: checkOut.description, type: 'CHECK_OUT', step: checkOut, onEdit: onEditStep, isSelected },
+        data: {
+          name: checkOut.name,
+          description: checkOut.description,
+          type: 'CHECK_OUT',
+          step: checkOut,
+          onEdit: onEditStep,
+          isSelected,
+        },
         selected: isSelected,
         draggable: true,
       });
     }
 
     return nodes;
-  }, [flow, onEditStep, onAddStage, selectedStepId]);
+  }, [flow, onEditStep, onDeleteStep, onAddStage, selectedStepId]);
 
   const initialNodes = useMemo(() => computeNodes(false), [computeNodes]);
 
@@ -520,26 +588,26 @@ export function FlowBuilder(props: FlowBuilderProps) {
         id: 'e-booking-checkin',
         source: '__booking_channel__',
         target: checkInNode.id,
-        label: 'Arrival & QR Pass',
+        label: 'Arrival QR Pass',
         animated: true,
         style: { stroke: '#4f46e5', strokeWidth: 2.5 },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
         labelStyle: { fontSize: 10, fontWeight: 700, fill: '#4f46e5' },
         labelBgStyle: { fill: '#eef2ff', stroke: '#c7d2fe', strokeWidth: 1.5, rx: 8, ry: 8 },
-        labelBgPadding: [10, 5],
+        labelBgPadding: [12, 6],
       });
     } else if (activeMiddle.length > 0) {
       edges.push({
         id: 'e-booking-first-stage',
         source: '__booking_channel__',
         target: activeMiddle[0].id,
-        label: 'Order Placed',
+        label: 'Direct Intake (No QR Gate)',
         animated: true,
-        style: { stroke: '#4f46e5', strokeWidth: 2.5 },
-        markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-        labelStyle: { fontSize: 10, fontWeight: 700, fill: '#4f46e5' },
-        labelBgStyle: { fill: '#eef2ff', stroke: '#c7d2fe', strokeWidth: 1.5, rx: 8, ry: 8 },
-        labelBgPadding: [10, 5],
+        style: { stroke: '#10b981', strokeWidth: 2.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#10b981' },
+        labelStyle: { fontSize: 10, fontWeight: 700, fill: '#059669' },
+        labelBgStyle: { fill: '#ecfdf5', stroke: '#a7f3d0', strokeWidth: 1.5, rx: 8, ry: 8 },
+        labelBgPadding: [12, 6],
       });
     }
 
@@ -632,6 +700,25 @@ export function FlowBuilder(props: FlowBuilderProps) {
     [onNodesChange, flow?.id]
   );
 
+  const onNodeDragStop = useCallback(
+    (_: any, node: any) => {
+      if (node?.id && node?.position) {
+        positionsRef.current[node.id] = node.position;
+        if (flow?.id) {
+          try {
+            localStorage.setItem(
+              `yq_flow_positions_${flow.id}`,
+              JSON.stringify(positionsRef.current)
+            );
+          } catch {
+            // ignore
+          }
+        }
+      }
+    },
+    [flow?.id]
+  );
+
   // Reset to default vertical ladder alignment
   const handleAutoAlign = useCallback(() => {
     positionsRef.current = {};
@@ -650,7 +737,20 @@ export function FlowBuilder(props: FlowBuilderProps) {
   }, [flow?.id, computeNodes, setNodes, handleFitView]);
 
   useEffect(() => {
-    setNodes(initialNodes as any);
+    setNodes((prevNodes) => {
+      const livePosMap = new Map(prevNodes.map((n) => [n.id, n.position]));
+      return (initialNodes as any[]).map((node) => {
+        const savedPos = positionsRef.current[node.id];
+        const currentLivePos = livePosMap.get(node.id);
+        if (savedPos) {
+          return { ...node, position: savedPos };
+        }
+        if (currentLivePos) {
+          return { ...node, position: currentLivePos };
+        }
+        return node;
+      });
+    });
   }, [initialNodes, setNodes]);
 
   useEffect(() => {
@@ -936,6 +1036,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
         nodes={nodes}
         edges={edges}
         onNodesChange={handleNodesChange}
+        onNodeDragStop={onNodeDragStop}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onInit={setRfInstance}

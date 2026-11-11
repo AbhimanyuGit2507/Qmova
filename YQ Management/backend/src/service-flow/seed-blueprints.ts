@@ -59,17 +59,37 @@ async function main() {
       // Filter out PAYMENT
       let newSteps = tpl.steps.filter((s) => s.type !== 'PAYMENT');
 
-      newSteps.unshift({
-        stepOrder: 0,
-        name: 'Booking Verification (QR Scan)',
-        description: 'Customer checks in via QR pass or ticket verification.',
-        type: 'CHECK_IN',
-        trigger: 'AUTOMATIC',
-        isSystem: true,
-        category: 'bookend',
-        requiresQrScan: true,
-        requiresStaffAction: false,
-      } as any);
+      // Determine if this industry vertical physically uses an arrival QR scan gate turnstile
+      // For food/catering, salons, retail, schools, clinics, customers proceed directly to order/service
+      // An arrival QR check-in gate can always be added on-demand via "+ Add Stage"
+      const industriesWithArrivalGate = new Set([
+        'events',
+        'conferences',
+        'logistics',
+        'security',
+        'embassy',
+        'airport',
+      ]);
+
+      const industryKey = (tpl.industry || '').toLowerCase();
+      const templateKey = (tpl.key || '').toLowerCase();
+      const shouldAddCheckInGate =
+        industriesWithArrivalGate.has(industryKey) ||
+        industriesWithArrivalGate.has(templateKey);
+
+      if (shouldAddCheckInGate) {
+        newSteps.unshift({
+          stepOrder: 0,
+          name: 'Booking Verification (QR Scan)',
+          description: 'Customer checks in via QR pass or ticket verification.',
+          type: 'CHECK_IN',
+          trigger: 'AUTOMATIC',
+          isSystem: false,
+          category: 'bookend',
+          requiresQrScan: true,
+          requiresStaffAction: false,
+        } as any);
+      }
 
       newSteps.push({
         stepOrder: 99,
