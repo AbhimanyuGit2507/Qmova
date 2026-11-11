@@ -53,44 +53,26 @@ export class ServiceFlowService {
   }
 
   /**
-   * Every flow has two locked system stages: CHECK_IN (stepOrder 0, booking via QR)
-   * and CHECK_OUT (always last, receptionist completes). They are metadata only —
-   * they are never instantiated as VisitSteps. Safe to call repeatedly.
+   * Ensures the terminal CHECK_OUT stage exists.
+   * CHECK_IN is an optional intake gate that can be added or deleted by the tenant.
    */
   async ensureBookends(flowId: string) {
     const steps = await this.prisma.flowStepTemplate.findMany({
       where: { flowId },
       orderBy: { stepOrder: 'asc' },
     });
-    const hasCheckIn = steps.find((s) => s.type === 'CHECK_IN');
     const checkOut = steps.find((s) => s.type === 'CHECK_OUT');
     const middleMax = steps
-      .filter((s) => s.type !== 'CHECK_IN' && s.type !== 'CHECK_OUT')
+      .filter((s) => s.type !== 'CHECK_OUT')
       .reduce((m, s) => Math.max(m, s.stepOrder), 0);
 
-    if (!hasCheckIn) {
-      await this.prisma.flowStepTemplate.create({
-        data: {
-          flowId,
-          stepOrder: 0,
-          name: 'Check-in',
-          description: 'Customer books via the QR code and receives a ticket.',
-          type: 'CHECK_IN',
-          trigger: 'MANUAL_CUSTOMER',
-          isSystem: true,
-          requiresQrScan: false,
-          requiresStaffAction: false,
-          notifyCustomerOnActivation: false,
-        },
-      });
-    }
     if (!checkOut) {
       await this.prisma.flowStepTemplate.create({
         data: {
           flowId,
           stepOrder: middleMax + 1,
-          name: 'Check-out',
-          description: 'Receptionist completes the visit — journey ended.',
+          name: 'Completed Stage',
+          description: 'Staff or customer completes the visit — journey finished.',
           type: 'CHECK_OUT',
           trigger: 'MANUAL_STAFF',
           isSystem: true,
@@ -131,10 +113,9 @@ export class ServiceFlowService {
     });
     if (!flow || flow.tenantId !== tenantId) return null;
 
-    // Self-healing for legacy flows
-    const hasCheckIn = flow.steps.some((s) => s.type === 'CHECK_IN');
+    // Self-healing for legacy flows — ensure terminal completed stage exists
     const hasCheckOut = flow.steps.some((s) => s.type === 'CHECK_OUT');
-    if (!hasCheckIn || !hasCheckOut) {
+    if (!hasCheckOut) {
       await this.ensureBookends(flow.id);
       flow = await this.prisma.serviceFlow.findUnique({
         where: { serviceId },
@@ -164,10 +145,9 @@ export class ServiceFlowService {
     if (!flow || flow.tenantId !== tenantId)
       throw new NotFoundException('Flow not found');
 
-    // Self-healing for legacy flows
-    const hasCheckIn = flow.steps.some((s) => s.type === 'CHECK_IN');
+    // Self-healing for legacy flows — ensure terminal completed stage exists
     const hasCheckOut = flow.steps.some((s) => s.type === 'CHECK_OUT');
-    if (!hasCheckIn || !hasCheckOut) {
+    if (!hasCheckOut) {
       await this.ensureBookends(flow.id);
       flow = await this.prisma.serviceFlow.findUnique({
         where: { id: flowId },
@@ -317,9 +297,9 @@ export class ServiceFlowService {
       throw new NotFoundException('Flow not found');
 
     const { transitions, ...stepData } = dto;
-    if (stepData.type === 'CHECK_IN' || stepData.type === 'CHECK_OUT') {
+    if (stepData.type === 'CHECK_OUT') {
       throw new BadRequestException(
-        'Check-in and Check-out are system stages and are added automatically.',
+        'Completed stage (Check-out) is the final stage and cannot be duplicated.',
       );
     }
     if (stepData.type === 'PAYMENT') {
@@ -333,9 +313,10 @@ export class ServiceFlowService {
       data: {
         flowId,
         ...stepData,
+        stepOrder: stepData.type === 'CHECK_IN' ? 0 : stepData.stepOrder,
         customerView: (stepData.customerView ?? undefined) as any,
         type: (stepData.type as any) ?? 'SERVICE',
-        trigger: (stepData.trigger as any) ?? 'MANUAL_STAFF',
+        trigger: (stepData.trigger as any) ?? (stepData.type === 'CHECK_IN' ? 'MANUAL_CUSTOMER' : 'MANUAL_STAFF'),
       },
     });
 
@@ -376,8 +357,8 @@ export class ServiceFlowService {
       serviceId: _sid,
       ...updateData
     } = dto as any;
-    if (step.isSystem) {
-      // System bookends: only wording / customer-facing view / notification can change.
+    if (step.type === 'CHECK_OUT') {
+      // Completed stage: only wording / customer-facing view / notification can change.
       const allowed = [
         'name',
         'description',
@@ -389,12 +370,9 @@ export class ServiceFlowService {
       for (const k of Object.keys(updateData)) {
         if (!allowed.includes(k)) delete updateData[k];
       }
-    } else if (
-      updateData.type === 'CHECK_IN' ||
-      updateData.type === 'CHECK_OUT'
-    ) {
+    } else if (updateData.type === 'CHECK_OUT') {
       throw new BadRequestException(
-        'Cannot convert a stage into a system stage.',
+        'Cannot convert a stage into a terminal completed stage.',
       );
     }
 
@@ -436,9 +414,9 @@ export class ServiceFlowService {
     });
     if (!step || step.flow.tenantId !== tenantId)
       throw new NotFoundException('Step not found');
-    if (step.isSystem) {
+    if (step.type === 'CHECK_OUT') {
       throw new BadRequestException(
-        'Check-in and Check-out cannot be deleted.',
+        'Completed Stage (Check-out) is the required terminal stage and cannot be deleted.',
       );
     }
     await this.prisma.flowStepTemplate.delete({ where: { id: stepId } });
@@ -458,14 +436,15 @@ export class ServiceFlowService {
     const all = await this.prisma.flowStepTemplate.findMany({
       where: { flowId },
     });
-    const systemIds = new Set(all.filter((s) => s.isSystem).map((s) => s.id));
-    const middleIds = orderedStepIds.filter((id) => !systemIds.has(id));
+    const checkOutSteps = all.filter((s) => s.type === 'CHECK_OUT');
+    const checkOutIds = new Set(checkOutSteps.map((s) => s.id));
+    const reorderableIds = orderedStepIds.filter((id) => !checkOutIds.has(id));
 
     await this.prisma.$transaction(
-      middleIds.map((stepId, index) =>
+      reorderableIds.map((stepId, index) =>
         this.prisma.flowStepTemplate.update({
           where: { id: stepId },
-          data: { stepOrder: index + 1 },
+          data: { stepOrder: index },
         }),
       ),
     );

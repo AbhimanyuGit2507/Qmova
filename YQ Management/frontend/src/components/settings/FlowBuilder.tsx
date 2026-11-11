@@ -440,10 +440,9 @@ export function FlowBuilder(props: FlowBuilderProps) {
       data: { allowAppointments, allowWalkins: true },
       draggable: true,
     });
-    // Booking channel is ~125px tall; advancing by 230px gives a clean 105px gap to Check-In
     y += 230;
 
-    // Check-In (always first)
+    // Check-In (Optional initial verification gate)
     if (checkIn) {
       const isSelected = selectedStepId === checkIn.id;
       const checkInPos = getNodePos(checkIn.id, y);
@@ -455,7 +454,6 @@ export function FlowBuilder(props: FlowBuilderProps) {
         selected: isSelected,
         draggable: true,
       });
-      // Check-in is ~115px height; advance by 230px for a clean 115px space to the next card
       y += 230;
     }
 
@@ -512,8 +510,11 @@ export function FlowBuilder(props: FlowBuilderProps) {
     const sorted = [...flow.steps].sort((a: any, b: any) => a.stepOrder - b.stepOrder);
     const edges: any[] = [];
 
-    // Always connect Booking Channel -> Check-In (Booking Verification)
     const checkInNode = sorted.find((s: any) => s.type === 'CHECK_IN');
+    const checkOutNode = sorted.find((s: any) => s.type === 'CHECK_OUT');
+    const activeMiddle = sorted.filter((s: any) => s.type !== 'CHECK_IN' && s.type !== 'CHECK_OUT');
+
+    // Connect Booking Channel -> Check-In (if present) OR directly to first active stage
     if (checkInNode) {
       edges.push({
         id: 'e-booking-checkin',
@@ -527,27 +528,38 @@ export function FlowBuilder(props: FlowBuilderProps) {
         labelBgStyle: { fill: '#eef2ff', stroke: '#c7d2fe', strokeWidth: 1.5, rx: 8, ry: 8 },
         labelBgPadding: [10, 5],
       });
+    } else if (activeMiddle.length > 0) {
+      edges.push({
+        id: 'e-booking-first-stage',
+        source: '__booking_channel__',
+        target: activeMiddle[0].id,
+        label: 'Order Placed',
+        animated: true,
+        style: { stroke: '#4f46e5', strokeWidth: 2.5 },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
+        labelStyle: { fontSize: 10, fontWeight: 700, fill: '#4f46e5' },
+        labelBgStyle: { fill: '#eef2ff', stroke: '#c7d2fe', strokeWidth: 1.5, rx: 8, ry: 8 },
+        labelBgPadding: [10, 5],
+      });
     }
 
-    // For nodes without explicit transitions, auto-connect sequentially
-    const hasPlaceholder = sorted.filter((s: any) => s.type !== 'CHECK_IN' && s.type !== 'CHECK_OUT').length === 0;
-
+    // For flows without middle stages
+    const hasPlaceholder = activeMiddle.length === 0;
     if (hasPlaceholder) {
-      const checkIn = sorted.find((s: any) => s.type === 'CHECK_IN');
-      const checkOut = sorted.find((s: any) => s.type === 'CHECK_OUT');
-      if (checkIn && checkOut) {
+      const sourceId = checkInNode ? checkInNode.id : '__booking_channel__';
+      edges.push({
+        id: `e-${sourceId}-empty`,
+        source: sourceId,
+        target: '__empty_prompt__',
+        animated: true,
+        style: { stroke: '#818cf8', strokeWidth: 2.5, strokeDasharray: '6,4' },
+        markerEnd: { type: MarkerType.ArrowClosed, color: '#818cf8' },
+      });
+      if (checkOutNode) {
         edges.push({
-          id: `e-${checkIn.id}-empty`,
-          source: checkIn.id,
-          target: '__empty_prompt__',
-          animated: true,
-          style: { stroke: '#818cf8', strokeWidth: 2.5, strokeDasharray: '6,4' },
-          markerEnd: { type: MarkerType.ArrowClosed, color: '#818cf8' },
-        });
-        edges.push({
-          id: `e-empty-${checkOut.id}`,
+          id: `e-empty-${checkOutNode.id}`,
           source: '__empty_prompt__',
-          target: checkOut.id,
+          target: checkOutNode.id,
           animated: true,
           style: { stroke: '#34d399', strokeWidth: 2.5, strokeDasharray: '6,4' },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#34d399' },

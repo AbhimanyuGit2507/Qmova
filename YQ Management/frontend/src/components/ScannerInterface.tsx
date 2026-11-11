@@ -54,6 +54,17 @@ interface ValidationResult {
   isFuture?: boolean;
   canOverride?: boolean;
   metadata?: AnyFixMe;
+  selectedItems?: AnyFixMe[];
+  paymentSummary?: {
+    isPaid: boolean;
+    isPendingCounter: boolean;
+    status: string;
+    amount: number;
+    currency: string;
+    method: string;
+    receiptUrl?: string | null;
+    paidAt?: string | null;
+  } | null;
   pendingCounterPayment?: {
     id: string;
     amount: number;
@@ -349,6 +360,16 @@ export function ScannerInterface({
             isPast: result.isPast,
             isFuture: result.isFuture,
             canOverride: result.canOverride,
+            metadata: result.metadata,
+            selectedItems:
+              result.selectedItems ||
+              result.metadata?.selectedItems ||
+              result.metadata?.orderItems ||
+              result.metadata?.cart ||
+              result.activeStep?.selectedItems ||
+              [],
+            paymentSummary: result.paymentSummary || null,
+            pendingCounterPayment: result.pendingCounterPayment || null,
           };
 
           setValidationResult(validationResult);
@@ -592,6 +613,16 @@ export function ScannerInterface({
         isPast: result.isPast,
         isFuture: result.isFuture,
         canOverride: result.canOverride,
+        metadata: result.metadata,
+        selectedItems:
+          result.selectedItems ||
+          result.metadata?.selectedItems ||
+          result.metadata?.orderItems ||
+          result.metadata?.cart ||
+          result.activeStep?.selectedItems ||
+          [],
+        paymentSummary: result.paymentSummary || null,
+        pendingCounterPayment: result.pendingCounterPayment || null,
       };
 
       setValidationResult(validationResult);
@@ -1230,27 +1261,27 @@ export function ScannerInterface({
                         </div>
                       )}
                       {validationResult.valid && (
-                        <div className="p-4 bg-surface-container rounded-xl space-y-2">
-                          <div className="flex justify-between">
-                            <span className="text-outline">
+                        <div className="p-4 bg-surface-container rounded-xl space-y-3">
+                          <div className="flex justify-between items-center">
+                            <span className="text-outline text-xs">
                               Queue / Service:
                             </span>
-                            <span className="font-medium text-on-surface">
+                            <span className="font-semibold text-sm text-on-surface">
                               {validationResult.queueName ||
                                 validationResult.serviceBooked ||
                                 "General"}
                             </span>
                           </div>
-                          <div className="flex justify-between">
-                            <span className="text-outline">Status:</span>
-                            <span className="font-medium font-data-mono">
+                          <div className="flex justify-between items-center">
+                            <span className="text-outline text-xs">Queue Status:</span>
+                            <span className="font-bold text-xs font-data-mono px-2 py-0.5 rounded-full bg-surface text-on-surface border border-border">
                               {validationResult.status}
                             </span>
                           </div>
                           {validationResult.isAppointment && (
-                            <div className="flex justify-between">
-                              <span className="text-outline">Appointment:</span>
-                              <span className="font-medium">
+                            <div className="flex justify-between items-center">
+                              <span className="text-outline text-xs">Appointment:</span>
+                              <span className="font-medium text-xs">
                                 {validationResult.scheduledFor
                                   ? new Date(
                                       validationResult.scheduledFor,
@@ -1259,12 +1290,130 @@ export function ScannerInterface({
                               </span>
                             </div>
                           )}
+
+                          {/* 🛒 ALWAYS-VISIBLE ORDER & ITEM SELECTIONS */}
+                          {(() => {
+                            const items =
+                              (validationResult.selectedItems as any[]) ||
+                              (validationResult.activeStep?.selectedItems as any[]) ||
+                              ((validationResult.metadata as any)?.selectedItems as any[]) ||
+                              ((validationResult.metadata as any)?.cart as any[]) ||
+                              ((validationResult.metadata as any)?.orderItems as any[]) ||
+                              [];
+                            if (!items || items.length === 0) return null;
+                            return (
+                              <div className="mt-3 p-3 bg-white dark:bg-zinc-900 rounded-xl border border-indigo-100 dark:border-zinc-800 shadow-xs space-y-2 text-left">
+                                <div className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-wider flex items-center justify-between border-b border-zinc-100 dark:border-zinc-800 pb-1.5">
+                                  <span>🛒 What Customer Ordered:</span>
+                                  <span className="font-mono text-[10px] px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 font-bold">
+                                    {items.reduce((sum: number, it: any) => sum + (Number(it.qty || it.quantity) || 1), 0)} items
+                                  </span>
+                                </div>
+                                <div className="divide-y divide-zinc-100 dark:divide-zinc-800/60 text-xs">
+                                  {items.map((item: any, idx: number) => (
+                                    <div key={idx} className="py-1.5 flex items-center justify-between">
+                                      <span className="truncate pr-2 font-semibold text-zinc-900 dark:text-zinc-100 flex items-center gap-1.5">
+                                        <span className="font-bold text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/60 px-1.5 py-0.5 rounded text-[11px]">
+                                          {item.qty || item.quantity || 1}x
+                                        </span>{' '}
+                                        {item.name || item.title || 'Item'}
+                                      </span>
+                                      <div className="flex items-center gap-2 shrink-0">
+                                        {item.price ? (
+                                          <span className="font-mono text-[11px] font-bold text-zinc-700 dark:text-zinc-300">
+                                            {item.currency || 'ZAR'} {(((Number(item.price) || 0) * (Number(item.qty || item.quantity) || 1)) / 100).toFixed(2)}
+                                          </span>
+                                        ) : null}
+                                        {item.category && (
+                                          <span className="text-[9px] uppercase tracking-wider px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium">
+                                            {item.category}
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+
+                          {/* 💳 ALWAYS-VISIBLE PAYMENT STATUS BANNER */}
+                          {(() => {
+                            const isPaid = Boolean(validationResult.paymentSummary?.isPaid);
+                            const isPending = Boolean(
+                              validationResult.pendingCounterPayment ||
+                              validationResult.paymentSummary?.isPendingCounter
+                            );
+                            const amount =
+                              validationResult.pendingCounterPayment?.amount ||
+                              validationResult.paymentSummary?.amount ||
+                              0;
+                            const currency =
+                              validationResult.pendingCounterPayment?.currency ||
+                              validationResult.paymentSummary?.currency ||
+                              'ZAR';
+                            const method =
+                              validationResult.pendingCounterPayment?.method ||
+                              validationResult.paymentSummary?.method ||
+                              'Card';
+
+                            if (isPaid) {
+                              return (
+                                <div className="mt-2 p-3 bg-emerald-50 dark:bg-emerald-950/40 rounded-xl border border-emerald-200 dark:border-emerald-800/70 flex items-center justify-between">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
+                                      <CheckCircle2 className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] font-black uppercase tracking-wider text-emerald-800 dark:text-emerald-300">
+                                        Payment Settled (Paid)
+                                      </div>
+                                      <div className="text-xs font-bold text-emerald-900 dark:text-emerald-100">
+                                        {currency} {(amount / 100).toFixed(2)} ({method})
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] font-extrabold px-2.5 py-1 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 border border-emerald-300 dark:border-emerald-700">
+                                    PAID ✅
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            if (isPending) {
+                              return (
+                                <div className="mt-2 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border-2 border-amber-400 dark:border-amber-600 flex items-center justify-between">
+                                  <div className="flex items-center gap-2.5">
+                                    <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                                      <AlertTriangle className="w-4 h-4" />
+                                    </div>
+                                    <div>
+                                      <div className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300">
+                                        Pay at Counter (Pending)
+                                      </div>
+                                      <div className="text-xs font-bold text-amber-950 dark:text-amber-100">
+                                        Due: {currency} {(amount / 100).toFixed(2)}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <span className="text-[10px] font-black px-2.5 py-1 rounded-full bg-amber-500 text-white shadow-xs animate-pulse">
+                                    PAY AT COUNTER
+                                  </span>
+                                </div>
+                              );
+                            }
+
+                            return null;
+                          })()}
+
                           {/* Active Stage Details */}
                           {validationResult.activeStep && (
-                            <div className="mt-4 pt-4 border-t border-border">
-                              <div className="flex justify-between font-bold text-on-surface mb-2">
-                                <span>Active Stage:</span>
-                                <span>{validationResult.activeStep.name}</span>
+                            <div className="mt-3 pt-3 border-t border-border">
+                              <div className="flex justify-between items-center font-bold text-on-surface mb-2">
+                                <span className="text-xs text-outline font-medium">Current Physical Stage:</span>
+                                <span className="text-xs px-2.5 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-700 dark:text-indigo-300 border border-indigo-200/60 dark:border-indigo-800/60 font-bold">
+                                  {validationResult.activeStep.name}
+                                </span>
                               </div>
                               {validationResult.activeStep.templateStep
                                 ?.type === "COLLECTION" && (

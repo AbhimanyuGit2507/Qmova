@@ -501,9 +501,14 @@ const WA_VARS = [
 
 const STAGE_TYPES = [
   {
+    value: "CHECK_IN",
+    label: "🔒 Booking Verification Gate (QR Scan)",
+    info: "Physical check-in gate. Scans customer QR ticket or verifies ID upon arrival. Can be deleted if queue entries proceed directly to preparation or service.",
+  },
+  {
     value: "CHECKPOINT",
-    label: "🔍 Booking Verification (QR Scan)",
-    info: "Initial check-in & verification gate. Scans customer QR pass or verifies ticket before service commences.",
+    label: "🛡 Checkpoint / Gate Pass",
+    info: "Intermediate access gate or security checkpoint (e.g. VIP lounge entrance, backstage gate, ticket turnstile).",
   },
   {
     value: "SERVICE",
@@ -2802,7 +2807,7 @@ export default function JourneyBuilder() {
                           )}
                           {isAddingStep ? "Add to Flow" : "Save Changes"}
                         </button>
-                        {editingStep && !editingStep.isSystem && (
+                        {editingStep && editingStep.type !== "CHECK_OUT" && (
                           <button
                             onClick={() => setStepToDelete(editingStep.id)}
                             className="h-11 px-4 text-red-500 bg-red-50 hover:bg-red-100 dark:bg-red-900/10 dark:hover:bg-red-900/20 rounded-xl transition-colors border border-red-200 dark:border-red-900/30 flex items-center"
