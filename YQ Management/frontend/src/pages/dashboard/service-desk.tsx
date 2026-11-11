@@ -1799,17 +1799,17 @@ export default function ServiceDeskToday() {
                     )}
                     <div className="flex flex-col gap-1.5 min-w-0">
                       {/* Top Line: Desk Name + Location & Status Chips */}
-                      <div className="flex items-center justify-between gap-1.5 min-w-0">
-                        <div className="flex items-center gap-1.5 min-w-0 flex-1">
+                      <div className="flex items-start justify-between gap-1.5 min-w-0">
+                        <div className="flex flex-col gap-0.5 min-w-0 flex-1">
                           <span
-                            className={`text-[13px] leading-tight truncate transition-colors ${isQueueActive ? "font-bold text-primary dark:text-sky-400" : "font-semibold text-zinc-900 dark:text-zinc-100"}`}
+                            className={`text-[13px] leading-snug break-words whitespace-normal transition-colors line-clamp-2 ${isQueueActive ? "font-bold text-primary dark:text-sky-400" : "font-semibold text-zinc-900 dark:text-zinc-100"}`}
                             title={q.name}
                           >
                             {q.name}
                           </span>
                           {activeLocationId === "all" && loc && (
                             <span
-                              className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium shrink-0 truncate max-w-[75px]"
+                              className="text-[9px] px-1.5 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 font-medium truncate max-w-fit mt-0.5"
                               title={loc.name}
                             >
                               {loc.name}
@@ -1818,19 +1818,19 @@ export default function ServiceDeskToday() {
                         </div>
 
                         {isEmergencyPaused && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-600 font-bold shrink-0 animate-pulse whitespace-nowrap">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-red-100 dark:bg-red-900/50 text-red-600 font-bold shrink-0 animate-pulse whitespace-nowrap mt-0.5">
                             PAUSED
                           </span>
                         )}
                         {isPaused && !isEmergencyPaused && (
-                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 font-bold shrink-0 whitespace-nowrap">
+                          <span className="text-[9px] px-1.5 py-0.5 rounded-md bg-amber-100 dark:bg-amber-900/30 text-amber-700 font-bold shrink-0 whitespace-nowrap mt-0.5">
                             PAUSED
                           </span>
                         )}
                         {!isPaused && isQueueActive && (
                           <span
                             data-testid="active-queue-badge"
-                            className="text-[9px] px-2 py-0.5 rounded-md bg-primary text-white font-bold shrink-0 whitespace-nowrap shadow-xs flex items-center gap-1"
+                            className="text-[9px] px-2 py-0.5 rounded-md bg-primary text-white font-bold shrink-0 whitespace-nowrap shadow-xs flex items-center gap-1 mt-0.5"
                           >
                             <span className="w-1.5 h-1.5 rounded-full bg-white animate-pulse shrink-0" />
                             ACTIVE
