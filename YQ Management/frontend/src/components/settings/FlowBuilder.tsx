@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useCallback, useMemo, useEffect } from 'react';
+import React, { useCallback, useMemo, useEffect, useRef } from 'react';
 import {
   ReactFlow,
   Controls,
@@ -12,12 +12,29 @@ import {
   MarkerType,
   BackgroundVariant,
   MiniMap,
+  NodeChange,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import { Settings2, ScanLine, Package, CreditCard, LayoutGrid, LogIn, LogOut, Bell, Clock, ClipboardList, Sparkles } from 'lucide-react';
+import {
+  Settings2,
+  ScanLine,
+  Package,
+  CreditCard,
+  LayoutGrid,
+  LogIn,
+  LogOut,
+  Bell,
+  Clock,
+  ClipboardList,
+  Sparkles,
+  UserCheck,
+  Calendar,
+  LayoutTemplate,
+  RotateCcw,
+} from 'lucide-react';
 
 const TYPE_CONFIG: Record<string, { label: string; color: string; darkColor: string; icon: any }> = {
-  CHECK_IN:    { label: 'Booking Verification (QR Scan)',     color: '#4f46e5', darkColor: '#818cf8', icon: LogIn },
+  CHECK_IN:    { label: 'Booking Verification (QR Scan)', color: '#4f46e5', darkColor: '#818cf8', icon: LogIn },
   CHECK_OUT:   { label: 'Completed Stage',    color: '#059669', darkColor: '#34d399', icon: LogOut },
   CHECKPOINT:  { label: 'Checkpoint',   color: '#6366f1', darkColor: '#818cf8', icon: ScanLine },
   SERVICE:     { label: 'Service Area', color: '#7c3aed', darkColor: '#a78bfa', icon: LayoutGrid },
@@ -42,18 +59,18 @@ const CustomNode = ({ data, selected }: any) => {
         boxShadow: isSelected
           ? `0 0 0 3.5px ${cfg.color}60, 0 16px 36px -6px ${cfg.color}35`
           : undefined,
-        transition: 'all 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+        transition: 'box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1)',
       }}
-      className={`relative w-[230px] bg-white dark:bg-zinc-900 rounded-2xl border-2 cursor-pointer group ${
+      className={`relative w-[260px] bg-white dark:bg-zinc-900 rounded-2xl border-2 cursor-grab active:cursor-grabbing group ${
         isSelected
-          ? 'shadow-2xl scale-[1.03] ring-2 ring-primary/40 dark:ring-primary/50 -translate-y-0.5 z-20'
+          ? 'shadow-2xl scale-[1.02] ring-2 ring-primary/40 dark:ring-primary/50 -translate-y-0.5 z-20'
           : 'shadow-md hover:shadow-xl hover:scale-[1.015] hover:-translate-y-0.5'
       }`}
     >
       <Handle
         type="target"
         position={Position.Top}
-        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-md z-20 transition-transform hover:scale-125 cursor-crosshair"
         style={{ background: cfg.color, top: -7 }}
       />
 
@@ -66,14 +83,14 @@ const CustomNode = ({ data, selected }: any) => {
         {/* Type badge */}
         <div className="flex items-center justify-between mb-2">
           <span
-            className="flex items-center gap-1 text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-md"
-            style={{ color: cfg.color, background: `${cfg.color}18` }}
+            className="flex items-center gap-1.5 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full"
+            style={{ color: cfg.color, background: `${cfg.color}18`, border: `1px solid ${cfg.color}30` }}
           >
-            <Icon className="w-2.5 h-2.5" />
+            <Icon className="w-3 h-3" />
             {cfg.label}
           </span>
           {data.isOptional && (
-            <span className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-md bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500">
+            <span className="text-[9px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-400 dark:text-zinc-500 border border-zinc-200 dark:border-zinc-700">
               Optional
             </span>
           )}
@@ -91,6 +108,20 @@ const CustomNode = ({ data, selected }: any) => {
           </p>
         )}
 
+        {/* Stage requirements chips */}
+        <div className="flex flex-wrap items-center gap-1.5 mb-2.5">
+          {data.type === 'WAITING_PERIOD' && (
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20">
+              <Clock className="w-2.5 h-2.5" /> {data.step?.expectedDuration || 5}m Wait
+            </span>
+          )}
+          {data.step?.requiresQrScan && (
+            <span className="inline-flex items-center gap-1 text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+              <ScanLine className="w-2.5 h-2.5" /> QR Scan
+            </span>
+          )}
+        </div>
+
         {/* Edit button */}
         <button
           type="button"
@@ -98,7 +129,7 @@ const CustomNode = ({ data, selected }: any) => {
             e.stopPropagation();
             data.onEdit(data.step);
           }}
-          className={`w-full flex items-center justify-center gap-1 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-200 border ${
+          className={`w-full flex items-center justify-center gap-1.5 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-200 border ${
             isSelected
               ? 'opacity-100 font-bold'
               : 'opacity-0 group-hover:opacity-100'
@@ -112,14 +143,14 @@ const CustomNode = ({ data, selected }: any) => {
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-md z-20 transition-transform hover:scale-125 cursor-crosshair"
         style={{ background: cfg.color, bottom: -7 }}
       />
     </div>
   );
 };
 
-// ── System node (locked Booking Verification / Completed Stage) ───────────────
+// ── System node (Booking Verification / Completed Stage) ──────────────────────
 const SystemNode = ({ data, selected }: any) => {
   const isCheckIn = data.type === 'CHECK_IN';
   const cfg = TYPE_CONFIG[data.type] || TYPE_CONFIG.CHECK_IN;
@@ -129,53 +160,79 @@ const SystemNode = ({ data, selected }: any) => {
   return (
     <div
       onClick={() => data.onEdit && data.onEdit(data.step)}
-      className={`relative w-[230px] rounded-2xl border-2 border-dashed bg-white dark:bg-zinc-900 cursor-pointer ${
+      className={`relative w-[260px] rounded-2xl border-2 bg-white dark:bg-zinc-900 cursor-grab active:cursor-grabbing group ${
         isSelected
-          ? 'shadow-2xl scale-[1.03] ring-2 ring-primary/40 dark:ring-primary/50 -translate-y-0.5 z-20'
+          ? 'shadow-2xl scale-[1.02] ring-2 ring-primary/40 dark:ring-primary/50 -translate-y-0.5 z-20'
           : 'shadow-md hover:shadow-xl hover:scale-[1.015] hover:-translate-y-0.5'
       }`}
       style={{
         borderColor: cfg.color,
         boxShadow: isSelected
-          ? `0 0 0 3.5px ${cfg.color}60, 0 16px 36px -6px ${cfg.color}35`
+          ? `0 0 0 3.5px ${cfg.color}50, 0 16px 36px -6px ${cfg.color}35`
           : undefined,
-        transition: 'all 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+        transition: 'box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1)',
       }}
     >
       {/* Top Handle: Check-In connects from Booking Channel, Check-Out connects from last stage */}
       <Handle
         type="target"
         position={Position.Top}
-        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-md z-20 transition-transform hover:scale-125 cursor-crosshair"
         style={{ background: cfg.color, top: -7 }}
       />
 
-      <div
-        className="px-4 py-3 flex items-center gap-3 rounded-[14px]"
-        style={{ background: `${cfg.color}12` }}
-      >
-        <div
-          className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0"
-          style={{ background: `${cfg.color}25` }}
-        >
-          <Icon className="w-5 h-5" style={{ color: cfg.color }} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 mb-0.5">
-            <span className="text-[10px] font-bold uppercase tracking-widest" style={{ color: cfg.color }}>
-              {isCheckIn ? '🔒 Verification Gate' : '🔒 Completed'}
-            </span>
+      {/* Top accent bar */}
+      <div className="rounded-t-[14px] overflow-hidden">
+        <div style={{ backgroundColor: cfg.color }} className="h-2 w-full" />
+      </div>
+
+      <div className="p-3.5">
+        <div className="flex items-center gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-sm"
+            style={{ background: `${cfg.color}18`, border: `1px solid ${cfg.color}30` }}
+          >
+            <Icon className="w-5 h-5" style={{ color: cfg.color }} />
           </div>
-          <span className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
-            {isCheckIn && (data.name === 'Check-In' || data.name === 'Booking Verification')
-              ? 'Booking Verification (QR Scan)'
-              : !isCheckIn && (data.name === 'Check-Out' || data.name === 'Completed')
-              ? 'Completed Stage'
-              : data.name}
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-1.5 mb-0.5">
+              <span className="text-[10px] font-black uppercase tracking-wider" style={{ color: cfg.color }}>
+                {isCheckIn ? '🔒 Verification Gate' : '🏁 Completed Stage'}
+              </span>
+            </div>
+            <h3 className="font-bold text-sm text-zinc-900 dark:text-white leading-tight">
+              {isCheckIn && (data.name === 'Check-In' || data.name === 'Booking Verification')
+                ? 'Booking Verification (QR Scan)'
+                : !isCheckIn && (data.name === 'Check-Out' || data.name === 'Completed')
+                ? 'Completed Stage'
+                : data.name}
+            </h3>
+          </div>
+        </div>
+
+        {data.description && (
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-2 line-clamp-2 leading-relaxed">
+            {data.description}
+          </p>
+        )}
+
+        <div className="mt-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[10px]">
+          <span className="inline-flex items-center gap-1 text-zinc-500 dark:text-zinc-400 font-medium">
+            {isCheckIn ? '📱 QR Scan Gate' : '✅ Final Handover'}
           </span>
-          {data.description && (
-            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 line-clamp-2 leading-relaxed">{data.description}</p>
-          )}
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              data.onEdit(data.step);
+            }}
+            className={`flex items-center gap-1 py-1 px-2 rounded-lg text-[10px] font-semibold transition-all duration-200 border ${
+              isSelected ? 'opacity-100 font-bold' : 'opacity-0 group-hover:opacity-100'
+            }`}
+            style={{ color: cfg.color, background: `${cfg.color}15`, borderColor: `${cfg.color}30` }}
+          >
+            <Settings2 className="w-3 h-3" /> {isSelected ? 'Configuring' : 'Configure'}
+          </button>
         </div>
       </div>
 
@@ -184,7 +241,7 @@ const SystemNode = ({ data, selected }: any) => {
         <Handle
           type="source"
           position={Position.Bottom}
-          className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+          className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-md z-20 transition-transform hover:scale-125 cursor-crosshair"
           style={{ background: cfg.color, bottom: -7 }}
         />
       )}
@@ -193,49 +250,89 @@ const SystemNode = ({ data, selected }: any) => {
 };
 
 // ── Booking Channel node (Stage 0 Entry: Walk-in & Appointments) ──────────────
-const BookingChannelNode = ({ data }: any) => {
+const BookingChannelNode = ({ data, selected }: any) => {
   const allowAppointments = Boolean(data.allowAppointments);
   const allowWalkins = data.allowWalkins !== false;
+  const isSelected = selected || data.isSelected;
 
   return (
     <div
-      className="relative w-[230px] rounded-2xl border-2 border-indigo-400/80 dark:border-indigo-500/80 bg-white dark:bg-zinc-900 shadow-md p-3 space-y-2"
+      onClick={() => data.onSelect && data.onSelect()}
       style={{
-        transition: 'all 450ms cubic-bezier(0.16, 1, 0.3, 1)',
+        boxShadow: isSelected
+          ? '0 0 0 3px rgba(99, 102, 241, 0.5), 0 16px 36px -6px rgba(99, 102, 241, 0.3)'
+          : undefined,
+        transition: 'box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1), transform 200ms cubic-bezier(0.16, 1, 0.3, 1)',
       }}
+      className={`relative w-[260px] rounded-2xl border-2 border-indigo-400/90 dark:border-indigo-500/90 bg-white dark:bg-zinc-900 shadow-md cursor-grab active:cursor-grabbing group ${
+        isSelected
+          ? 'shadow-2xl scale-[1.02] ring-2 ring-indigo-500/40 -translate-y-0.5 z-20'
+          : 'hover:shadow-xl hover:scale-[1.015] hover:-translate-y-0.5'
+      }`}
     >
-      <div className="flex items-center justify-between">
-        <span className="text-[9px] font-black uppercase tracking-widest text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
-          <Sparkles className="w-3 h-3" /> Booking Channel
-        </span>
-        <span className="text-[9px] font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-          Stage 0
-        </span>
+      {/* Top accent bar */}
+      <div className="rounded-t-[14px] overflow-hidden">
+        <div className="h-2 w-full bg-gradient-to-r from-indigo-500 via-purple-500 to-indigo-600" />
       </div>
 
-      <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-        Customer Intake / Booking
-      </p>
-
-      <div className="space-y-1 pt-1 border-t border-zinc-100 dark:border-zinc-800 text-[10px]">
-        <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
-          <span className="flex items-center gap-1">🚶 Walk-in Kiosk / Gate</span>
-          <span className={`font-bold ${allowWalkins ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}`}>
-            {allowWalkins ? 'Enabled' : 'Disabled'}
+      <div className="p-3.5 space-y-2.5">
+        <div className="flex items-center justify-between">
+          <span className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">
+            <Sparkles className="w-3.5 h-3.5 text-indigo-500" /> Booking Channel
+          </span>
+          <span className="text-[9px] font-bold px-2 py-0.5 rounded-full bg-indigo-50 dark:bg-indigo-950/70 text-indigo-600 dark:text-indigo-300 border border-indigo-200/80 dark:border-indigo-800/80">
+            Stage 0
           </span>
         </div>
-        <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-400">
-          <span className="flex items-center gap-1">📅 Online Appointments</span>
-          <span className={`font-bold ${allowAppointments ? 'text-emerald-600 dark:text-emerald-400' : 'text-zinc-400'}`}>
-            {allowAppointments ? 'Enabled' : 'Disabled'}
-          </span>
+
+        <div>
+          <h3 className="text-sm font-bold text-zinc-900 dark:text-white leading-tight">
+            Customer Intake / Booking
+          </h3>
+          <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5">
+            Origin point for all queue entries
+          </p>
+        </div>
+
+        <div className="space-y-1.5 pt-2 border-t border-zinc-100 dark:border-zinc-800 text-[11px]">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300 font-medium">
+              <UserCheck className="w-3.5 h-3.5 text-indigo-500" /> Walk-in Kiosk / Gate
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                allowWalkins
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border border-zinc-200 dark:border-zinc-700'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${allowWalkins ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`} />
+              {allowWalkins ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
+
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-zinc-600 dark:text-zinc-300 font-medium">
+              <Calendar className="w-3.5 h-3.5 text-purple-500" /> Online Appointments
+            </span>
+            <span
+              className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                allowAppointments
+                  ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-400 border border-zinc-200 dark:border-zinc-700'
+              }`}
+            >
+              <span className={`w-1.5 h-1.5 rounded-full ${allowAppointments ? 'bg-emerald-500 animate-pulse' : 'bg-zinc-400'}`} />
+              {allowAppointments ? 'Enabled' : 'Disabled'}
+            </span>
+          </div>
         </div>
       </div>
 
       <Handle
         type="source"
         position={Position.Bottom}
-        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-sm z-10"
+        className="!w-3.5 !h-3.5 !border-2 !border-white dark:!border-zinc-900 !rounded-full shadow-md z-20 transition-transform hover:scale-125 cursor-crosshair"
         style={{ background: '#4f46e5', bottom: -7 }}
       />
     </div>
@@ -245,7 +342,7 @@ const BookingChannelNode = ({ data }: any) => {
 // ── Empty state when no middle stages ─────────────────────────────────────────
 const EmptyStagePrompt = ({ data }: any) => (
   <div
-    className="w-[230px] rounded-2xl border-2 border-dashed border-border dark:border-dark-border bg-card dark:bg-dark-card flex flex-col items-center justify-center py-6 px-4 text-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors"
+    className="w-[260px] rounded-2xl border-2 border-dashed border-border dark:border-dark-border bg-card dark:bg-dark-card flex flex-col items-center justify-center py-6 px-4 text-center cursor-pointer hover:border-primary/60 hover:bg-primary/5 transition-colors cursor-grab active:cursor-grabbing"
     onClick={data.onAddStage}
   >
     <Handle type="target" position={Position.Top} style={{ opacity: 0 }} />
@@ -282,6 +379,21 @@ export function FlowBuilder(props: FlowBuilderProps) {
   const [isHovered, setIsHovered] = React.useState(false);
   const [zoomPercent, setZoomPercent] = React.useState(100);
 
+  // Persistent node positions dictionary (stored per flow ID so positions survive drags, selection & refreshes)
+  const positionsRef = useRef<Record<string, { x: number; y: number }>>({});
+
+  useEffect(() => {
+    if (!flow?.id) return;
+    try {
+      const saved = localStorage.getItem(`yq_flow_positions_${flow.id}`);
+      if (saved) {
+        positionsRef.current = JSON.parse(saved);
+      }
+    } catch {
+      // ignore storage access issues
+    }
+  }, [flow?.id]);
+
   const handleMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
     setMousePos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -289,7 +401,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
 
   const handleFitView = useCallback(() => {
     if (!rfInstance) return;
-    rfInstance.fitView({ padding: 0.28, maxZoom: 0.9, duration: 800 });
+    rfInstance.fitView({ padding: 0.22, maxZoom: 0.95, duration: 700 });
   }, [rfInstance]);
 
   // Listen for header fit view trigger
@@ -299,7 +411,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
     }
   }, [fitViewTrigger, handleFitView]);
 
-  const initialNodes = useMemo(() => {
+  const computeNodes = useCallback((forceDefaults: boolean = false) => {
     if (!flow?.steps) return [];
     const sorted = [...flow.steps].sort((a: any, b: any) => a.stepOrder - b.stepOrder);
 
@@ -307,79 +419,93 @@ export function FlowBuilder(props: FlowBuilderProps) {
     const checkOut = sorted.find((s: any) => s.type === 'CHECK_OUT');
     const middleSteps = sorted.filter((s: any) => s.type !== 'CHECK_IN' && s.type !== 'CHECK_OUT');
 
-    const CENTER_X = 100;
+    const CENTER_X = 140;
     let y = 0;
     const nodes: any[] = [];
 
+    const getNodePos = (id: string, defaultY: number) => {
+      if (!forceDefaults && positionsRef.current[id]) {
+        return positionsRef.current[id];
+      }
+      return { x: CENTER_X, y: defaultY };
+    };
+
     // 0. Booking Channel Card (Stage 0 Entry: Walk-in & Appointments)
     const allowAppointments = Boolean(flow.service?.allowAppointments);
+    const bookingPos = getNodePos('__booking_channel__', y);
     nodes.push({
       id: '__booking_channel__',
       type: 'bookingChannel',
-      position: { x: CENTER_X, y },
+      position: bookingPos,
       data: { allowAppointments, allowWalkins: true },
-      draggable: false,
-      selectable: false,
+      draggable: true,
     });
-    y += 140;
+    // Booking channel is ~125px tall; advancing by 230px gives a clean 105px gap to Check-In
+    y += 230;
 
     // Check-In (always first)
     if (checkIn) {
       const isSelected = selectedStepId === checkIn.id;
+      const checkInPos = getNodePos(checkIn.id, y);
       nodes.push({
         id: checkIn.id,
         type: 'system',
-        position: { x: CENTER_X, y },
+        position: checkInPos,
         data: { name: checkIn.name, description: checkIn.description, type: 'CHECK_IN', step: checkIn, onEdit: onEditStep, isSelected },
         selected: isSelected,
-        draggable: false,
+        draggable: true,
       });
-      // Check-in is ~80px height, advance by 180px for a clean 100px space to the next card
-      y += 180;
+      // Check-in is ~115px height; advance by 230px for a clean 115px space to the next card
+      y += 230;
     }
 
     // Middle stages OR empty prompt
     if (middleSteps.length === 0) {
       const placeholderId = '__empty_prompt__';
+      const emptyPos = getNodePos(placeholderId, y);
       nodes.push({
         id: placeholderId,
         type: 'emptyPrompt',
-        position: { x: CENTER_X, y },
+        position: emptyPos,
         data: { onAddStage },
-        draggable: false,
-        selectable: false,
+        draggable: true,
       });
-      y += 220;
+      y += 260;
     } else {
       for (const step of middleSteps) {
         const isSelected = selectedStepId === step.id;
+        const stepPos = getNodePos(step.id, y);
         nodes.push({
           id: step.id,
           type: 'custom',
-          position: { x: CENTER_X, y },
+          position: stepPos,
           data: { name: step.name, description: step.description, type: step.type, isOptional: step.isOptional, step, onEdit: onEditStep, isSelected },
           selected: isSelected,
+          draggable: true,
         });
-        // Middle cards are ~165px height; advancing by 235px provides ~70px space between cards so boundaries never overlap
-        y += 235;
+        // Middle cards are ~170px height; advancing by 280px provides ~110px space between cards
+        y += 280;
       }
     }
 
     // Check-Out (always last)
     if (checkOut) {
       const isSelected = selectedStepId === checkOut.id;
+      const checkOutPos = getNodePos(checkOut.id, y);
       nodes.push({
         id: checkOut.id,
         type: 'system',
-        position: { x: CENTER_X, y },
+        position: checkOutPos,
         data: { name: checkOut.name, description: checkOut.description, type: 'CHECK_OUT', step: checkOut, onEdit: onEditStep, isSelected },
         selected: isSelected,
-        draggable: false,
+        draggable: true,
       });
     }
 
     return nodes;
   }, [flow, onEditStep, onAddStage, selectedStepId]);
+
+  const initialNodes = useMemo(() => computeNodes(false), [computeNodes]);
 
   const initialEdges = useMemo(() => {
     if (!flow?.steps) return [];
@@ -395,10 +521,11 @@ export function FlowBuilder(props: FlowBuilderProps) {
         target: checkInNode.id,
         label: 'Arrival & QR Pass',
         animated: true,
-        style: { stroke: '#4f46e5', strokeWidth: 2 },
+        style: { stroke: '#4f46e5', strokeWidth: 2.5 },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#4f46e5' },
-        labelStyle: { fontSize: 9, fontWeight: 700, fill: '#4f46e5' },
-        labelBgStyle: { fill: '#e0e7ff', borderRadius: 4 },
+        labelStyle: { fontSize: 10, fontWeight: 700, fill: '#4f46e5' },
+        labelBgStyle: { fill: '#eef2ff', stroke: '#c7d2fe', strokeWidth: 1.5, rx: 8, ry: 8 },
+        labelBgPadding: [10, 5],
       });
     }
 
@@ -414,7 +541,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
           source: checkIn.id,
           target: '__empty_prompt__',
           animated: true,
-          style: { stroke: '#818cf8', strokeWidth: 2, strokeDasharray: '6,4' },
+          style: { stroke: '#818cf8', strokeWidth: 2.5, strokeDasharray: '6,4' },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#818cf8' },
         });
         edges.push({
@@ -422,7 +549,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
           source: '__empty_prompt__',
           target: checkOut.id,
           animated: true,
-          style: { stroke: '#34d399', strokeWidth: 2, strokeDasharray: '6,4' },
+          style: { stroke: '#34d399', strokeWidth: 2.5, strokeDasharray: '6,4' },
           markerEnd: { type: MarkerType.ArrowClosed, color: '#34d399' },
         });
       }
@@ -440,12 +567,13 @@ export function FlowBuilder(props: FlowBuilderProps) {
               id: `e-${step.id}-${t.toStepId}`,
               source: step.id,
               target: t.toStepId,
-              label: t.label || (t.isDefault ? '' : ''),
+              label: t.label || '',
               animated: t.isDefault,
               style: { stroke: color, strokeWidth: 2.5 },
               markerEnd: { type: MarkerType.ArrowClosed, color },
               labelStyle: { fontSize: 10, fontWeight: 700, fill: color },
-              labelBgStyle: { fill: '#eef2ff', borderRadius: 6 },
+              labelBgStyle: { fill: '#f8fafc', stroke: `${color}40`, strokeWidth: 1.5, rx: 8, ry: 8 },
+              labelBgPadding: [8, 4],
             });
           }
         });
@@ -460,7 +588,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
             source: step.id,
             target: next.id,
             animated: true,
-            style: { stroke: srcColor, strokeWidth: 2, strokeDasharray: '5,4', opacity: 0.7 },
+            style: { stroke: srcColor, strokeWidth: 2.5, strokeDasharray: '6,4', opacity: 0.85 },
             markerEnd: { type: MarkerType.ArrowClosed, color: srcColor },
           });
         }
@@ -472,21 +600,61 @@ export function FlowBuilder(props: FlowBuilderProps) {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  // Sync positions on drag and persist to localStorage
+  const handleNodesChange = useCallback(
+    (changes: NodeChange[]) => {
+      changes.forEach((change) => {
+        if (change.type === 'position' && change.position && change.id) {
+          positionsRef.current[change.id] = change.position;
+          if (flow?.id) {
+            try {
+              localStorage.setItem(`yq_flow_positions_${flow.id}`, JSON.stringify(positionsRef.current));
+            } catch {
+              // ignore
+            }
+          }
+        }
+      });
+      onNodesChange(changes);
+    },
+    [onNodesChange, flow?.id]
+  );
+
+  // Reset to default vertical ladder alignment
+  const handleAutoAlign = useCallback(() => {
+    positionsRef.current = {};
+    if (flow?.id) {
+      try {
+        localStorage.removeItem(`yq_flow_positions_${flow.id}`);
+      } catch {
+        // ignore
+      }
+    }
+    const freshNodes = computeNodes(true);
+    setNodes(freshNodes);
+    setTimeout(() => {
+      handleFitView();
+    }, 60);
+  }, [flow?.id, computeNodes, setNodes, handleFitView]);
+
   useEffect(() => {
     setNodes(initialNodes as any);
+  }, [initialNodes, setNodes]);
+
+  useEffect(() => {
     setEdges(initialEdges as any);
-  }, [initialNodes, initialEdges, setNodes, setEdges]);
+  }, [initialEdges, setEdges]);
 
   // Smoothly center the canvas onto selected step card with matching camera glide
   useEffect(() => {
     if (!selectedStepId || !rfInstance) return;
     const targetNode = nodes.find((n: any) => n.id === selectedStepId);
     if (targetNode) {
-      const x = targetNode.position.x + 115;
+      const x = targetNode.position.x + 130;
       const y = targetNode.position.y + 80;
       rfInstance.setCenter(x, y, { duration: 750, zoom: Math.min(1.05, Math.max(0.88, rfInstance.getZoom())) });
     }
-  }, [selectedStepId, rfInstance]);
+  }, [selectedStepId, rfInstance, nodes]);
 
   const onConnect = useCallback((params: any) => {
     setEdges((eds) => {
@@ -634,9 +802,41 @@ export function FlowBuilder(props: FlowBuilderProps) {
           transform: scale(1.1);
         }
         .flow-builder-canvas .react-flow__node {
-          transition: transform 450ms cubic-bezier(0.16, 1, 0.3, 1),
-                      box-shadow 450ms cubic-bezier(0.16, 1, 0.3, 1);
+          transition: box-shadow 300ms cubic-bezier(0.16, 1, 0.3, 1);
           will-change: transform, box-shadow;
+        }
+        .flow-builder-canvas .react-flow__edge-textbg {
+          fill: #ffffff !important;
+          stroke: #c7d2fe !important;
+          stroke-width: 1.5px !important;
+          rx: 8px !important;
+          ry: 8px !important;
+          filter: drop-shadow(0 2px 5px rgba(79, 70, 229, 0.12));
+        }
+        .dark .flow-builder-canvas .react-flow__edge-textbg {
+          fill: #18181b !important;
+          stroke: #4338ca !important;
+          stroke-width: 1.5px !important;
+          rx: 8px !important;
+          ry: 8px !important;
+          filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+        }
+        .flow-builder-canvas .react-flow__edge-text {
+          fill: #4338ca !important;
+          font-weight: 700 !important;
+          font-size: 10px !important;
+        }
+        .dark .flow-builder-canvas .react-flow__edge-text {
+          fill: #c7d2fe !important;
+          font-weight: 700 !important;
+          font-size: 10px !important;
+        }
+        .flow-builder-canvas .react-flow__handle {
+          transition: transform 0.2s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease;
+        }
+        .flow-builder-canvas .react-flow__handle:hover {
+          transform: scale(1.28);
+          box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.35);
         }
         .flow-builder-canvas .react-flow__minimap {
           background: rgba(255, 255, 255, 0.9);
@@ -662,7 +862,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
         }
       `}</style>
 
-      {/* Layer 1: Ambient Corner Mesh Aurora (exact match to user screenshot) */}
+      {/* Layer 1: Ambient Corner Mesh Aurora */}
       <div
         className="ambient-mesh-glow pointer-events-none absolute -bottom-36 -right-36 w-[640px] h-[640px] rounded-full blur-[96px] z-0"
         style={{
@@ -693,11 +893,20 @@ export function FlowBuilder(props: FlowBuilderProps) {
       <div className="pointer-events-none absolute inset-0 z-0 canvas-vignette" />
 
       {/* Floating Scale & Depth HUD pill */}
-      <div className="absolute bottom-4 left-16 z-10 flex items-center gap-2.5 bg-white/85 dark:bg-zinc-900/85 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 shadow-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 transition-transform duration-200 hover:scale-[1.02]">
+      <div className="absolute bottom-4 left-16 z-10 flex items-center gap-2.5 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md px-3.5 py-1.5 rounded-full border border-zinc-200/80 dark:border-zinc-800 shadow-lg text-[11px] font-medium text-zinc-600 dark:text-zinc-300 transition-transform duration-200 hover:scale-[1.01]">
         <div className="flex items-center gap-1.5">
           <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
           <span className="font-semibold text-zinc-900 dark:text-white">Canvas</span>
         </div>
+        <span className="text-zinc-300 dark:text-zinc-700">|</span>
+        <button
+          type="button"
+          onClick={handleAutoAlign}
+          title="Auto-align cards into an optimal vertical flow"
+          className="flex items-center gap-1 font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 transition-colors cursor-pointer"
+        >
+          <LayoutTemplate className="w-3.5 h-3.5" /> Auto Align
+        </button>
         <span className="text-zinc-300 dark:text-zinc-700">|</span>
         <span className="font-mono text-zinc-500 dark:text-zinc-400">24px Grid</span>
         <span className="text-zinc-300 dark:text-zinc-700">|</span>
@@ -714,7 +923,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
       <ReactFlow
         nodes={nodes}
         edges={edges}
-        onNodesChange={onNodesChange}
+        onNodesChange={handleNodesChange}
         onEdgesChange={onEdgesChange}
         onConnect={onConnect}
         onInit={setRfInstance}
@@ -729,13 +938,16 @@ export function FlowBuilder(props: FlowBuilderProps) {
         onEdgeClick={(_, edge) => { if (props.onEditEdge) props.onEditEdge(edge); }}
         nodeTypes={nodeTypes}
         fitView
-        fitViewOptions={{ padding: 0.28, maxZoom: 0.9, duration: 800 }}
+        fitViewOptions={{ padding: 0.22, maxZoom: 0.95, duration: 700 }}
         attributionPosition="bottom-right"
         minZoom={0.2}
         maxZoom={1.5}
         proOptions={{ hideAttribution: true }}
         panOnScroll
         selectionOnDrag={false}
+        nodesDraggable={true}
+        nodesConnectable={true}
+        elementsSelectable={true}
       >
         <Background
           id="rf-dots-minor"
@@ -753,7 +965,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
         />
         <Controls
           showInteractive={false}
-          fitViewOptions={{ padding: 0.28, maxZoom: 0.9, duration: 800 }}
+          fitViewOptions={{ padding: 0.22, maxZoom: 0.95, duration: 700 }}
           onFitView={handleFitView}
         />
         <MiniMap
