@@ -181,13 +181,13 @@ export default function PricingHub() {
                   <p className="text-sm text-gray-500 dark:text-zinc-400 min-h-[40px]">{plan.description}</p>
                   <div className="mt-4 flex flex-col gap-1">
                     <div className="flex items-baseline gap-1">
-                      <span className="text-3xl font-black text-gray-900 dark:text-white">{plan.currency === 'ZAR' ? 'R' : '$'}{(plan.price / 100).toFixed(2)}</span>
+                      <span className="text-3xl font-black text-gray-900 dark:text-white">{plan.currency === 'ZAR' ? 'R' : '$'}{Math.round(plan.price / 100).toLocaleString()}</span>
                       <span className="text-sm text-gray-500 dark:text-zinc-400">/mo</span>
                     </div>
                     {plan.annualPrice > 0 && (
                       <div className="flex items-center gap-2">
                         <span className="text-sm font-medium text-gray-600 dark:text-zinc-400">
-                          {plan.currency === 'ZAR' ? 'R' : '$'}{(plan.annualPrice / 100).toFixed(2)} /yr
+                          {plan.currency === 'ZAR' ? 'R' : '$'}{Math.round(plan.annualPrice / 100).toLocaleString()} /yr
                         </span>
                         <span className="text-xs px-2 py-0.5 bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 rounded-full font-bold">
                           {Math.round(((plan.price * 12 - plan.annualPrice) / (plan.price * 12)) * 100)}% OFF

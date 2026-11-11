@@ -117,9 +117,27 @@ export default function PricingPage({ plans }: PricingProps) {
 
       {/* Pricing Cards */}
       <section className="pb-32 px-gutter relative z-10">
-        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8">
+        <div className={`max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 ${plans.length === 4 ? 'lg:grid-cols-4' : 'lg:grid-cols-3'} gap-6`}>
           {plans.map((plan, index) => {
             const isPopular = plan.name.toLowerCase().includes('standard');
+            const currencySymbol = plan.currency === 'ZAR' ? 'R' : '$';
+
+            // Normalize: if stored in cents (>= 1000), convert to whole currency units
+            const rawMonthly = plan.price || 0;
+            const monthlyAmount = rawMonthly >= 1000 ? Math.round(rawMonthly / 100) : Math.round(rawMonthly);
+            const rawAnnual = plan.annualPrice || 0;
+            const annualAmount = rawAnnual >= 1000 ? Math.round(rawAnnual / 100) : Math.round(rawAnnual);
+
+            const isFree = monthlyAmount === 0;
+            const annualMonthlyRate = annualAmount > 0 ? Math.round(annualAmount / 12) : 0;
+            const currentPrice = isFree
+              ? 'Free'
+              : `${currencySymbol}${isYearly && annualMonthlyRate > 0 ? annualMonthlyRate.toLocaleString() : monthlyAmount.toLocaleString()}`;
+
+            const savingsPercent = !isFree && monthlyAmount > 0 && annualAmount > 0
+              ? Math.max(0, Math.round(((monthlyAmount * 12 - annualAmount) / (monthlyAmount * 12)) * 100))
+              : 0;
+
             return (
               <motion.div 
                 key={plan.id}
@@ -136,22 +154,22 @@ export default function PricingPage({ plans }: PricingProps) {
                 <h3 className="text-xl font-semibold text-white mb-2">{plan.name}</h3>
                 <p className="text-sm text-zinc-400 mb-6">{plan.description || "Everything you need to get started."}</p>
                 <div className="mb-8 relative">
-                  {isYearly && plan.annualPrice > 0 && plan.price > 0 && (
+                  {isYearly && savingsPercent > 0 && (
                     <div className="absolute -top-6 right-0 bg-emerald-500/20 text-emerald-400 text-xs font-bold px-2 py-1 rounded-full">
-                      {Math.round(((plan.price * 12 - plan.annualPrice) / (plan.price * 12)) * 100)}% OFF
+                      {savingsPercent}% OFF
                     </div>
                   )}
                   <span className="text-4xl font-bold text-white">
-                    {plan.price === 0 ? "Free" : `${plan.currency === 'ZAR' ? 'R' : '$'}${isYearly && plan.annualPrice > 0 ? (plan.annualPrice / 12).toFixed(0) : plan.price}`}
+                    {currentPrice}
                   </span>
-                  {plan.price > 0 && (
+                  {!isFree && (
                     <div className="inline-flex flex-col ml-1">
                       <span className="text-zinc-500">/mo</span>
                     </div>
                   )}
-                  {isYearly && plan.annualPrice > 0 && plan.price > 0 && (
+                  {isYearly && annualAmount > 0 && !isFree && (
                     <div className="text-sm text-zinc-400 mt-1">
-                      Billed {plan.currency === 'ZAR' ? 'R' : '$'}{plan.annualPrice} yearly
+                      Billed {currencySymbol}{annualAmount.toLocaleString()} yearly
                     </div>
                   )}
                 </div>
@@ -267,19 +285,25 @@ export const getServerSideProps: GetServerSideProps = async () => {
         id: '1', name: 'Starter (14 Days Trial)', description: 'Perfect for small retail or single service point environments.',
         price: 0, annualPrice: 0, currency: 'ZAR', interval: 'monthly',
         features: { whatsappNotifications: false, whatsappChat: false, whatsappChatbot: false },
-        limits: { maxServices: 1, maxLocations: 1, maxStaff: 1, maxTokens: 100 }
+        limits: { maxServices: 1, maxLocations: 1, maxStaff: 3, maxTokens: 1000 }
       },
       {
         id: '2', name: 'Standard Plan', description: 'Ideal for busy clinics, restaurants, and customer service centers.',
-        price: 499, annualPrice: 4990, currency: 'ZAR', interval: 'monthly',
-        features: { whatsappNotifications: true, whatsappChat: true, whatsappChatbot: true },
-        limits: { maxServices: 5, maxLocations: 3, maxStaff: 10, maxTokens: 1000 }
+        price: 79900, annualPrice: 799700, currency: 'ZAR', interval: 'monthly',
+        features: { whatsappNotifications: true, whatsappChat: true, whatsappChatbot: false },
+        limits: { maxServices: 5, maxLocations: 1, maxStaff: 5, maxTokens: 2500 }
       },
       {
-        id: '3', name: 'Premium Plan', description: 'Comprehensive solution for healthcare networks and large retail chains.',
-        price: 1499, annualPrice: 14990, currency: 'ZAR', interval: 'monthly',
-        features: { whatsappNotifications: true, whatsappChat: true, whatsappChatbot: true },
-        limits: { maxServices: 20, maxLocations: 10, maxStaff: 50, maxTokens: 10000 }
+        id: '3', name: 'Premium Plan', description: 'Comprehensive solution for businesses with more than 1 operating outlet.',
+        price: 164900, annualPrice: 1649900, currency: 'ZAR', interval: 'monthly',
+        features: { whatsappNotifications: true, whatsappChat: true, whatsappChatbot: true, multiLocation: true, customBranding: true },
+        limits: { maxServices: 20, maxLocations: 3, maxStaff: 20, maxTokens: 10000 }
+      },
+      {
+        id: '4', name: 'Enterprise Plan', description: 'Special request for enterprise environments with custom features.',
+        price: 499900, annualPrice: 4999900, currency: 'ZAR', interval: 'monthly',
+        features: { whatsappNotifications: true, whatsappChat: true, whatsappChatbot: true, multiLocation: true, customBranding: true },
+        limits: { maxServices: 100, maxLocations: 10, maxStaff: 100, maxTokens: 100000 }
       }
     ];
   }
