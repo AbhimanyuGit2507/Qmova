@@ -86,40 +86,62 @@ const PaystackCheckoutForm = ({
   const currSymbol = getCurrencySymbol(currency);
   const formattedAmount = `${currSymbol}${(amount / 100).toFixed(2)}`;
 
-  const handlePay = () => {
+  const handlePay = (forceRedirect?: boolean) => {
     setError(null);
     setIsProcessing(true);
 
-    if (typeof (window as any).PaystackPop !== 'undefined') {
-      const handler = (window as any).PaystackPop.setup({
-        key: paystackData.publicKey,
-        email: customerEmail || 'customer@qmova.com',
-        amount: amount,
-        currency: currency || 'ZAR',
-        ref: paystackData.reference,
-        onClose: () => {
-          setIsProcessing(false);
-        },
-        callback: async (response: any) => {
-          setIsProcessing(true);
-          try {
-            await fetchApi('/tenant-payments/public/paystack/verify', {
-              method: 'POST',
-              body: JSON.stringify({ reference: response.reference }),
-            });
-            onSuccess(paystackData.paymentId);
-          } catch (err: any) {
-            setError(err?.message || 'Payment completed, but status sync failed.');
-            setIsProcessing(false);
-          }
-        },
-      });
-      handler.openIframe();
-    } else if (paystackData.authorizationUrl) {
+    const email =
+      customerEmail && customerEmail.includes('@') && customerEmail.includes('.')
+        ? customerEmail.trim()
+        : 'customer@qmova.com';
+
+    if (forceRedirect === true && paystackData.authorizationUrl) {
       window.location.href = paystackData.authorizationUrl;
-    } else {
-      setError('Payment gateway is loading. Please try again.');
-      setIsProcessing(false);
+      return;
+    }
+
+    try {
+      if (typeof (window as any).PaystackPop !== 'undefined') {
+        const handler = (window as any).PaystackPop.setup({
+          key: paystackData.publicKey,
+          email,
+          amount: Math.round(amount),
+          currency: currency || 'ZAR',
+          ref: paystackData.reference,
+          onClose: function () {
+            setIsProcessing(false);
+          },
+          callback: function (response: any) {
+            setIsProcessing(true);
+            fetchApi('/tenant-payments/public/paystack/verify', {
+              method: 'POST',
+              body: JSON.stringify({ reference: response?.reference || paystackData.reference }),
+            })
+              .then(() => {
+                onSuccess(paystackData.paymentId);
+              })
+              .catch((err: any) => {
+                console.error('Paystack verification error:', err);
+                setError(err?.message || 'Payment completed, but status sync failed.');
+                setIsProcessing(false);
+              });
+          },
+        });
+        handler.openIframe();
+      } else if (paystackData.authorizationUrl) {
+        window.location.href = paystackData.authorizationUrl;
+      } else {
+        setError('Payment gateway is loading. Please try again.');
+        setIsProcessing(false);
+      }
+    } catch (popupErr: any) {
+      console.warn('Paystack inline iframe failed, redirecting to hosted checkout:', popupErr);
+      if (paystackData.authorizationUrl) {
+        window.location.href = paystackData.authorizationUrl;
+      } else {
+        setError(popupErr?.message || 'Payment could not be started. Please try again.');
+        setIsProcessing(false);
+      }
     }
   };
 
@@ -191,7 +213,7 @@ const PaystackCheckoutForm = ({
 
       <button
         type="button"
-        onClick={handlePay}
+        onClick={() => handlePay(false)}
         disabled={isProcessing}
         className="w-full py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.01] active:scale-98 flex items-center justify-center gap-2 text-base"
         style={{ backgroundColor: primaryColor || '#059669' }}
@@ -208,6 +230,18 @@ const PaystackCheckoutForm = ({
           </>
         )}
       </button>
+
+      {paystackData.authorizationUrl && (
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => handlePay(true)}
+            className="text-xs text-gray-500 hover:text-emerald-600 dark:text-zinc-400 dark:hover:text-emerald-400 font-medium underline underline-offset-2 transition-colors"
+          >
+            Popup blocked? Open Paystack full-page checkout &rarr;
+          </button>
+        </div>
+      )}
 
       {/* Satisfaction & Guarantee Card */}
       <div className="p-4 rounded-xl border border-amber-200/70 dark:border-amber-900/40 bg-amber-50/50 dark:bg-amber-950/20 flex items-start gap-3">

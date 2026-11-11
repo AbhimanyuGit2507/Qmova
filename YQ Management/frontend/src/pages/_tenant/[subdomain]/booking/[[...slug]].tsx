@@ -278,6 +278,29 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     }
   }, [router.isReady, router.query]);
 
+  // Handle Paystack redirect return if returned to booking page
+  useEffect(() => {
+    if (!router.isReady) return;
+    const { paystack_ref, reference, trxref } = router.query;
+    const pRef = (paystack_ref || reference || trxref) as string | undefined;
+    if (pRef && typeof window !== 'undefined') {
+      const savedVisitsStr = sessionStorage.getItem('qmova_pending_visits');
+      if (savedVisitsStr) {
+        try {
+          const savedVisits = JSON.parse(savedVisitsStr);
+          sessionStorage.removeItem('qmova_pending_visits');
+          fetchApi('/tenant-payments/public/paystack/verify', {
+            method: 'POST',
+            body: JSON.stringify({ reference: pRef }),
+          }).catch((err) => console.warn('Paystack return verify err:', err));
+          redirectToStatus(savedVisits);
+        } catch (e) {
+          console.error('Error handling Paystack redirect return:', e);
+        }
+      }
+    }
+  }, [router.isReady, router.query]);
+
   // Auto-select location/service/queue based on URL query params & Session Restore
   useEffect(() => {
     if (!tenant || !router.isReady || hasAutoSelected) return;

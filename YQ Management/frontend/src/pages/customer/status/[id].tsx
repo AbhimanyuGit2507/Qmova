@@ -184,6 +184,36 @@ export default function CustomerLiveStatus() {
     refetchRef.current();
   }, []);
 
+  // Auto-verify Paystack if returning from payment redirect
+  const paystackRef = (router.query.paystack_ref || router.query.reference || router.query.trxref) as string | undefined;
+  const paystackVerifiedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!paystackRef || paystackVerifiedRef.current === paystackRef) return;
+    paystackVerifiedRef.current = paystackRef;
+
+    const baseUrl =
+      typeof window !== 'undefined'
+        ? process.env.NEXT_PUBLIC_API_URL || getBackendUrl()
+        : getBackendUrl();
+
+    fetch(`${baseUrl}/tenant-payments/public/paystack/verify`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reference: paystackRef }),
+    })
+      .then((res) => res.json())
+      .then((payload) => {
+        if (payload?.isSuccessful || payload?.status === 'SUCCEEDED') {
+          toast.success('Payment verified successfully!');
+          triggerRefetch();
+        }
+      })
+      .catch((err) => {
+        console.warn('Paystack redirect verify notice:', err);
+      });
+  }, [paystackRef, triggerRefetch]);
+
   const visitId = data?.token?.id || data?.id;
 
   // WebSocket subscription: join visit room with token validation
