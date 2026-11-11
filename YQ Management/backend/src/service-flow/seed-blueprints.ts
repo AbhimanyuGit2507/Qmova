@@ -67,6 +67,8 @@ async function main() {
         trigger: 'AUTOMATIC',
         isSystem: true,
         category: 'bookend',
+        requiresQrScan: true,
+        requiresStaffAction: false,
       } as any);
 
       newSteps.push({
@@ -77,6 +79,8 @@ async function main() {
         trigger: 'MANUAL_STAFF',
         isSystem: true,
         category: 'bookend',
+        requiresQrScan: false,
+        requiresStaffAction: true,
       } as any);
 
       newSteps = newSteps.map((s, idx) => ({ ...s, stepOrder: idx }));
@@ -93,8 +97,14 @@ async function main() {
           category: step.category || null,
           customerView: step.customerView || null,
           isOptional: step.isOptional || false,
-          requiresQrScan: step.requiresQrScan ?? true,
-          requiresStaffAction: step.requiresStaffAction ?? true,
+          requiresQrScan:
+            step.requiresQrScan !== undefined
+              ? step.requiresQrScan
+              : step.type === 'CHECK_IN' || step.type === 'COLLECTION',
+          requiresStaffAction:
+            step.requiresStaffAction !== undefined
+              ? step.requiresStaffAction
+              : step.type !== 'WAITING_PERIOD' && step.type !== 'CHECK_IN',
           deferredByDays: step.deferredByDays,
           deferredByHours: step.deferredByHours,
           entitlementUnit: step.entitlementUnit,
