@@ -60,12 +60,10 @@ async function main() {
       let newSteps = tpl.steps.filter((s) => s.type !== 'PAYMENT');
 
       // Determine if this industry vertical physically uses an arrival QR scan gate turnstile
-      // For food/catering, salons, retail, schools, clinics, customers proceed directly to order/service
-      // An arrival QR check-in gate can always be added on-demand via "+ Add Stage"
-      const industriesWithArrivalGate = new Set([
-        'events',
-        'conferences',
-        'logistics',
+      // For food/catering, salons, retail, schools, clinics, and general events, customers proceed directly
+      // to order/service or visually present student/staff IDs.
+      // An arrival QR check-in gate can always be added on-demand via "+ Add Stage" -> "Booking Verification Gate".
+      const industriesWithPhysicalTurnstile = new Set([
         'security',
         'embassy',
         'airport',
@@ -73,9 +71,13 @@ async function main() {
 
       const industryKey = (tpl.industry || '').toLowerCase();
       const templateKey = (tpl.key || '').toLowerCase();
+      const hasExistingGate = newSteps.some(
+        (s) => s.type === 'CHECK_IN' || (s.type === 'CHECKPOINT' && (s.stepOrder === 0 || s.stepOrder === 1))
+      );
       const shouldAddCheckInGate =
-        industriesWithArrivalGate.has(industryKey) ||
-        industriesWithArrivalGate.has(templateKey);
+        !hasExistingGate &&
+        (industriesWithPhysicalTurnstile.has(industryKey) ||
+         industriesWithPhysicalTurnstile.has(templateKey));
 
       if (shouldAddCheckInGate) {
         newSteps.unshift({

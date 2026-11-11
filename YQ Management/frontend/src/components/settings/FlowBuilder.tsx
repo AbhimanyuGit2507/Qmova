@@ -415,23 +415,25 @@ export function FlowBuilder(props: FlowBuilderProps) {
   useEffect(() => {
     if (!flow?.id) return;
     try {
-      const saved = localStorage.getItem(`yq_flow_positions_${flow.id}`);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        // Detect and clear legacy cramped spacing (< 260px gap between Booking Channel and next node)
-        const bPos = parsed['__booking_channel__'];
-        const otherPositions = Object.entries(parsed).filter(([k]) => k !== '__booking_channel__');
-        const hasCrampedY =
-          bPos &&
-          otherPositions.some(
-            ([_, p]: any) => p && typeof p.y === 'number' && p.y > bPos.y && p.y - bPos.y < 260
-          );
-        if (hasCrampedY) {
-          localStorage.removeItem(`yq_flow_positions_${flow.id}`);
-          positionsRef.current = {};
-        } else {
-          positionsRef.current = parsed;
+      // Versioned key to prevent stale cramped layouts from polluting fresh renders
+      const storageKey = `yq_flow_positions_v5_${flow.id}`;
+      // Clean up legacy unversioned keys if any exist
+      if (typeof window !== 'undefined') {
+        const keysToRemove: string[] = [];
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('yq_flow_positions_') && !k.startsWith('yq_flow_positions_v5_')) {
+            keysToRemove.push(k);
+          }
         }
+        keysToRemove.forEach((k) => localStorage.removeItem(k));
+      }
+
+      const saved = localStorage.getItem(storageKey);
+      if (saved) {
+        positionsRef.current = JSON.parse(saved);
+      } else {
+        positionsRef.current = {};
       }
     } catch {
       // ignore storage access issues
@@ -484,8 +486,8 @@ export function FlowBuilder(props: FlowBuilderProps) {
       data: { allowAppointments, allowWalkins: true },
       draggable: true,
     });
-    // Advance by 320px: Card height is ~185px, providing ~135px vertical space for clean handles and edge badge
-    y += 320;
+    // Advance by 360px: Generous vertical breathing room (~175px clearance between cards for clean handles & edge badge)
+    y += 360;
 
     // Check-In (Optional initial verification gate)
     if (checkIn) {
@@ -507,7 +509,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
         selected: isSelected,
         draggable: true,
       });
-      y += 310;
+      y += 320;
     }
 
     // Middle stages OR empty prompt
@@ -688,7 +690,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
           positionsRef.current[change.id] = change.position;
           if (flow?.id) {
             try {
-              localStorage.setItem(`yq_flow_positions_${flow.id}`, JSON.stringify(positionsRef.current));
+              localStorage.setItem(`yq_flow_positions_v5_${flow.id}`, JSON.stringify(positionsRef.current));
             } catch {
               // ignore
             }
@@ -707,7 +709,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
         if (flow?.id) {
           try {
             localStorage.setItem(
-              `yq_flow_positions_${flow.id}`,
+              `yq_flow_positions_v5_${flow.id}`,
               JSON.stringify(positionsRef.current)
             );
           } catch {
@@ -724,7 +726,7 @@ export function FlowBuilder(props: FlowBuilderProps) {
     positionsRef.current = {};
     if (flow?.id) {
       try {
-        localStorage.removeItem(`yq_flow_positions_${flow.id}`);
+        localStorage.removeItem(`yq_flow_positions_v5_${flow.id}`);
       } catch {
         // ignore
       }
