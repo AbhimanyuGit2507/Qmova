@@ -167,20 +167,21 @@ export default function StatusPage() {
       }
     }
 
-    // B. Stored tokens from localStorage & cookie
-    const storedTokens = getStoredTokens(subdomain as string);
-
-    // C. Combine & deduplicate
-    const combined = Array.from(new Set([...urlTokens, ...storedTokens])).filter(Boolean);
-
-    if (combined.length > 0) {
-      persistTokens(combined, subdomain as string);
-      const tokenStr = combined.join(',');
+    if (urlTokens.length > 0) {
+      // User explicitly opened/redirected to specific tokens: prioritize them
+      persistTokens(urlTokens, subdomain as string);
+      const tokenStr = urlTokens.join(',');
       setActiveTokens(tokenStr);
       setRecoveryMode(false);
+    } else {
+      // B. Fallback to stored tokens on device
+      const storedTokens = getStoredTokens(subdomain as string);
+      if (storedTokens.length > 0) {
+        const tokenStr = storedTokens.join(',');
+        setActiveTokens(tokenStr);
+        setRecoveryMode(false);
 
-      // If URL was missing ?tokens= but we have tokens stored on this device, sync URL shallowly
-      if (!router.query.tokens) {
+        // Sync URL shallowly with stored active tokens
         router.replace(
           {
             pathname: router.pathname,
@@ -189,15 +190,50 @@ export default function StatusPage() {
           undefined,
           { shallow: true }
         );
+      } else {
+        // Truly no tokens on device or URL
+        setActiveTokens('');
+        setRecoveryMode(true);
+        setIsLoading(false);
       }
-    } else {
-      // Truly no tokens on device or URL
-      setActiveTokens('');
-      setRecoveryMode(true);
-      setIsLoading(false);
     }
     setIsReady(true);
   }, [router.isReady, router.query.tokens, router.query.recover, subdomain]);
+
+  // Prune completed/cancelled visits older than 24 hours from device localStorage
+  const pruneExpiredTokens = (items: AnyFixMe[]) => {
+    if (typeof window === 'undefined' || !Array.isArray(items)) return;
+    const oneDayAgo = Date.now() - 24 * 60 * 60 * 1000;
+    const expiredTokens = items
+      .filter((v: AnyFixMe) => {
+        const isFinished = ['COMPLETED', 'NO_SHOW', 'CANCELLED'].includes(v.currentState);
+        if (!isFinished) return false;
+        const finishTime = v.completedAt
+          ? new Date(v.completedAt).getTime()
+          : v.updatedAt
+          ? new Date(v.updatedAt).getTime()
+          : 0;
+        return finishTime > 0 && finishTime < oneDayAgo;
+      })
+      .map((v: AnyFixMe) => v.accessToken)
+      .filter(Boolean);
+
+    if (expiredTokens.length > 0) {
+      try {
+        const raw = localStorage.getItem('qmova_active_tokens');
+        if (raw) {
+          const current = JSON.parse(raw);
+          if (Array.isArray(current)) {
+            const pruned = current.filter((t: string) => !expiredTokens.includes(t));
+            localStorage.setItem('qmova_active_tokens', JSON.stringify(pruned));
+            if (subdomain) {
+              localStorage.setItem(`qmova_active_tokens_${subdomain}`, JSON.stringify(pruned));
+            }
+          }
+        }
+      } catch {}
+    }
+  };
 
   // 2. Fetch and stream visits when activeTokens are available
   useEffect(() => {
@@ -215,6 +251,7 @@ export default function StatusPage() {
             setVisits(data);
             setIsLoading(false);
             setRecoveryMode(false);
+            pruneExpiredTokens(data);
           } else {
             setIsLoading(false);
             setRecoveryMode(true);
@@ -244,6 +281,7 @@ export default function StatusPage() {
             setIsLoading(false);
             if (data.length > 0) {
               setRecoveryMode(false);
+              pruneExpiredTokens(data);
             }
           }
         } catch (err) {

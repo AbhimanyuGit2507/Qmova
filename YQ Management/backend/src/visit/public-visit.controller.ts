@@ -376,7 +376,24 @@ export class PublicVisitController {
       redisKey = `booking:idempotency:${idempotencyKey}`;
       const cached = await this.redisService.client.get(redisKey);
       if (cached) {
-        return JSON.parse(cached);
+        try {
+          const cachedVisits = JSON.parse(cached);
+          if (Array.isArray(cachedVisits) && cachedVisits.length > 0) {
+            // Verify that all cached visits still exist in DB and are NOT cancelled or abandoned
+            const aliveVisits = await this.prisma.visit.findMany({
+              where: {
+                id: { in: cachedVisits.map((v: any) => v.id) },
+                currentState: { notIn: ['CANCELLED', 'NO_SHOW'] },
+              },
+            });
+            if (aliveVisits.length === cachedVisits.length) {
+              return cachedVisits;
+            }
+          }
+        } catch {
+          // If parse or check fails, purge stale cache and recreate fresh booking
+        }
+        await this.redisService.client.del(redisKey);
       }
     }
 
@@ -477,8 +494,8 @@ export class PublicVisitController {
         redisKey,
         JSON.stringify(visits),
         'EX',
-        86400,
-      ); // 24 hours
+        1800,
+      ); // 30 minutes TTL (prevents duplicate submissions without locking state for 24h)
     }
 
     return visits;
@@ -486,14 +503,26 @@ export class PublicVisitController {
 
   @Post('confirm-counter-payment')
   async confirmCounterPayment(
-    @Body() body: { visitIds?: string[]; token?: string },
+    @Body() body: { visitIds?: string[]; token?: string; idempotencyKey?: string },
   ) {
     const visitIds = body.visitIds || [];
     let visitsToUpdate: any[] = [];
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
 
     if (visitIds.length > 0) {
       visitsToUpdate = await this.prisma.visit.findMany({
-        where: { id: { in: visitIds }, currentState: 'PENDING_PAYMENT' },
+        where: {
+          id: { in: visitIds },
+          OR: [
+            { currentState: 'PENDING_PAYMENT' },
+            // Self-healing resuscitation: allow confirming if prematurely cancelled within last 30 minutes
+            {
+              currentState: 'CANCELLED',
+              cancelReason: 'Payment abandoned by customer',
+              updatedAt: { gte: thirtyMinutesAgo },
+            },
+          ],
+        },
         include: { service: true },
       });
     } else if (body.token) {
@@ -501,13 +530,19 @@ export class PublicVisitController {
         where: { accessToken: body.token },
         include: { service: true },
       });
-      if (v && v.currentState === 'PENDING_PAYMENT') {
+      if (
+        v &&
+        (v.currentState === 'PENDING_PAYMENT' ||
+          (v.currentState === 'CANCELLED' &&
+            v.cancelReason === 'Payment abandoned by customer' &&
+            v.updatedAt >= thirtyMinutesAgo))
+      ) {
         visitsToUpdate = [v];
       }
     }
 
     if (visitsToUpdate.length === 0) {
-      return { success: true, count: 0 };
+      return { success: true, count: 0, visits: [] };
     }
 
     for (const v of visitsToUpdate) {
@@ -517,7 +552,12 @@ export class PublicVisitController {
       }
       await this.prisma.visit.update({
         where: { id: v.id },
-        data: { currentState: newState as any },
+        data: {
+          currentState: newState as any,
+          cancelReason: null,
+          completedAt: null,
+          waitingStart: newState === 'WAITING' ? (v.waitingStart || new Date()) : null,
+        },
       });
 
       // Find or create offline BookingPayment record marked pending at counter
@@ -526,16 +566,21 @@ export class PublicVisitController {
       });
 
       const partySize = 1 + (v.accompanyingGuests || 0);
-      const totalAmount = Math.round((v.service?.basePrice || 0) * partySize);
+      const meta = (v.metadata as any) || {};
+      const menuTotal = Number(meta.menuTotal || 0);
+      const totalAmount = Math.round((v.service?.basePrice || 0) * partySize) + menuTotal;
 
       if (existingPayment) {
         await this.prisma.bookingPayment.update({
           where: { id: existingPayment.id },
           data: {
+            amount: totalAmount > 0 ? totalAmount : existingPayment.amount,
+            tenantNetAmount: totalAmount > 0 ? totalAmount : existingPayment.tenantNetAmount,
             status: 'PENDING_COUNTER' as any,
             stripePaymentMethodType: 'OFFLINE',
             method: 'CASH',
             description: 'Payment pending at counter',
+            refundReason: null,
           },
         });
       } else if (totalAmount > 0) {
@@ -578,12 +623,22 @@ export class PublicVisitController {
         this.logger.error('Failed to publish outbox wake-up event', e),
       );
 
-    return { success: true, count: visitsToUpdate.length };
+    // Evict any stale idempotency key from Redis so retries never get stuck
+    if (body.idempotencyKey) {
+      await this.redisService.client.del(`booking:idempotency:${body.idempotencyKey}`).catch(() => {});
+    }
+
+    const updatedVisits = await this.prisma.visit.findMany({
+      where: { id: { in: visitsToUpdate.map((v) => v.id) } },
+      include: { service: true, queue: true },
+    });
+
+    return { success: true, count: updatedVisits.length, visits: updatedVisits };
   }
 
   @Post('abandon-pending-payment')
   async abandonPendingPayment(
-    @Body() body: { visitIds?: string[]; token?: string },
+    @Body() body: { visitIds?: string[]; token?: string; idempotencyKey?: string },
   ) {
     const visitIds = body.visitIds || [];
     let visitsToAbandon: string[] = [];
@@ -602,6 +657,10 @@ export class PublicVisitController {
       if (v && v.currentState === 'PENDING_PAYMENT') {
         visitsToAbandon = [v.id];
       }
+    }
+
+    if (body.idempotencyKey) {
+      await this.redisService.client.del(`booking:idempotency:${body.idempotencyKey}`).catch(() => {});
     }
 
     if (visitsToAbandon.length === 0) {

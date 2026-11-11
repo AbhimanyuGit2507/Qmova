@@ -122,12 +122,22 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   const [defaultCountry, setDefaultCountry] = useState<AnyFixMe>(() => ipCountry || getInitialCountryIso());
   const [selectedServiceIds, setSelectedServiceIds] = useState<string[]>([]);
   const [regionBlocked, setRegionBlocked] = useState(false);
-  const idempotencyKey = React.useMemo(() => {
+  const generateIdempotencyKey = useCallback(() => {
     if (typeof crypto !== 'undefined' && crypto.randomUUID) {
       return crypto.randomUUID();
     }
     return Math.random().toString(36).substring(2) + Date.now().toString(36);
   }, []);
+  const [idempotencyKey, setIdempotencyKey] = useState<string>(() => {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return Math.random().toString(36).substring(2) + Date.now().toString(36);
+  });
+  const resetIdempotencyKey = useCallback(() => {
+    setIdempotencyKey(generateIdempotencyKey());
+  }, [generateIdempotencyKey]);
+  const isNavigatingToStatusRef = useRef(false);
 
   const [createdVisits, setCreatedVisits] = useState<any[]>([]);
   const [isPayAtCounter, setIsPayAtCounter] = useState(false);
@@ -512,7 +522,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     if (pendingIds.length === 0) return;
 
     const handleUnload = () => {
-      const payload = JSON.stringify({ visitIds: pendingIds });
+      // If customer confirmed counter payment or completed online payment, DO NOT cancel visit!
+      if (isNavigatingToStatusRef.current) return;
+      const payload = JSON.stringify({ visitIds: pendingIds, idempotencyKey });
       const blob = new Blob([payload], { type: 'application/json' });
       const apiEndpoint = `${baseUrl}/public-visit/abandon-pending-payment`;
       if (navigator.sendBeacon) {
@@ -531,7 +543,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     return () => {
       window.removeEventListener('pagehide', handleUnload);
     };
-  }, [step, createdVisits, baseUrl]);
+  }, [step, createdVisits, baseUrl, idempotencyKey]);
 
   // Helper for contact details
   const [isRefreshingLocation, setIsRefreshingLocation] = useState(false);
@@ -716,13 +728,23 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
     }
   };
 
-  const handleConfirm = () => {
+  const handleConfirm = (forceCounterPay?: boolean) => {
+    const effectiveCounter = forceCounterPay !== undefined ? forceCounterPay : isPayAtCounter;
+    if (forceCounterPay !== undefined) {
+      setIsPayAtCounter(forceCounterPay);
+    }
     goToStep(5);
+    triggerJoinSequence(effectiveCounter);
   };
 
-  const triggerJoinSequence = async () => {
+  const isTriggeringRef = useRef(false);
+
+  const triggerJoinSequence = async (forceCounterPay?: boolean) => {
+    if (isTriggeringRef.current) return;
+    isTriggeringRef.current = true;
     setLoading(true);
     setErrorMsg('');
+    const effectiveCounter = forceCounterPay !== undefined ? forceCounterPay : isPayAtCounter;
     try {
       if (phone) {
         // Pass serviceId for the first selected service
@@ -733,29 +755,34 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
             body: JSON.stringify({
               phone,
               serviceId: firstServiceId,
-              payAtCounter: isPayAtCounter,
+              payAtCounter: effectiveCounter,
             }),
           });
 
           if (res?.bypassOtp) {
-            await submitJoin(undefined, isPayAtCounter);
+            await submitJoin(undefined, effectiveCounter);
+            isTriggeringRef.current = false;
             return;
           }
 
           setOtpSent(true);
           setLoading(false);
+          isTriggeringRef.current = false;
           return;
         } catch (e: any) {
           if (e.status === 404) {
             // Number not registered or service not found, silently bypass OTP
-            await submitJoin(undefined, isPayAtCounter);
+            await submitJoin(undefined, effectiveCounter);
+            isTriggeringRef.current = false;
             return;
           }
           throw e;
         }
       }
-      await submitJoin(undefined, isPayAtCounter);
+      await submitJoin(undefined, effectiveCounter);
+      isTriggeringRef.current = false;
     } catch (err: AnyFixMe) {
+      isTriggeringRef.current = false;
       if (err.message === 'QUEUE_FULL') {
         setErrorMsg(
           'This queue is currently full and at maximum capacity. Please try again later or book an appointment.',
@@ -773,8 +800,10 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   };
 
   useEffect(() => {
-    if (step === 5) triggerJoinSequence();
-  }, [step]);
+    if (step === 5 && !otpSent && !loading) {
+      triggerJoinSequence();
+    }
+  }, [step, otpSent, loading]);
 
   const submitJoin = async (otpCode?: string, counterPay?: boolean) => {
     setLoading(true);
@@ -2140,7 +2169,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                             disabled={loading}
                             onClick={() => {
                               setIsPayAtCounter(true);
-                              goToStep(5);
+                              resetIdempotencyKey();
+                              handleConfirm(true);
                             }}
                             className="w-full py-2.5 rounded-xl font-semibold text-xs sm:text-sm text-gray-600 dark:text-zinc-400 hover:text-gray-900 dark:hover:text-white bg-transparent hover:bg-gray-100 dark:hover:bg-zinc-800 transition-colors flex items-center justify-center gap-1.5 border border-dashed border-gray-300 dark:border-zinc-700 disabled:opacity-50"
                           >
@@ -2157,7 +2187,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       disabled={loading}
                       onClick={() => {
                         setIsPayAtCounter(true);
-                        handleConfirm();
+                        resetIdempotencyKey();
+                        handleConfirm(true);
                       }}
                       className="flex-1 py-4 rounded-xl font-bold text-white shadow-lg transition-transform hover:scale-[1.02] active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
                       style={{ backgroundColor: primaryColor }}
@@ -2277,6 +2308,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   return undefined;
                 })()}
                 onSuccess={(paymentId) => {
+                  isNavigatingToStatusRef.current = true;
                   setCompletedPaymentId(paymentId);
                   redirectToStatus(createdVisits);
                 }}
@@ -2288,7 +2320,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                     if (pendingIds.length > 0) {
                       await fetchApi('/public-visit/abandon-pending-payment', {
                         method: 'POST',
-                        body: JSON.stringify({ visitIds: pendingIds }),
+                        body: JSON.stringify({ visitIds: pendingIds, idempotencyKey }),
                       });
                     }
                   } catch (err) {
@@ -2297,19 +2329,25 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       err,
                     );
                   }
+                  resetIdempotencyKey();
                   setCreatedVisits([]);
                   setStep(4);
                 }}
                 onSkip={async () => {
+                  isNavigatingToStatusRef.current = true;
+                  let visitsForStatus = createdVisits;
                   try {
                     const pendingIds = createdVisits
-                      .filter((v: any) => v.currentState === 'PENDING_PAYMENT')
-                      .map((v: any) => v.id);
+                      .map((v: any) => v.id)
+                      .filter(Boolean);
                     if (pendingIds.length > 0) {
-                      await fetchApi('/public-visit/confirm-counter-payment', {
+                      const res = await fetchApi('/public-visit/confirm-counter-payment', {
                         method: 'POST',
-                        body: JSON.stringify({ visitIds: pendingIds }),
+                        body: JSON.stringify({ visitIds: pendingIds, idempotencyKey }),
                       });
+                      if (res?.visits && Array.isArray(res.visits) && res.visits.length > 0) {
+                        visitsForStatus = res.visits;
+                      }
                     }
                   } catch (err) {
                     console.warn(
@@ -2317,7 +2355,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                       err,
                     );
                   }
-                  redirectToStatus(createdVisits);
+                  setCreatedVisits(visitsForStatus);
+                  redirectToStatus(visitsForStatus);
                 }}
               />
             </motion.div>
