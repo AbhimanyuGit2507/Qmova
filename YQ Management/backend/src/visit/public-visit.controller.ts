@@ -352,6 +352,7 @@ export class PublicVisitController {
     body: {
       customerName: string;
       phone?: string | null;
+      email?: string | null;
       otp?: string;
       language?: string;
       payAtCounter?: boolean;

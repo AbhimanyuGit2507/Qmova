@@ -7,6 +7,8 @@ interface ContactStepProps {
   setName: (name: string) => void;
   phone: string;
   setPhone: (phone: string) => void;
+  email?: string;
+  setEmail?: (email: string) => void;
   accompanyingGuests?: number;
   setAccompanyingGuests?: (num: number) => void;
   showGuestCount?: boolean;
@@ -18,7 +20,7 @@ interface ContactStepProps {
 }
 
 export const ContactStep: React.FC<ContactStepProps> = ({
-  name, setName, phone, setPhone, accompanyingGuests, setAccompanyingGuests, showGuestCount, defaultCountry, errorMsg, primaryColor, onNext, onBack
+  name, setName, phone, setPhone, email, setEmail, accompanyingGuests, setAccompanyingGuests, showGuestCount, defaultCountry, errorMsg, primaryColor, onNext, onBack
 }) => {
   return (
     <motion.div key="step35" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 flex-1">
@@ -36,6 +38,21 @@ export const ContactStep: React.FC<ContactStepProps> = ({
               className="w-full p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl outline-none focus:ring-2 transition-shadow focus:border-transparent"
               style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
             />
+          </div>
+
+          <div>
+            <label className="block text-sm font-semibold mb-2 text-gray-700 dark:text-gray-300 uppercase tracking-wider">
+              Email Address <span className="text-xs font-normal lowercase text-gray-400">(for receipt & updates)</span>
+            </label>
+            <input 
+              type="email" 
+              value={email || ''} 
+              onChange={e => setEmail?.(e.target.value)} 
+              placeholder="alex@example.com"
+              className="w-full p-4 bg-white dark:bg-zinc-900 border border-gray-200 dark:border-zinc-800 rounded-xl outline-none focus:ring-2 transition-shadow focus:border-transparent"
+              style={{ '--tw-ring-color': primaryColor } as React.CSSProperties}
+            />
+            <p className="text-xs text-gray-500 mt-1">Payment receipts and booking confirmations are sent directly here.</p>
           </div>
 
           <div>

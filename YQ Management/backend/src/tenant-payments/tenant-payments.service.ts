@@ -433,12 +433,15 @@ export class TenantPaymentsService {
     },
   ) {
     let finalAmount = Math.round(amount);
+    let visit: any = null;
+    let appt: any = null;
 
     // Server-side amount validation & tenant ownership check
     if (metadata.visitId) {
-      const visit = await this.prisma.visit.findUnique({
+      visit = await this.prisma.visit.findUnique({
         where: { id: metadata.visitId },
         include: {
+          customer: true,
           service: true,
           visitInvoice: true,
           visitSteps: { include: { templateStep: true } },
@@ -451,7 +454,7 @@ export class TenantPaymentsService {
       // 1. If paying for a specific SEF journey step with configured stepPrice
       if (metadata.visitStepId) {
         const targetStep = visit.visitSteps?.find(
-          (s) => s.id === metadata.visitStepId,
+          (s: any) => s.id === metadata.visitStepId,
         );
         if (targetStep?.templateStep?.stepPrice) {
           finalAmount = targetStep.templateStep.stepPrice;
@@ -469,9 +472,9 @@ export class TenantPaymentsService {
         finalAmount = base + menuTotal;
       }
     } else if (metadata.appointmentId) {
-      const appt = await this.prisma.appointment.findUnique({
+      appt = await this.prisma.appointment.findUnique({
         where: { id: metadata.appointmentId },
-        include: { service: true },
+        include: { service: true, customer: true },
       });
       if (!appt || appt.tenantId !== tenantId) {
         throw new BadRequestException('Invalid appointment or tenant mismatch');
@@ -543,11 +546,23 @@ export class TenantPaymentsService {
         });
       }
 
+      const resolvedEmail =
+        (metadata.customerEmail && metadata.customerEmail.includes('@')
+          ? metadata.customerEmail.trim()
+          : (visit as any)?.customer?.email && (visit as any).customer.email.includes('@')
+          ? (visit as any).customer.email.trim()
+          : (appt as any)?.customer?.email && (appt as any).customer.email.includes('@')
+          ? (appt as any).customer.email.trim()
+          : null);
+
+      const customerEmailForPaystack =
+        resolvedEmail ||
+        (metadata.customerPhone
+          ? `${metadata.customerPhone.replace(/\D/g, '')}@receipts.qmova.com`
+          : `guest_${reference.substring(0, 16)}@qmova.com`);
+
       const paystackRes = await this.paystackService.initializeTransaction({
-        email:
-          metadata.customerEmail && metadata.customerEmail.includes('@')
-            ? metadata.customerEmail.trim()
-            : 'customer@qmova.com',
+        email: customerEmailForPaystack,
         amountInCents: finalAmount,
         subaccountCode: account.paystackSubaccountCode,
         reference,

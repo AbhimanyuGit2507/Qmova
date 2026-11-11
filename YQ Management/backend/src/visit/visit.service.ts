@@ -1289,6 +1289,7 @@ export class VisitService {
   async joinMultiple(data: {
     customerName: string;
     phone?: string | null;
+    email?: string | null;
     otp?: string;
     language?: string;
     payAtCounter?: boolean;
@@ -1375,7 +1376,13 @@ export class VisitService {
         throw new BadRequestException('Service is not assigned to a Location');
 
       let customer = await tx.customer.findFirst({
-        where: { phone: data.phone || undefined, tenantId },
+        where: {
+          tenantId,
+          OR: [
+            ...(data.phone ? [{ phone: data.phone }] : []),
+            ...(data.email ? [{ email: data.email }] : []),
+          ],
+        },
       });
 
       if (!customer) {
@@ -1384,7 +1391,13 @@ export class VisitService {
             tenantId,
             name: data.customerName || 'Walk-in',
             phone: data.phone,
+            email: data.email || null,
           },
+        });
+      } else if (data.email && !customer.email) {
+        customer = await tx.customer.update({
+          where: { id: customer.id },
+          data: { email: data.email },
         });
       }
 

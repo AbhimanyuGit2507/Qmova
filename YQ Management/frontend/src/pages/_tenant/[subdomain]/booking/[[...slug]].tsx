@@ -116,6 +116,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
   const [selectedLocationId, setSelectedLocationId] = useState<string | null>(null);
   const [name, setName] = useState('');
   const [phone, setPhone] = useState('');
+  const [email, setEmail] = useState('');
   const [accompanyingGuests, setAccompanyingGuests] = useState(0);
   const [completedPaymentId, setCompletedPaymentId] = useState<string | null>(null);
   const [defaultCountry, setDefaultCountry] = useState<AnyFixMe>(() => ipCountry || getInitialCountryIso());
@@ -840,6 +841,7 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
         body: JSON.stringify({
           customerName: name,
           phone: phone || undefined,
+          email: email.trim() || undefined,
           otp: otpCode || undefined,
           language: 'en',
           payAtCounter: effectiveCounterPay,
@@ -1813,6 +1815,8 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
               setName={setName}
               phone={phone}
               setPhone={setPhone}
+              email={email}
+              setEmail={setEmail}
               accompanyingGuests={accompanyingGuests}
               setAccompanyingGuests={setAccompanyingGuests}
               showGuestCount={tenant?.industry === 'school_event_catering' || (tenant?.uiFlags?.showGuestCount)}
@@ -1821,8 +1825,16 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
               primaryColor={primaryColor}
               onNext={(e) => { 
                 e.preventDefault(); 
-                if(!name.trim()) setErrorMsg('Please enter your name.'); 
-                else { setErrorMsg(''); goToStep(4); } 
+                if(!name.trim()) {
+                  setErrorMsg('Please enter your name.');
+                  return;
+                }
+                if(email.trim() && (!email.includes('@') || !email.includes('.'))) {
+                  setErrorMsg('Please enter a valid email address.');
+                  return;
+                }
+                setErrorMsg('');
+                goToStep(4);
               }}
               onBack={handleBack}
             />
@@ -1841,6 +1853,12 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                   <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Name</p>
                   <p className="font-bold text-lg">{name}</p>
                 </div>
+                {email && (
+                  <div className="border-b border-gray-100 dark:border-zinc-800 pb-4">
+                    <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Email</p>
+                    <p className="font-bold text-lg">{email}</p>
+                  </div>
+                )}
                 {phone && (
                   <div className="border-b border-gray-100 dark:border-zinc-800 pb-4">
                     <p className="text-xs text-gray-500 uppercase tracking-wider mb-1">Phone</p>
@@ -2244,6 +2262,9 @@ export default function TenantBooking({ tenant, services, queues, error, ipCount
                 customerName={name || undefined}
                 customerPhone={phone || undefined}
                 customerEmail={(() => {
+                  if (email && email.includes('@') && email.includes('.')) {
+                    return email.trim();
+                  }
                   for (const sid of selectedServiceIds) {
                     const responses = serviceDetails[sid]?.responses || {};
                     for (const key of Object.keys(responses)) {
