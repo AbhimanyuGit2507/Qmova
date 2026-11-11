@@ -273,6 +273,9 @@ export class PaystackService {
 
       const json = await res.json();
       if (!res.ok || !json.status) {
+        this.logger.error(
+          `Paystack initializeTransaction failed for ref ${params.reference}: ${JSON.stringify(json)}`,
+        );
         throw new BadRequestException(
           json.message || 'Failed to initialize Paystack checkout transaction',
         );

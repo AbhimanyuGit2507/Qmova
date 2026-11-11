@@ -166,6 +166,7 @@ export class TenantPaymentsController {
       customerEmail?: string;
       customerName?: string;
       customerPhone?: string;
+      returnOrigin?: string;
     },
   ) {
     return this.tenantPaymentsService.createPaymentIntent(
@@ -179,6 +180,7 @@ export class TenantPaymentsController {
         customerEmail: dto.customerEmail,
         customerName: dto.customerName,
         customerPhone: dto.customerPhone,
+        returnOrigin: dto.returnOrigin,
       },
     );
   }
@@ -196,6 +198,7 @@ export class TenantPaymentsController {
       customerEmail?: string;
       customerName?: string;
       customerPhone?: string;
+      returnOrigin?: string;
     },
   ) {
     // For public bookings, they pass the tenantId in the body
@@ -210,6 +213,7 @@ export class TenantPaymentsController {
         customerEmail: dto.customerEmail,
         customerName: dto.customerName,
         customerPhone: dto.customerPhone,
+        returnOrigin: dto.returnOrigin,
       },
     );
   }

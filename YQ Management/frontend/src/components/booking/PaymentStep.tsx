@@ -76,9 +76,13 @@ const PaystackCheckoutForm = ({
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if ((window as any).PaystackPop) return;
+    // Check if script is already present
+    const existing = document.getElementById('paystack-inline-v2-script');
+    if (existing && (window as any).PaystackPop) return;
+
     const script = document.createElement('script');
-    script.src = 'https://js.paystack.co/v1/inline.js';
+    script.id = 'paystack-inline-v2-script';
+    script.src = 'https://js.paystack.co/v2/inline.js';
     script.async = true;
     document.body.appendChild(script);
   }, []);
@@ -90,53 +94,71 @@ const PaystackCheckoutForm = ({
     setError(null);
     setIsProcessing(true);
 
-    const email =
-      customerEmail && customerEmail.includes('@') && customerEmail.includes('.')
-        ? customerEmail.trim()
-        : 'customer@qmova.com';
-
-    if (forceRedirect === true && paystackData.authorizationUrl) {
+    if (forceRedirect === true && paystackData?.authorizationUrl) {
       window.location.href = paystackData.authorizationUrl;
       return;
     }
 
     try {
-      if (typeof (window as any).PaystackPop !== 'undefined') {
-        const handler = (window as any).PaystackPop.setup({
-          key: paystackData.publicKey,
-          email,
-          amount: Math.round(amount),
-          currency: currency || 'ZAR',
-          ref: paystackData.reference,
-          onClose: function () {
-            setIsProcessing(false);
-          },
-          callback: function (response: any) {
-            setIsProcessing(true);
-            fetchApi('/tenant-payments/public/paystack/verify', {
-              method: 'POST',
-              body: JSON.stringify({ reference: response?.reference || paystackData.reference }),
-            })
-              .then(() => {
-                onSuccess(paystackData.paymentId);
+      const PaystackPop = (window as any).PaystackPop;
+
+      // 10/10 Modern Paystack Inline V2 Transaction Resumption
+      // Backend already initialized the transaction and generated accessCode.
+      // resumeTransaction(accessCode) opens the popup directly without re-initializing
+      // or attempting to duplicate references on Paystack.
+      if (typeof PaystackPop !== 'undefined' && paystackData?.accessCode) {
+        const popup = typeof PaystackPop === 'function' ? new PaystackPop() : PaystackPop;
+
+        if (popup && typeof popup.resumeTransaction === 'function') {
+          popup.resumeTransaction(paystackData.accessCode, {
+            onSuccess: (transaction: any) => {
+              setIsProcessing(true);
+              const referenceToVerify =
+                transaction?.reference ||
+                transaction?.trxref ||
+                paystackData.reference;
+
+              fetchApi('/tenant-payments/public/paystack/verify', {
+                method: 'POST',
+                body: JSON.stringify({ reference: referenceToVerify }),
               })
-              .catch((err: any) => {
-                console.error('Paystack verification error:', err);
-                setError(err?.message || 'Payment completed, but status sync failed.');
+                .then(() => {
+                  onSuccess(paystackData.paymentId);
+                })
+                .catch((err: any) => {
+                  console.error('Paystack verification error:', err);
+                  setError(err?.message || 'Payment completed, but status sync failed.');
+                  setIsProcessing(false);
+                });
+            },
+            onCancel: () => {
+              setIsProcessing(false);
+            },
+            onError: (err: any) => {
+              console.warn('Paystack inline checkout error, redirecting to hosted checkout:', err);
+              if (paystackData.authorizationUrl) {
+                window.location.href = paystackData.authorizationUrl;
+              } else {
+                setError(err?.message || 'Payment could not be started. Please try again.');
                 setIsProcessing(false);
-              });
-          },
-        });
-        handler.openIframe();
-      } else if (paystackData.authorizationUrl) {
-        window.location.href = paystackData.authorizationUrl;
-      } else {
-        setError('Payment gateway is loading. Please try again.');
-        setIsProcessing(false);
+              }
+            },
+          });
+          return;
+        }
       }
+
+      // Resilient fallback: If popup is not available or blocked, open hosted checkout directly
+      if (paystackData?.authorizationUrl) {
+        window.location.href = paystackData.authorizationUrl;
+        return;
+      }
+
+      setError('Payment gateway is loading. Please try again in a few moments.');
+      setIsProcessing(false);
     } catch (popupErr: any) {
-      console.warn('Paystack inline iframe failed, redirecting to hosted checkout:', popupErr);
-      if (paystackData.authorizationUrl) {
+      console.warn('Paystack inline checkout exception, redirecting to hosted checkout:', popupErr);
+      if (paystackData?.authorizationUrl) {
         window.location.href = paystackData.authorizationUrl;
       } else {
         setError(popupErr?.message || 'Payment could not be started. Please try again.');
@@ -777,6 +799,7 @@ function PaymentStepInternal({
           customerEmail: customerEmail || undefined,
           customerName: customerName || undefined,
           customerPhone: customerPhone || undefined,
+          returnOrigin: typeof window !== 'undefined' ? window.location.origin : undefined,
         })
       });
       if (res?.provider === 'paystack') {

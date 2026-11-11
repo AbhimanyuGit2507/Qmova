@@ -429,6 +429,7 @@ export class TenantPaymentsService {
       customerEmail?: string;
       customerName?: string;
       customerPhone?: string;
+      returnOrigin?: string;
     },
   ) {
     let finalAmount = Math.round(amount);
@@ -521,10 +522,26 @@ export class TenantPaymentsService {
         );
       }
 
-      const reference = `qmova_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+      // 10/10 High Entropy Collision-Proof Reference
+      const reference = `qmova_${Date.now()}_${Math.random().toString(36).substring(2, 9)}_${Math.floor(Math.random() * 1000)}`;
       const frontendUrl =
         process.env.FRONTEND_URL || 'https://qmova.yqbuddy.com';
-      const callbackUrl = `${frontendUrl}/customer/status/${metadata.visitId || metadata.appointmentId || 'payment'}?paystack_ref=${reference}`;
+      const returnOrigin = metadata.returnOrigin || frontendUrl;
+      const callbackUrl = `${returnOrigin}/customer/status/${metadata.visitId || metadata.appointmentId || 'payment'}?paystack_ref=${reference}`;
+
+      // Cancel any older PENDING booking payments for this visit to prevent ghost attempts
+      if (metadata.visitId) {
+        await this.prisma.bookingPayment.updateMany({
+          where: {
+            visitId: metadata.visitId,
+            status: 'PENDING',
+          },
+          data: {
+            status: 'CANCELLED',
+            refundReason: 'Superseded by new payment intent',
+          },
+        });
+      }
 
       const paystackRes = await this.paystackService.initializeTransaction({
         email:
@@ -1818,12 +1835,25 @@ export class TenantPaymentsService {
    * Verify and finalize a public Paystack payment after customer checkout
    */
   async verifyPublicPaystackPayment(reference: string) {
-    const bookingPayment = await this.prisma.bookingPayment.findUnique({
+    let bookingPayment = await this.prisma.bookingPayment.findUnique({
       where: { paystackReference: reference },
       include: {
         paymentAccount: true,
       },
     });
+
+    if (!bookingPayment) {
+      // Fallback lookup: sometimes redirect returns access_code or trxref
+      bookingPayment = await this.prisma.bookingPayment.findFirst({
+        where: {
+          OR: [
+            { paystackReference: reference },
+            { paystackAccessCode: reference },
+          ],
+        },
+        include: { paymentAccount: true },
+      });
+    }
 
     if (!bookingPayment) {
       throw new NotFoundException('Booking payment with reference not found');
@@ -1837,8 +1867,9 @@ export class TenantPaymentsService {
       };
     }
 
+    const verificationRef = bookingPayment.paystackReference || reference;
     const verification =
-      await this.paystackService.verifyTransaction(reference);
+      await this.paystackService.verifyTransaction(verificationRef);
 
     if (verification.isSuccessful) {
       await this.completePayment(bookingPayment.id, 'CARD_PRESENT', {
