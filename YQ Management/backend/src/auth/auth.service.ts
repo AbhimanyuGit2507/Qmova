@@ -84,23 +84,27 @@ export class AuthService {
       const storedOtp = await this.redisService.client.get(
         `otp:${intent}:${email}`,
       );
-      if (
-        (!storedOtp || storedOtp !== otp) &&
-        !(email.endsWith('@yqbuddy.com') && otp === '123456')
-      ) {
-        throw new UnauthorizedException('Invalid or expired OTP');
+      const isDemoBypass =
+        (email.endsWith('@yqbuddy.com') || email === 'sunraysdrt@gmail.com') &&
+        otp === '123456';
+      if (!storedOtp || storedOtp !== otp) {
+        if (!isDemoBypass) {
+          throw new UnauthorizedException('Invalid or expired OTP');
+        }
       }
       await this.redisService.client.del(`otp:${intent}:${email}`);
       return null;
     }
 
     const user = await this.usersService.findOneByEmail(email);
+    const isDemoBypass =
+      (email.endsWith('@yqbuddy.com') || email === 'sunraysdrt@gmail.com') &&
+      otp === '123456';
+
     if (
       !user ||
-      ((!user.otpCode || user.otpCode !== otp) &&
-        !(email.endsWith('@yqbuddy.com') && otp === '123456')) ||
-      ((!user.otpExpiresAt || user.otpExpiresAt < new Date()) &&
-        !(email.endsWith('@yqbuddy.com') && otp === '123456'))
+      ((!user.otpCode || user.otpCode !== otp) && !isDemoBypass) ||
+      ((!user.otpExpiresAt || user.otpExpiresAt < new Date()) && !isDemoBypass)
     ) {
       throw new UnauthorizedException('Invalid or expired OTP');
     }
