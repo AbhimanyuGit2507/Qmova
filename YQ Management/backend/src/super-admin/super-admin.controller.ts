@@ -89,15 +89,27 @@ export class SuperAdminController {
     @Req() req: any,
     @Query('search') search?: string,
     @Query('role') role?: string,
+    @Query('isDemo') isDemo?: string,
+    @Query('tenantId') tenantId?: string,
   ) {
     this.checkSuperAdmin(req);
-    return this.superAdminService.getAllUsers({ search, role });
+    return this.superAdminService.getAllUsers({ search, role, isDemo, tenantId });
   }
 
   @Post('users')
   async createUser(
     @Req() req: any,
-    @Body() body: { email: string; role: string; tenantId: string },
+    @Body()
+    body: {
+      email: string;
+      password?: string;
+      name?: string;
+      phone?: string;
+      role: string;
+      tenantId: string;
+      isDemo?: boolean;
+      demoDays?: number;
+    },
   ) {
     this.checkSuperAdmin(req);
     return this.superAdminService.createUser(body);
@@ -111,6 +123,26 @@ export class SuperAdminController {
   ) {
     this.checkSuperAdmin(req);
     return this.superAdminService.updateUser(id, body);
+  }
+
+  @Patch('users/:id/toggle-demo')
+  async toggleDemo(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { isDemo: boolean; demoDays?: number },
+  ) {
+    this.checkSuperAdmin(req);
+    return this.superAdminService.toggleDemoUser(id, body.isDemo, body.demoDays);
+  }
+
+  @Post('users/:id/reset-password')
+  async resetPassword(
+    @Req() req: any,
+    @Param('id') id: string,
+    @Body() body: { password: string },
+  ) {
+    this.checkSuperAdmin(req);
+    return this.superAdminService.updateUser(id, { password: body.password });
   }
 
   @Delete('users/:id')

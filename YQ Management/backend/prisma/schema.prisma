@@ -104,6 +104,8 @@ model User {
   description        String?
   googleId           String?            @unique
   role               Role
+  isDemo             Boolean            @default(false)
+  demoExpiresAt      DateTime?
   otpCode            String?
   otpExpiresAt       DateTime?
   allowedLocationIds String[]           @default([])
@@ -121,6 +123,7 @@ model User {
   authoredRx         Prescription[]     @relation("AuthorPrescriptions")
 
   @@index([tenantId])
+  @@index([isDemo])
 }
 
 model SlaPolicy {

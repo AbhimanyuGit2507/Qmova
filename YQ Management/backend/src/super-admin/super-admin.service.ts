@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import * as bcrypt from 'bcrypt';
 
 @Injectable()
 export class SuperAdminService {
@@ -170,7 +171,17 @@ export class SuperAdminService {
     const tenant = await this.prisma.tenant.findUnique({
       where: { id },
       include: {
-        users: { select: { id: true, email: true, role: true } },
+        users: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            role: true,
+            isDemo: true,
+            demoExpiresAt: true,
+          },
+          orderBy: { email: 'asc' },
+        },
         transactions: {
           select: {
             id: true,
@@ -238,41 +249,164 @@ export class SuperAdminService {
     return { success: true };
   }
 
-  async getAllUsers(params?: { search?: string; role?: string }) {
+  async getAllUsers(params?: {
+    search?: string;
+    role?: string;
+    isDemo?: string;
+    tenantId?: string;
+  }) {
     const where: any = {};
     if (params?.search) {
-      where.email = { contains: params.search, mode: 'insensitive' as const };
+      where.OR = [
+        { email: { contains: params.search, mode: 'insensitive' as const } },
+        { name: { contains: params.search, mode: 'insensitive' as const } },
+      ];
     }
     if (params?.role && params.role !== 'ALL') {
       where.role = params.role;
     }
+    if (params?.isDemo !== undefined && params?.isDemo !== 'ALL') {
+      where.isDemo = params.isDemo === 'true';
+    }
+    if (params?.tenantId) {
+      where.tenantId = params.tenantId;
+    }
 
     return this.prisma.user.findMany({
       where,
-      include: {
-        tenant: { select: { name: true } },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        role: true,
+        isDemo: true,
+        demoExpiresAt: true,
+        tenantId: true,
+        tenant: { select: { id: true, name: true, subdomain: true } },
       },
-      take: 100,
+      orderBy: { email: 'asc' },
+      take: 200,
     });
   }
 
-  async createUser(data: { email: string; role: string; tenantId: string }) {
+  async createUser(data: {
+    email: string;
+    password?: string;
+    name?: string;
+    phone?: string;
+    role: string;
+    tenantId: string;
+    isDemo?: boolean;
+    demoDays?: number;
+  }) {
+    const cleanEmail = data.email.toLowerCase().trim();
+    const existing = await this.prisma.user.findUnique({
+      where: { email: cleanEmail },
+    });
+    if (existing) {
+      throw new BadRequestException(
+        `A user with email "${cleanEmail}" already exists.`,
+      );
+    }
+
+    const hashedPassword = data.password && data.password.trim()
+      ? await bcrypt.hash(data.password.trim(), 10)
+      : null;
+
+    const demoExpiresAt =
+      data.isDemo && data.demoDays && data.demoDays > 0
+        ? new Date(Date.now() + data.demoDays * 24 * 60 * 60 * 1000)
+        : null;
+
     return this.prisma.user.create({
       data: {
-        email: data.email,
-        role: data.role as any,
+        email: cleanEmail,
+        name: data.name?.trim() || null,
+        phone: data.phone?.trim() || null,
+        password: hashedPassword,
+        role: (data.role as any) || 'OWNER',
         tenantId: data.tenantId,
+        isDemo: Boolean(data.isDemo),
+        demoExpiresAt,
         personalSettings: {
           theme: 'light',
           language: 'en',
           notificationsEnabled: true,
         },
       },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isDemo: true,
+        demoExpiresAt: true,
+        tenantId: true,
+        tenant: { select: { id: true, name: true, subdomain: true } },
+      },
     });
   }
 
   async updateUser(id: string, data: any) {
-    return this.prisma.user.update({ where: { id }, data });
+    const updateData = { ...data };
+    if (updateData.password && updateData.password.trim()) {
+      updateData.password = await bcrypt.hash(updateData.password.trim(), 10);
+    } else {
+      delete updateData.password;
+    }
+    if (updateData.email) {
+      updateData.email = updateData.email.toLowerCase().trim();
+    }
+    if (updateData.demoDays !== undefined) {
+      if (updateData.isDemo && updateData.demoDays > 0) {
+        updateData.demoExpiresAt = new Date(
+          Date.now() + Number(updateData.demoDays) * 24 * 60 * 60 * 1000,
+        );
+      } else if (!updateData.isDemo) {
+        updateData.demoExpiresAt = null;
+      }
+      delete updateData.demoDays;
+    }
+
+    return this.prisma.user.update({
+      where: { id },
+      data: updateData,
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isDemo: true,
+        demoExpiresAt: true,
+        tenantId: true,
+        tenant: { select: { id: true, name: true, subdomain: true } },
+      },
+    });
+  }
+
+  async toggleDemoUser(id: string, isDemo: boolean, demoDays?: number) {
+    const demoExpiresAt =
+      isDemo && demoDays && demoDays > 0
+        ? new Date(Date.now() + demoDays * 24 * 60 * 60 * 1000)
+        : null;
+
+    return this.prisma.user.update({
+      where: { id },
+      data: {
+        isDemo,
+        demoExpiresAt: isDemo ? demoExpiresAt : null,
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+        isDemo: true,
+        demoExpiresAt: true,
+        tenantId: true,
+      },
+    });
   }
 
   async deleteUser(id: string) {

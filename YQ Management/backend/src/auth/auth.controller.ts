@@ -58,7 +58,16 @@ export class AuthController {
       (process.env.SUPER_ADMIN_EMAIL &&
         user.email?.toLowerCase() ===
           process.env.SUPER_ADMIN_EMAIL.toLowerCase());
-    if (isSuperAdmin) {
+
+    const isDemo = Boolean((user as any).isDemo);
+
+    if (isSuperAdmin || isDemo) {
+      if (isDemo && (user as any).demoExpiresAt && new Date((user as any).demoExpiresAt) < new Date()) {
+        throw new UnauthorizedException(
+          'Demo access has expired. Please contact support or upgrade your subscription.',
+        );
+      }
+
       const { access_token } = await this.authService.login(
         user,
         ip,

@@ -98,8 +98,8 @@ export class AuthService {
 
     const user = await this.usersService.findOneByEmail(email);
     const isDemoBypass =
-      (email.endsWith('@yqbuddy.com') || email === 'sunraysdrt@gmail.com') &&
-      otp === '123456';
+      (Boolean(user?.isDemo) || email.endsWith('@yqbuddy.com')) &&
+      (otp === '123456' || otp === '000000');
 
     if (
       !user ||

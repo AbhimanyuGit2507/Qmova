@@ -16,6 +16,7 @@ import {
   Inbox,
   FileText,
   Megaphone,
+  Users,
 } from 'lucide-react';
 
 import { useTheme } from './ThemeProvider';
@@ -44,6 +45,7 @@ export default function SuperAdminLayout({
   const navItems = [
     { label: 'Overview', href: '/super-admin', icon: LayoutDashboard },
     { label: 'Tenants & CRM', href: '/super-admin/tenants', icon: Building2 },
+    { label: 'Users & Demo Access', href: '/super-admin/users', icon: Users },
     { label: 'Pricing & Plans', href: '/super-admin/pricing', icon: Package },
     { label: 'Analytics', href: '/super-admin/analytics', icon: TrendingUp },
     { label: 'Content & Blogs', href: '/super-admin/blogs', icon: FileText },
