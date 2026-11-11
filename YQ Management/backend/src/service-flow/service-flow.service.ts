@@ -6,6 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { SubscriptionService } from '../subscription/subscription.service';
 import { CreateFlowDto } from './dto/create-flow.dto';
 import { UpdateFlowDto } from './dto/update-flow.dto';
 import { CreateStepDto } from './dto/create-step.dto';
@@ -15,7 +16,10 @@ import { UpdateStepDto } from './dto/update-step.dto';
 export class ServiceFlowService {
   private readonly logger = new Logger(ServiceFlowService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly subscriptionService: SubscriptionService,
+  ) {}
 
   // ── Flow CRUD ───────────────────────────────────────────────────────────────
 
@@ -307,6 +311,21 @@ export class ServiceFlowService {
         'Payment is configured at check-in or check-out on the flow, not as a separate stage.',
       );
     }
+
+    if ((stepData.type as string) !== 'CHECK_IN' && (stepData.type as string) !== 'CHECK_OUT') {
+      const intermediateStepsCount = await this.prisma.flowStepTemplate.count({
+        where: {
+          flowId,
+          type: { notIn: ['CHECK_IN', 'CHECK_OUT'] },
+        },
+      });
+      await this.subscriptionService.checkLimit(
+        tenantId,
+        'stages',
+        intermediateStepsCount,
+      );
+    }
+
     await this.ensureBookends(flowId);
 
     const step = await this.prisma.flowStepTemplate.create({
@@ -539,6 +558,21 @@ export class ServiceFlowService {
       where: { id: flow.id },
       data: { paymentTiming },
     });
+
+    const intermediateSteps = chosen.filter(
+      (s) =>
+        s.type !== 'PAYMENT' &&
+        (s.type as string) !== 'CHECK_IN' &&
+        (s.type as string) !== 'CHECK_OUT',
+    );
+    if (intermediateSteps.length > 0) {
+      // Validate against plan intermediate stages limit
+      await this.subscriptionService.checkLimit(
+        tenantId,
+        'stages',
+        intermediateSteps.length - 1,
+      );
+    }
 
     let orderIndex = 1;
     let totalDuration = 0;

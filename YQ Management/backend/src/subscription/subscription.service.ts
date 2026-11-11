@@ -58,7 +58,14 @@ export class SubscriptionService {
   async checkLimit(
     tenantId: string,
     resource:
-      'services' | 'locations' | 'visits' | 'queues' | 'staff' | 'members',
+      | 'services'
+      | 'locations'
+      | 'visits'
+      | 'queues'
+      | 'staff'
+      | 'members'
+      | 'stages'
+      | 'journeyStages',
     currentCount: number,
   ): Promise<void> {
     const sub = await this.getSubscription(tenantId);
@@ -132,15 +139,64 @@ export class SubscriptionService {
     }
 
     if (resource === 'visits') {
-      const maxVisits =
-        customLimits.maxVisits ??
-        sub.plan.maxVisits ??
-        parsedLimits?.maxTokens ??
-        parsedLimits?.maxVisits;
-      if (maxVisits !== undefined && maxVisits !== null && maxVisits > 0) {
-        if (currentCount >= maxVisits) {
+      const isTrial =
+        sub.status === SubscriptionStatus.TRIAL ||
+        sub.plan.price === 0 ||
+        sub.plan.type === 'TRIAL';
+
+      if (isTrial) {
+        // Free trial hard cap: 50 tickets/day, 700 total for the 14-day trial
+        const dailyCap = 50;
+        if (currentCount >= dailyCap) {
           throw new BillingException(
-            `Visit limit reached (${maxVisits}) for your current plan. Please upgrade to allow more visits.`,
+            `Daily ticket limit reached (50 tickets/day) for your 14-day free trial. Please upgrade to a paid plan to continue issuing tickets.`,
+          );
+        }
+
+        const trialStart =
+          sub.trialStartDate ||
+          sub.currentPeriodStart ||
+          new Date(Date.now() - 14 * 86400 * 1000);
+        const totalTrialVisits = await this.prisma.visit.count({
+          where: { tenantId, createdAt: { gte: trialStart } },
+        });
+        if (totalTrialVisits >= 700) {
+          throw new BillingException(
+            `Trial ticket limit reached (700 total tickets for the 14-day trial period). Please upgrade to a paid plan to continue issuing tickets.`,
+          );
+        }
+        return;
+      }
+
+      const maxDailyTickets =
+        customLimits.dailyTicketCap ??
+        customLimits.maxTokens ??
+        customLimits.maxVisits ??
+        parsedLimits?.dailyTicketCap ??
+        parsedLimits?.maxTokens ??
+        parsedLimits?.maxVisits ??
+        sub.plan.maxVisits;
+
+      if (
+        maxDailyTickets !== undefined &&
+        maxDailyTickets !== null &&
+        maxDailyTickets > 0
+      ) {
+        if (currentCount >= maxDailyTickets) {
+          throw new BillingException(
+            `Daily ticket limit reached (${maxDailyTickets.toLocaleString()} tickets/day) for your current plan. Please upgrade to allow more tickets.`,
+          );
+        }
+      }
+    }
+
+    if (resource === 'stages' || resource === 'journeyStages') {
+      const maxStages =
+        customLimits.maxJourneyStages ?? parsedLimits?.maxJourneyStages;
+      if (maxStages !== undefined && maxStages !== null && maxStages > 0) {
+        if (currentCount >= maxStages) {
+          throw new BillingException(
+            `Journey stages limit reached (${maxStages} stages, excluding start and end) for your current plan. Please upgrade to Growth, Plus, or Enterprise for unlimited journey stages.`,
           );
         }
       }

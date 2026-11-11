@@ -12,8 +12,9 @@ interface PlanGateModalProps {
 function getTierIcon(name: string) {
   const n = name.toLowerCase();
   if (n.includes('enterprise')) return <Crown className="w-4 h-4 md:w-5 md:h-5 text-amber-400" />;
-  if (n.includes('premium') || n.includes('pro')) return <Crown className="w-4 h-4 md:w-5 md:h-5 text-indigo-400" />;
-  if (n.includes('standard')) return <Star className="w-4 h-4 md:w-5 md:h-5 text-sky-400" />;
+  if (n.includes('plus')) return <Shield className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />;
+  if (n.includes('growth') || n.includes('premium') || n.includes('pro')) return <Crown className="w-4 h-4 md:w-5 md:h-5 text-sky-400" />;
+  if (n.includes('basic') || n.includes('standard')) return <Star className="w-4 h-4 md:w-5 md:h-5 text-emerald-400" />;
   return <Zap className="w-4 h-4 md:w-5 md:h-5 text-indigo-400" />;
 }
 
@@ -242,19 +243,19 @@ export function PlanGateModal({ mode = 'no-plan' }: PlanGateModalProps) {
                           <ul className="space-y-1.5 mb-4">
                             <li className="flex items-center gap-2 text-zinc-300 text-xs">
                               <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              Up to {freeLimits?.maxLocations ?? 1} location{freeLimits?.maxLocations === 1 ? '' : 's'}
+                              Up to {freeLimits?.maxLocations ?? 1} location{(freeLimits?.maxLocations ?? 1) === 1 ? '' : 's'}
                             </li>
                             <li className="flex items-center gap-2 text-zinc-300 text-xs">
                               <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              Up to {freeLimits?.maxServices ?? 5} services
+                              Up to {freeLimits?.maxServices ?? 15} services
                             </li>
                             <li className="flex items-center gap-2 text-zinc-300 text-xs">
                               <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              {freeLimits?.maxTokens ?? 10000} tokens/month
+                              {freeLimits?.dailyTicketCap ?? freeLimits?.maxTokens ?? 50} tickets/day (700 total)
                             </li>
                             <li className="flex items-center gap-2 text-zinc-300 text-xs">
                               <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
-                              Up to {freeLimits?.maxStaff ?? freeLimits?.maxMembers ?? 3} staff
+                              Up to {freeLimits?.maxStaff ?? freeLimits?.maxMembers ?? 10} staff
                             </li>
                           </ul>
                         );
@@ -288,9 +289,9 @@ export function PlanGateModal({ mode = 'no-plan' }: PlanGateModalProps) {
                   </div>
                 )}
 
-                {/* Paid plans: Standard, Premium, Enterprise */}
+                {/* Paid plans: Basic, Growth, Plus, Enterprise */}
                 {paidPlans.map((plan: AnyFixMe) => {
-                  const isPopular = plan.name.toLowerCase().includes('premium') || plan.name.toLowerCase().includes('pro');
+                  const isPopular = plan.name.toLowerCase().includes('growth') || plan.name.toLowerCase().includes('premium') || plan.name.toLowerCase().includes('pro');
                   const isEnterprise = plan.name.toLowerCase().includes('enterprise');
 
                   const rawMonthly = plan.price >= 1000 ? Math.round(plan.price / 100) : plan.price;
@@ -373,7 +374,7 @@ export function PlanGateModal({ mode = 'no-plan' }: PlanGateModalProps) {
                           </li>
                           <li className="flex items-center gap-2 text-zinc-300 text-xs">
                             <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${isPopular ? 'text-indigo-400' : isEnterprise ? 'text-amber-400' : 'text-zinc-400'}`} />
-                            {(pLimits?.maxTokens ?? (isEnterprise ? 100000 : 1000)).toLocaleString()} tokens/day
+                            {(pLimits?.dailyTicketCap ?? pLimits?.maxTokens ?? (isEnterprise ? 100000 : 1000)).toLocaleString()} tickets/day
                           </li>
                           <li className="flex items-center gap-2 text-zinc-300 text-xs">
                             <CheckCircle2 className={`w-3.5 h-3.5 shrink-0 ${isPopular ? 'text-indigo-400' : isEnterprise ? 'text-amber-400' : 'text-zinc-400'}`} />

@@ -467,7 +467,7 @@ export default function BillingSettings() {
                     <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/30">
                       <CheckCircle2 className="w-4 h-4" />
                     </div>
-                    Up to {limits.maxTokens > 0 ? limits.maxTokens : 'Unlimited'} Tokens/month
+                    Up to {limits.maxTokens > 0 ? limits.maxTokens.toLocaleString() : 'Unlimited'} Tickets/day
                   </li>
                   {currentSub?.plan?.features?.whatsappNotifications && (
                     <li className="flex items-center gap-4 text-white text-base font-medium">
@@ -607,11 +607,11 @@ export default function BillingSettings() {
                 <div className="inline-flex items-center justify-center w-12 h-12 rounded-2xl bg-emerald-500/10 text-emerald-500 mb-3 border border-emerald-500/20 shadow-inner">
                   <span className="material-symbols-outlined text-[24px]">confirmation_number</span>
                 </div>
-                <h3 className="text-xl font-bold text-on-surface dark:text-white mb-1">Tokens</h3>
-                <p className="text-zinc-500 dark:text-zinc-400 text-xs font-medium">Visits this month</p>
+                <h3 className="text-xl font-bold text-on-surface dark:text-white mb-1">Tickets</h3>
+                <p className="text-zinc-500 dark:text-zinc-400 text-xs font-medium">Daily Ticket Allowance</p>
                 <div className="mt-4 flex items-baseline justify-center gap-1.5">
                   <span className="text-4xl font-black text-on-surface dark:text-white tracking-tighter">{usage.tokensThisMonth}</span>
-                  <span className="text-zinc-400 font-bold text-base">/ {limits.maxTokens > 0 ? limits.maxTokens : '∞'}</span>
+                  <span className="text-zinc-400 font-bold text-base">/ {limits.maxTokens > 0 ? limits.maxTokens.toLocaleString() : '∞'}</span>
                 </div>
               </div>
 
@@ -981,7 +981,7 @@ export default function BillingSettings() {
 
               <div className="space-y-3 mb-8">
                 <div className="flex items-center gap-3 text-on-surface dark:text-white font-body-sm font-medium">
-                  <CheckCircle2 className="w-4 h-4 text-primary" /> {checkoutPlan.limits?.maxServices || 1} Services & {checkoutPlan.limits?.maxTokens || 500} Tokens/month
+                  <CheckCircle2 className="w-4 h-4 text-primary" /> {checkoutPlan.limits?.maxServices || 1} Services & {(checkoutPlan.limits?.dailyTicketCap || checkoutPlan.limits?.maxTokens || 1000).toLocaleString()} Tickets/day
                 </div>
                 {checkoutPlan.features?.whatsappNotifications && (
                   <div className="flex items-center gap-3 text-on-surface dark:text-white font-body-sm font-medium">

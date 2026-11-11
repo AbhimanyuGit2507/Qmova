@@ -21,9 +21,26 @@ export class CreatePlanDto {
   @IsOptional()
   description?: string;
 
-  @IsEnum(['TRIAL', 'STANDARD', 'PREMIUM', 'ENTERPRISE', 'CUSTOM'])
+  @IsEnum([
+    'TRIAL',
+    'BASIC',
+    'GROWTH',
+    'PLUS',
+    'STANDARD',
+    'PREMIUM',
+    'ENTERPRISE',
+    'CUSTOM',
+  ])
   @IsOptional()
-  type?: 'TRIAL' | 'STANDARD' | 'PREMIUM' | 'ENTERPRISE' | 'CUSTOM';
+  type?:
+    | 'TRIAL'
+    | 'BASIC'
+    | 'GROWTH'
+    | 'PLUS'
+    | 'STANDARD'
+    | 'PREMIUM'
+    | 'ENTERPRISE'
+    | 'CUSTOM';
 
   @IsEnum(['ACTIVE', 'INACTIVE', 'ARCHIVED'])
   @IsOptional()

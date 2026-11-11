@@ -65,6 +65,21 @@ export class VisitService {
 
   // Basic CRUD for controllers
   async create(createVisitDto: CreateVisitDto) {
+    if (createVisitDto.tenantId) {
+      const todayStart = new Date();
+      todayStart.setHours(0, 0, 0, 0);
+      const todayVisitCount = await this.prisma.visit.count({
+        where: {
+          tenantId: createVisitDto.tenantId,
+          createdAt: { gte: todayStart },
+        },
+      });
+      await this.subscriptionService.checkLimit(
+        createVisitDto.tenantId,
+        'visits',
+        todayVisitCount,
+      );
+    }
     return this.prisma.visit.create({
       data: createVisitDto,
     });
@@ -1586,6 +1601,20 @@ export class VisitService {
           }
         }
 
+        // Check subscription visit/ticket daily & trial limits
+        const tz = service.location?.timezone || 'UTC';
+        const zonedNow = toZonedTime(new Date(), tz);
+        zonedNow.setHours(0, 0, 0, 0);
+        const todayStart = fromZonedTime(zonedNow, tz);
+        const todayVisitCount = await tx.visit.count({
+          where: { tenantId, createdAt: { gte: todayStart } },
+        });
+        await this.subscriptionService.checkLimit(
+          tenantId,
+          'visits',
+          todayVisitCount,
+        );
+
         const visit = await tx.visit.create({
           data: {
             tenantId,
@@ -1799,6 +1828,20 @@ export class VisitService {
       }
 
       visit = await this.prisma.$transaction(async (tx) => {
+        // Enforce daily & trial ticket limits on appointment check-in
+        const tz = q?.location?.timezone || 'UTC';
+        const zonedNow = toZonedTime(new Date(), tz);
+        zonedNow.setHours(0, 0, 0, 0);
+        const todayStart = fromZonedTime(zonedNow, tz);
+        const todayVisitCount = await tx.visit.count({
+          where: { tenantId, createdAt: { gte: todayStart } },
+        });
+        await this.subscriptionService.checkLimit(
+          tenantId,
+          'visits',
+          todayVisitCount,
+        );
+
         const v = await tx.visit.create({
           data: {
             tenantId,

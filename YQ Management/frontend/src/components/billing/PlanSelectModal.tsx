@@ -54,7 +54,7 @@ export function PlanSelectModal({ isOpen, onClose, onSelectPlan, isPendingPaymen
     );
   }
 
-  // Filter ONLY the 3 paid plans: Standard, Premium, Enterprise (Exclude Trial/Free)
+  // Filter paid plans: Basic, Growth, Plus, Enterprise (Exclude Trial/Free)
   const paidPlans = (plans as any[]).filter((p: any) => {
     const isTrial = p.price === 0 || p.type === 'TRIAL' || (p.name as string).toLowerCase().includes('trial');
     return !isTrial;
@@ -292,7 +292,7 @@ export function PlanSelectModal({ isOpen, onClose, onSelectPlan, isPendingPaymen
                         <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
                       </div>
                       <span className="text-xs text-on-surface dark:text-zinc-300 font-medium">
-                        {(planLimits?.maxTokens || (isEnterprise ? 100000 : 1000)).toLocaleString()} Tokens/month
+                        {(planLimits?.dailyTicketCap || planLimits?.maxTokens || (isEnterprise ? 100000 : 1000)).toLocaleString()} tickets/day
                       </span>
                     </li>
                     <li className="flex items-center gap-2.5">

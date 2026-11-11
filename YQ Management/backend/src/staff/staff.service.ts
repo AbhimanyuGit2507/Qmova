@@ -7,6 +7,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { randomBytes } from 'crypto';
 
 import { JwtService } from '@nestjs/jwt';
+import { SubscriptionService } from '../subscription/subscription.service';
 
 interface WeeklyScheduleSlot {
   day:
@@ -52,9 +53,19 @@ export class StaffService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwtService: JwtService,
+    private readonly subscriptionService: SubscriptionService,
   ) {}
 
   async create(tenantId: string, dto: CreateProviderDto) {
+    const currentStaffCount = await this.prisma.staff.count({
+      where: { tenantId },
+    });
+    await this.subscriptionService.checkLimit(
+      tenantId,
+      'staff',
+      currentStaffCount,
+    );
+
     const { serviceIds, weeklySchedule, exceptionDates, ...rest } = dto;
 
     const provider = await this.prisma.staff.create({
