@@ -333,6 +333,7 @@ export class SuperAdminService {
           theme: 'light',
           language: 'en',
           notificationsEnabled: true,
+          onboardingCompleted: true,
         },
       },
       select: {
@@ -386,16 +387,25 @@ export class SuperAdminService {
   }
 
   async toggleDemoUser(id: string, isDemo: boolean, demoDays?: number) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('User not found');
+
     const demoExpiresAt =
       isDemo && demoDays && demoDays > 0
         ? new Date(Date.now() + demoDays * 24 * 60 * 60 * 1000)
         : null;
+
+    const ps = ((user.personalSettings as Record<string, any>) || {});
+    if (isDemo) {
+      ps.onboardingCompleted = true;
+    }
 
     return this.prisma.user.update({
       where: { id },
       data: {
         isDemo,
         demoExpiresAt: isDemo ? demoExpiresAt : null,
+        personalSettings: ps,
       },
       select: {
         id: true,

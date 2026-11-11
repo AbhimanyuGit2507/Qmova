@@ -731,3 +731,4 @@ export default function SuperAdminUsers() {
     </SuperAdminLayout>
   );
 }
+

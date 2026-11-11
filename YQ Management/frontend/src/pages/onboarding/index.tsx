@@ -27,6 +27,7 @@ interface OnboardingService {
   expectedDuration?: number;
   allowAppointments?: boolean;
   seedFlow: boolean; // seed with default journey template
+  isCustom?: boolean;
 }
 
 interface OnboardingLocation {
@@ -35,6 +36,7 @@ interface OnboardingLocation {
   address: string;
   industryKey: string;
   subTypeKey: string;
+  customSubType?: string;
   services: OnboardingService[];
   enableWaitlist: boolean;
 }
@@ -60,6 +62,7 @@ const ICON_MAP: Record<string, any> = {
   legal_and_professional: Briefcase,
   retail_and_commerce: Store,
   corporate_and_hr: Users,
+  other: Sparkles,
 };
 
 function makeLocId() {
@@ -73,6 +76,7 @@ function makeDefaultLocation(): OnboardingLocation {
     address: '',
     industryKey: '',
     subTypeKey: '',
+    customSubType: '',
     services: [],
     enableWaitlist: true,
   };
@@ -97,27 +101,91 @@ function LocationCard({
   onRemove: () => void;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [showAddCustom, setShowAddCustom] = useState(false);
+  const [customName, setCustomName] = useState('');
+  const [customDuration, setCustomDuration] = useState(30);
+  const [customAllowAppts, setCustomAllowAppts] = useState(true);
+  const [customDesc, setCustomDesc] = useState('');
 
-  const selectedIndustry = businessCatalog.find((i: any) => i.key === loc.industryKey);
-  const selectedSubType = selectedIndustry?.subTypes?.find((s: any) => s.key === loc.subTypeKey);
+  // Catalog with added "Other / Custom Industry" option
+  const fullBusinessCatalog = useMemo(() => {
+    const list = [...(businessCatalog || [])];
+    if (!list.some((item) => item.key === 'other')) {
+      list.push({
+        key: 'other',
+        name: 'Other / Custom Industry',
+        description: 'Custom industry or specialized business model',
+        subTypes: [],
+      });
+    }
+    return list;
+  }, [businessCatalog]);
+
+  const selectedIndustry = fullBusinessCatalog.find((i: any) => i.key === loc.industryKey);
+
+  // SubTypes for the selected industry, always appending an "✨ Other / Custom" subtype option
+  const availableSubTypes = useMemo(() => {
+    if (!loc.industryKey) return [];
+    const list = [...(selectedIndustry?.subTypes ?? [])];
+    list.push({
+      key: 'other',
+      name: '✨ Other / Custom Business Type',
+      description: 'Define your own business type, services, and queue setup',
+      services: [],
+      flowTemplateKey: selectedIndustry?.key && selectedIndustry.key !== 'other' ? selectedIndustry.key : 'general_queue',
+    });
+    return list;
+  }, [loc.industryKey, selectedIndustry]);
+
+  const selectedSubType = availableSubTypes.find((s: any) => s.key === loc.subTypeKey);
   const templateServices: any[] = selectedSubType?.services ?? [];
 
   const handleIndustryChange = (key: string) => {
-    onUpdate({ ...loc, industryKey: key, subTypeKey: '', services: [] });
+    const customSvcs = loc.services.filter((s) => s.isCustom);
+    if (key === 'other') {
+      onUpdate({
+        ...loc,
+        industryKey: 'other',
+        subTypeKey: 'other',
+        customSubType: loc.customSubType || '',
+        services: customSvcs,
+      });
+    } else {
+      onUpdate({
+        ...loc,
+        industryKey: key,
+        subTypeKey: '',
+        services: customSvcs,
+      });
+    }
   };
 
   const handleSubTypeChange = (key: string) => {
-    const industry = businessCatalog.find((i: any) => i.key === loc.industryKey);
-    const sub = industry?.subTypes?.find((s: any) => s.key === key);
-    // Pre-select all template services with seedFlow=true
-    const services: OnboardingService[] = (sub?.services ?? []).map((s: any) => ({
+    const customSvcs = loc.services.filter((s) => s.isCustom);
+    if (key === 'other') {
+      onUpdate({
+        ...loc,
+        subTypeKey: 'other',
+        customSubType: loc.customSubType || '',
+        services: customSvcs,
+      });
+      return;
+    }
+    const sub = availableSubTypes.find((s: any) => s.key === key);
+    // Pre-select all template services with seedFlow=true, preserving any custom services
+    const templateSvcs: OnboardingService[] = (sub?.services ?? []).map((s: any) => ({
       name: s.name,
       description: s.description,
-      expectedDuration: s.expectedDuration,
-      allowAppointments: s.allowAppointments,
+      expectedDuration: s.expectedDuration ?? 30,
+      allowAppointments: s.allowAppointments ?? true,
       seedFlow: true,
+      isCustom: false,
     }));
-    onUpdate({ ...loc, subTypeKey: key, services });
+    onUpdate({
+      ...loc,
+      subTypeKey: key,
+      services: [...templateSvcs, ...customSvcs],
+    });
   };
 
   const toggleService = (svcName: string) => {
@@ -133,9 +201,10 @@ function LocationCard({
           {
             name: svcName,
             description: template?.description,
-            expectedDuration: template?.expectedDuration,
-            allowAppointments: template?.allowAppointments,
+            expectedDuration: template?.expectedDuration ?? 30,
+            allowAppointments: template?.allowAppointments ?? true,
             seedFlow: true,
+            isCustom: false,
           },
         ],
       });
@@ -149,6 +218,60 @@ function LocationCard({
         s.name === svcName ? { ...s, seedFlow: !s.seedFlow } : s,
       ),
     });
+  };
+
+  const handleAddCustomService = () => {
+    if (!customName.trim()) return;
+    const newSvc: OnboardingService = {
+      name: customName.trim(),
+      description: customDesc.trim() || undefined,
+      expectedDuration: customDuration || 30,
+      allowAppointments: customAllowAppts,
+      seedFlow: true,
+      isCustom: true,
+    };
+    const filtered = loc.services.filter(
+      (s) => s.name.toLowerCase() !== newSvc.name.toLowerCase(),
+    );
+    onUpdate({
+      ...loc,
+      services: [...filtered, newSvc],
+    });
+    setCustomName('');
+    setCustomDesc('');
+    setCustomDuration(30);
+    setCustomAllowAppts(true);
+    setShowAddCustom(false);
+    toast.success(`Service "${newSvc.name}" added`);
+  };
+
+  const removeCustomService = (svcName: string) => {
+    onUpdate({
+      ...loc,
+      services: loc.services.filter((s) => s.name !== svcName),
+    });
+  };
+
+  const selectAllTemplateServices = () => {
+    const customSvcs = loc.services.filter(
+      (s) => s.isCustom || !templateServices.some((t: any) => t.name === s.name),
+    );
+    const templateMapped: OnboardingService[] = templateServices.map((s: any) => ({
+      name: s.name,
+      description: s.description,
+      expectedDuration: s.expectedDuration ?? 30,
+      allowAppointments: s.allowAppointments ?? true,
+      seedFlow: true,
+      isCustom: false,
+    }));
+    onUpdate({
+      ...loc,
+      services: [...templateMapped, ...customSvcs],
+    });
+  };
+
+  const clearAllServices = () => {
+    onUpdate({ ...loc, services: [] });
   };
 
   const Icon = ICON_MAP[loc.industryKey] || Building2;
@@ -171,9 +294,11 @@ function LocationCard({
           <p className="font-semibold text-on-surface dark:text-white text-sm truncate">
             {loc.name || `Location ${index + 1}`}
           </p>
-          <p className="text-xs text-on-surface-variant dark:text-zinc-400 mt-0.5">
+          <p className="text-xs text-on-surface-variant dark:text-zinc-400 mt-0.5 truncate">
             {serviceCount} service{serviceCount !== 1 ? 's' : ''} selected
-            {loc.subTypeKey && selectedSubType ? ` · ${selectedSubType.name}` : ''}
+            {loc.subTypeKey === 'other'
+              ? (loc.customSubType ? ` · ${loc.customSubType}` : ' · Custom Business')
+              : (selectedSubType ? ` · ${selectedSubType.name}` : '')}
           </p>
         </div>
         <div className="flex items-center gap-1">
@@ -234,20 +359,21 @@ function LocationCard({
               </div>
 
               {/* Industry Selection */}
-              {businessCatalog.length > 0 && (
+              {fullBusinessCatalog.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-on-surface dark:text-white">Business Industry</label>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                    {businessCatalog.map((industry: any) => {
+                    {fullBusinessCatalog.map((industry: any) => {
                       const Ico = ICON_MAP[industry.key] || Store;
                       const sel = loc.industryKey === industry.key;
                       return (
                         <button
                           key={industry.key}
+                          type="button"
                           onClick={() => handleIndustryChange(industry.key)}
                           className={`flex items-center gap-2 px-3 py-2.5 rounded-xl border text-left transition-all text-sm ${
                             sel
-                              ? 'bg-primary-fixed dark:bg-sky-900/20 border-primary text-on-surface dark:text-white font-semibold'
+                              ? 'bg-primary-fixed dark:bg-sky-900/20 border-primary text-on-surface dark:text-white font-semibold ring-1 ring-primary/40'
                               : 'border-border dark:border-dark-border text-on-surface-variant dark:text-zinc-400 hover:border-outline-variant hover:text-on-surface dark:hover:text-white'
                           }`}
                         >
@@ -261,19 +387,20 @@ function LocationCard({
               )}
 
               {/* Sub-Type Selection */}
-              {loc.industryKey && selectedIndustry?.subTypes?.length > 0 && (
+              {loc.industryKey && availableSubTypes.length > 0 && (
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-on-surface dark:text-white">Business Type</label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                    {selectedIndustry.subTypes.map((sub: any) => {
+                    {availableSubTypes.map((sub: any) => {
                       const sel = loc.subTypeKey === sub.key;
                       return (
                         <button
                           key={sub.key}
+                          type="button"
                           onClick={() => handleSubTypeChange(sub.key)}
                           className={`text-left px-4 py-3 rounded-xl border transition-all text-sm ${
                             sel
-                              ? 'bg-primary-fixed dark:bg-sky-900/20 border-primary text-on-surface dark:text-white'
+                              ? 'bg-primary-fixed dark:bg-sky-900/20 border-primary text-on-surface dark:text-white ring-1 ring-primary'
                               : 'border-border dark:border-dark-border text-on-surface-variant dark:text-zinc-400 hover:border-outline-variant hover:text-on-surface dark:hover:text-white'
                           }`}
                         >
@@ -283,90 +410,302 @@ function LocationCard({
                       );
                     })}
                   </div>
+
+                  {/* Custom Business Type input */}
+                  {loc.subTypeKey === 'other' && (
+                    <motion.div
+                      initial={{ opacity: 0, y: -4 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      className="space-y-1.5 p-3 rounded-xl bg-primary/5 dark:bg-sky-500/5 border border-primary/20 mt-2"
+                    >
+                      <label className="text-xs font-semibold text-primary dark:text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5" /> Specify Your Business Type
+                      </label>
+                      <input
+                        type="text"
+                        value={loc.customSubType || ''}
+                        onChange={(e) => onUpdate({ ...loc, customSubType: e.target.value })}
+                        placeholder="e.g. Preschool & Crèche, Music Academy, Driving School, Catering Stall..."
+                        className="w-full h-10 px-3.5 rounded-lg border border-border dark:border-dark-border bg-white dark:bg-zinc-900 text-on-surface dark:text-white placeholder:text-outline-variant focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary text-sm"
+                      />
+                    </motion.div>
+                  )}
                 </div>
               )}
 
               {/* Services Selection */}
-              {loc.subTypeKey && templateServices.length > 0 && (
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <label className="text-sm font-medium text-on-surface dark:text-white">
-                      Services
-                      <span className="ml-2 text-xs font-normal text-on-surface-variant dark:text-zinc-400">
-                        ({loc.services.length} selected)
-                      </span>
-                    </label>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => {
-                          const services: OnboardingService[] = templateServices.map((s: any) => ({
-                            name: s.name,
-                            description: s.description,
-                            expectedDuration: s.expectedDuration,
-                            allowAppointments: s.allowAppointments,
-                            seedFlow: true,
-                          }));
-                          onUpdate({ ...loc, services });
-                        }}
-                        className="text-xs text-primary dark:text-sky-400 hover:underline"
-                      >
-                        Select all
-                      </button>
-                      <span className="text-xs text-outline">·</span>
-                      <button
-                        onClick={() => onUpdate({ ...loc, services: [] })}
-                        className="text-xs text-on-surface-variant dark:text-zinc-400 hover:underline"
-                      >
-                        Clear
-                      </button>
+              {(Boolean(loc.subTypeKey || loc.industryKey) || loc.services.length > 0) && (
+                <div className="space-y-3 pt-2 border-t border-border dark:border-dark-border">
+                  <div className="space-y-1">
+                    <div className="flex items-center justify-between">
+                      <label className="text-sm font-semibold text-on-surface dark:text-white flex items-center gap-2">
+                        Services Offered
+                        <span className="text-xs font-normal text-on-surface-variant dark:text-zinc-400">
+                          ({loc.services.length} active)
+                        </span>
+                      </label>
+                      {templateServices.length > 0 && (
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={selectAllTemplateServices}
+                            className="text-xs text-primary dark:text-sky-400 hover:underline font-medium"
+                          >
+                            Select all
+                          </button>
+                          <span className="text-xs text-outline">·</span>
+                          <button
+                            type="button"
+                            onClick={clearAllServices}
+                            className="text-xs text-on-surface-variant dark:text-zinc-400 hover:underline"
+                          >
+                            Clear
+                          </button>
+                        </div>
+                      )}
                     </div>
+                    <p className="text-xs text-on-surface-variant dark:text-zinc-400 leading-relaxed">
+                      Select pre-configured services or add custom ones. Each service automatically configures your waiting queue, appointment availability, and journey steps.
+                    </p>
                   </div>
-                  <div className="space-y-2">
-                    {templateServices.map((svc: any) => {
-                      const selected = loc.services.find((s) => s.name === svc.name);
-                      const seedFlow = selected?.seedFlow ?? false;
-                      return (
-                        <div
-                          key={svc.name}
-                          className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
-                            selected
-                              ? 'bg-primary/5 dark:bg-sky-500/5 border-primary/30 dark:border-sky-500/30'
-                              : 'border-border dark:border-dark-border hover:border-outline-variant'
-                          }`}
-                        >
-                          <input
-                            type="checkbox"
-                            checked={!!selected}
-                            onChange={() => toggleService(svc.name)}
-                            className="w-4 h-4 text-primary rounded border-border dark:border-dark-border focus:ring-primary shrink-0"
-                          />
-                          <div className="flex-1 min-w-0">
-                            <p className={`text-sm font-medium ${selected ? 'text-on-surface dark:text-white' : 'text-on-surface-variant dark:text-zinc-400'}`}>
+
+                  {/* Template services list */}
+                  {templateServices.length > 0 && (
+                    <div className="space-y-2">
+                      {templateServices.map((svc: any) => {
+                        const selected = loc.services.find((s) => s.name === svc.name);
+                        const seedFlow = selected?.seedFlow ?? false;
+                        return (
+                          <div
+                            key={svc.name}
+                            className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${
+                              selected
+                                ? 'bg-primary/5 dark:bg-sky-500/5 border-primary/30 dark:border-sky-500/30'
+                                : 'border-border dark:border-dark-border hover:border-outline-variant'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={!!selected}
+                              onChange={() => toggleService(svc.name)}
+                              className="w-4 h-4 text-primary rounded border-border dark:border-dark-border focus:ring-primary shrink-0"
+                            />
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium ${selected ? 'text-on-surface dark:text-white' : 'text-on-surface-variant dark:text-zinc-400'}`}>
+                                {svc.name}
+                              </p>
+                              <p className="text-xs text-on-surface-variant dark:text-zinc-500 mt-0.5">
+                                {svc.expectedDuration} min{svc.allowAppointments ? ' · Appointments' : ''}
+                              </p>
+                            </div>
+                            {/* Seed flows toggle — only shown when service is selected */}
+                            {selected && (
+                              <button
+                                type="button"
+                                onClick={() => toggleSeedFlow(svc.name)}
+                                title={seedFlow ? 'Default flows will be seeded' : 'No flows — configure manually'}
+                                className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all shrink-0 ${
+                                  seedFlow
+                                    ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                                    : 'bg-surface-container-high dark:bg-zinc-800 text-on-surface-variant dark:text-zinc-400'
+                                }`}
+                              >
+                                <Workflow className="w-3 h-3" />
+                                {seedFlow ? 'Flows' : 'No flows'}
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+
+                  {/* Custom Services Added by User */}
+                  {loc.services
+                    .filter((s) => s.isCustom || !templateServices.some((t: any) => t.name === s.name))
+                    .map((svc) => (
+                      <div
+                        key={svc.name}
+                        className="flex items-center gap-3 p-3 rounded-xl border bg-primary/5 dark:bg-sky-500/5 border-primary/30 dark:border-sky-500/30 transition-all"
+                      >
+                        <div className="w-5 h-5 rounded-md bg-primary/10 text-primary dark:text-sky-400 flex items-center justify-center shrink-0">
+                          <Sparkles className="w-3 h-3" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2">
+                            <p className="text-sm font-medium text-on-surface dark:text-white truncate">
                               {svc.name}
                             </p>
-                            <p className="text-xs text-on-surface-variant dark:text-zinc-500 mt-0.5">
-                              {svc.expectedDuration} min{svc.allowAppointments ? ' · Appointments' : ''}
-                            </p>
+                            <span className="text-[10px] font-semibold tracking-wider uppercase px-1.5 py-0.5 rounded bg-primary/10 text-primary dark:text-sky-400">
+                              Custom
+                            </span>
                           </div>
-                          {/* Seed flows toggle — only shown when service is selected */}
-                          {selected && (
-                            <button
-                              onClick={() => toggleSeedFlow(svc.name)}
-                              title={seedFlow ? 'Default flows will be seeded' : 'No flows — configure manually'}
-                              className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all shrink-0 ${
-                                seedFlow
-                                  ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
-                                  : 'bg-surface-container-high dark:bg-zinc-800 text-on-surface-variant dark:text-zinc-400'
-                              }`}
-                            >
-                              <Workflow className="w-3 h-3" />
-                              {seedFlow ? 'Flows' : 'No flows'}
-                            </button>
-                          )}
+                          <p className="text-xs text-on-surface-variant dark:text-zinc-400 mt-0.5">
+                            {svc.expectedDuration} min{svc.allowAppointments ? ' · Appointments' : ''}
+                            {svc.description ? ` · ${svc.description}` : ''}
+                          </p>
                         </div>
-                      );
-                    })}
-                  </div>
+                        <button
+                          type="button"
+                          onClick={() => toggleSeedFlow(svc.name)}
+                          title={svc.seedFlow ? 'Journey flows will be created' : 'No flows'}
+                          className={`flex items-center gap-1 px-2 py-1 rounded-lg text-xs font-medium transition-all shrink-0 ${
+                            svc.seedFlow
+                              ? 'bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400'
+                              : 'bg-surface-container-high dark:bg-zinc-800 text-on-surface-variant dark:text-zinc-400'
+                          }`}
+                        >
+                          <Workflow className="w-3 h-3" />
+                          {svc.seedFlow ? 'Flows' : 'No flows'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removeCustomService(svc.name)}
+                          className="p-1.5 rounded-lg text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                          title="Remove service"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    ))}
+
+                  {/* Empty state banner when 0 services selected */}
+                  {loc.services.length === 0 && (
+                    <div className="p-3.5 rounded-xl border border-dashed border-amber-300 dark:border-amber-500/30 bg-amber-50/50 dark:bg-amber-500/5 text-xs text-amber-900 dark:text-amber-300 flex items-start gap-2.5">
+                      <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+                      <div className="space-y-0.5">
+                        <p className="font-semibold">No services selected yet.</p>
+                        <p className="opacity-90">
+                          Select one of the template options above, click &ldquo;+ Add Custom Service&rdquo; below, or continue to plan options and we will automatically create a general starter service for you.
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Add Custom Service Button / Expandable Form */}
+                  {!showAddCustom ? (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddCustom(true)}
+                      className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-dashed border-primary/40 text-primary dark:text-sky-400 hover:bg-primary/5 dark:hover:bg-sky-500/10 transition-colors text-xs font-semibold"
+                    >
+                      <Plus className="w-4 h-4" />
+                      Add Custom Service
+                    </button>
+                  ) : (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="p-4 rounded-2xl border border-primary/30 bg-primary/5 dark:bg-sky-500/5 space-y-3"
+                    >
+                      <div className="flex items-center justify-between">
+                        <span className="text-xs font-semibold text-primary dark:text-sky-400 uppercase tracking-wider flex items-center gap-1.5">
+                          <Sparkles className="w-3.5 h-3.5" /> Add Custom Service
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCustom(false)}
+                          className="text-on-surface-variant hover:text-on-surface text-xs font-medium"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-on-surface dark:text-white">Service Name *</label>
+                        <input
+                          type="text"
+                          value={customName}
+                          onChange={(e) => setCustomName(e.target.value)}
+                          placeholder="e.g. Toddler Playgroup, VIP Consultation, Quick Inquiry, Food Order..."
+                          className="w-full h-10 px-3.5 rounded-xl border border-border dark:border-dark-border bg-white dark:bg-zinc-900 text-sm focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                          autoFocus
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter') {
+                              e.preventDefault();
+                              handleAddCustomService();
+                            }
+                          }}
+                        />
+                      </div>
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium text-on-surface dark:text-white">Estimated Duration</label>
+                          <div className="flex items-center gap-1.5">
+                            {[15, 30, 45, 60].map((dur) => (
+                              <button
+                                key={dur}
+                                type="button"
+                                onClick={() => setCustomDuration(dur)}
+                                className={`px-2.5 py-1 text-xs font-medium rounded-lg border transition-all ${
+                                  customDuration === dur
+                                    ? 'bg-primary text-white border-primary shadow-xs'
+                                    : 'border-border dark:border-dark-border text-on-surface-variant hover:bg-surface-container-high'
+                                }`}
+                              >
+                                {dur}m
+                              </button>
+                            ))}
+                            <input
+                              type="number"
+                              min={5}
+                              max={480}
+                              value={customDuration}
+                              onChange={(e) => setCustomDuration(Number(e.target.value) || 15)}
+                              className="w-16 h-7 px-2 text-xs rounded-lg border border-border dark:border-dark-border bg-white dark:bg-zinc-900 text-center font-medium"
+                              title="Duration in minutes"
+                            />
+                            <span className="text-xs text-on-surface-variant">min</span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 sm:pt-5">
+                          <input
+                            type="checkbox"
+                            id={`custom-appt-${loc.id}`}
+                            checked={customAllowAppts}
+                            onChange={(e) => setCustomAllowAppts(e.target.checked)}
+                            className="w-4 h-4 text-primary rounded border-border focus:ring-primary cursor-pointer"
+                          />
+                          <label htmlFor={`custom-appt-${loc.id}`} className="text-xs text-on-surface dark:text-white cursor-pointer select-none">
+                            Allow online appointment bookings
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-on-surface dark:text-white">Description (optional)</label>
+                        <input
+                          type="text"
+                          value={customDesc}
+                          onChange={(e) => setCustomDesc(e.target.value)}
+                          placeholder="Short note about what this service entails"
+                          className="w-full h-9 px-3 rounded-lg border border-border dark:border-dark-border bg-white dark:bg-zinc-900 text-xs focus:outline-none focus:border-primary focus:ring-1 focus:ring-primary"
+                        />
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-2">
+                        <button
+                          type="button"
+                          onClick={() => setShowAddCustom(false)}
+                          className="px-3 py-1.5 rounded-lg border border-border dark:border-dark-border text-xs text-on-surface-variant hover:bg-surface-container-high transition-colors"
+                        >
+                          Cancel
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleAddCustomService}
+                          disabled={!customName.trim()}
+                          className="px-4 py-1.5 rounded-lg bg-primary hover:bg-primary/90 text-white text-xs font-medium transition-colors disabled:opacity-50 flex items-center gap-1.5"
+                        >
+                          <Plus className="w-3.5 h-3.5" />
+                          Add to Location
+                        </button>
+                      </div>
+                    </motion.div>
+                  )}
                 </div>
               )}
 
@@ -750,12 +1089,12 @@ export default function Onboarding() {
     }));
   }, [step, fullName, companyName, phone, selectedCountryIso, countryCode, timezone, locations]);
 
-  // ── Redirect if already onboarded ─────────────────────────────────────────
+  // ── Redirect if already onboarded or demo account ─────────────────────────
   useEffect(() => {
-    if (user?.personalSettings?.onboardingCompleted && step !== 9 && !showConfetti) {
+    if ((user?.personalSettings?.onboardingCompleted || user?.isDemo) && step !== 9 && !showConfetti) {
       router.replace('/dashboard');
     }
-  }, [user?.personalSettings?.onboardingCompleted, step, showConfetti, router]);
+  }, [user?.personalSettings?.onboardingCompleted, user?.isDemo, step, showConfetti, router]);
 
   useEffect(() => {
     if (paymentData) {
@@ -807,11 +1146,17 @@ export default function Onboarding() {
             // Find the blueprintKey from catalog
             const industry = (businessCatalog as any[]).find((i: any) => i.key === loc.industryKey);
             const sub = industry?.subTypes?.find((s: any) => s.key === loc.subTypeKey);
+            const isCustomType = loc.subTypeKey === 'other' || !sub;
+            const businessType = isCustomType
+              ? (loc.customSubType?.trim() || loc.industryKey || 'general_service')
+              : loc.subTypeKey;
+            const blueprintKey = sub?.flowTemplateKey
+              || (loc.industryKey && loc.industryKey !== 'other' ? loc.industryKey : null);
             return {
               name: loc.name || `Location ${locations.indexOf(loc) + 1}`,
               address: loc.address || undefined,
-              businessType: loc.subTypeKey,
-              blueprintKey: sub?.flowTemplateKey ?? null,
+              businessType,
+              blueprintKey,
               operatingMode: 'QUEUE_ONLY',
               enableWaitlist: loc.enableWaitlist,
               services: loc.services,
@@ -909,8 +1254,41 @@ export default function Onboarding() {
   };
 
   // ── Validation ─────────────────────────────────────────────────────────────
-  const locationsValid = locations.every((l) => l.name.trim().length > 0 && l.services.length > 0);
+  const locationsValid = locations.every((l) => l.name.trim().length > 0);
   const personalInfoValid = fullName.trim().length > 0 && (inviteCode || (companyName.trim().length > 0 && subdomainCheck && !subdomainCheck.taken && !subdomainCheck.error && !isCheckingSubdomain));
+
+  const handleSeePlanOptions = () => {
+    let updatedLocations = [...locations];
+    let autoAdded = false;
+    updatedLocations = updatedLocations.map((loc, idx) => {
+      if (!loc.services || loc.services.length === 0) {
+        autoAdded = true;
+        const defaultServiceName = loc.customSubType?.trim()
+          ? `${loc.customSubType.trim()} Service`
+          : `${loc.name?.trim() || `Location ${idx + 1}`} Service`;
+        return {
+          ...loc,
+          services: [
+            {
+              name: defaultServiceName,
+              description: 'Standard queue service',
+              expectedDuration: 30,
+              allowAppointments: true,
+              seedFlow: true,
+              isCustom: true,
+            },
+          ],
+        };
+      }
+      return loc;
+    });
+
+    if (autoAdded) {
+      setLocations(updatedLocations);
+      toast.info("Added a starter service to your location. You can customize it anytime!");
+    }
+    setStep(3);
+  };
 
   // ── Step labels for progress ───────────────────────────────────────────────
   const TOTAL_STEPS = inviteCode ? 2 : 8;
@@ -920,7 +1298,7 @@ export default function Onboarding() {
   if (authLoading) {
     return <div className="min-h-screen flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-primary" /></div>;
   }
-  if (user?.personalSettings?.onboardingCompleted && step !== 9 && !showConfetti) {
+  if ((user?.personalSettings?.onboardingCompleted || user?.isDemo) && step !== 9 && !showConfetti) {
     return (
       <div className="min-h-screen flex flex-col items-center justify-center p-4">
         <Head><title>Workspace Ready | Qmova</title></Head>
@@ -1101,7 +1479,7 @@ export default function Onboarding() {
 
               <div className="pt-2 flex flex-col-reverse sm:flex-row justify-between items-center gap-4">
                 <button onClick={() => setStep(1)} className="w-full sm:w-auto px-6 py-2 rounded-lg text-on-surface-variant dark:text-outline hover:bg-surface-container-high dark:hover:bg-white/5 transition-colors text-sm font-medium">Back</button>
-                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={() => setStep(3)} disabled={!locationsValid || totalServices === 0} className="w-full sm:w-auto min-h-[44px] px-8 rounded-lg font-medium bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50">
+                <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }} onClick={handleSeePlanOptions} disabled={!locationsValid} className="w-full sm:w-auto min-h-[44px] px-8 rounded-lg font-medium bg-zinc-950 dark:bg-white text-white dark:text-zinc-950 hover:opacity-90 transition-opacity flex items-center justify-center gap-2 disabled:opacity-50">
                   See Plan Options <ArrowRight className="w-4 h-4" />
                 </motion.button>
               </div>

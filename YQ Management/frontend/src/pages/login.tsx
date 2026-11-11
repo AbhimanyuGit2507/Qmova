@@ -74,8 +74,9 @@ export default function Login() {
           AuthStorage.set(data.access_token);
         }
         const isSuper = data?.user?.role === 'SUPER_ADMIN' || (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL && email.trim().toLowerCase() === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL.toLowerCase());
+        const isDemo = Boolean(data?.user?.isDemo);
         const pendingInvite = typeof window !== 'undefined' ? localStorage.getItem('qmova_invite_code') : null;
-        if (!isSuper && (!data?.user?.tenantId || !data?.user?.personalSettings?.onboardingCompleted || pendingInvite)) {
+        if (!isSuper && !isDemo && (!data?.user?.tenantId || !data?.user?.personalSettings?.onboardingCompleted || pendingInvite)) {
           router.push('/onboarding');
         } else {
           router.push(isSuper ? '/super-admin' : '/dashboard');
@@ -121,8 +122,9 @@ export default function Login() {
         AuthStorage.set(data.access_token);
       }
       const isSuper = data?.user?.role === 'SUPER_ADMIN' || (process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL && email.trim().toLowerCase() === process.env.NEXT_PUBLIC_SUPER_ADMIN_EMAIL.toLowerCase());
+      const isDemo = Boolean(data?.user?.isDemo);
       const pendingInvite = typeof window !== 'undefined' ? localStorage.getItem('qmova_invite_code') : null;
-      if (!isSuper && (!data?.user?.tenantId || pendingInvite)) {
+      if (!isSuper && !isDemo && (!data?.user?.tenantId || pendingInvite)) {
         router.push('/onboarding');
       } else {
         router.push(isSuper ? '/super-admin' : '/dashboard');

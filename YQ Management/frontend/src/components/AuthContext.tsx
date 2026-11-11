@@ -41,7 +41,12 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       .then((data) => {
         setUser(data);
         setLoading(false);
-        if ((!data?.tenantId || data?.personalSettings?.onboardingCompleted === false) && router.pathname.startsWith('/dashboard') && data?.role !== 'SUPER_ADMIN') {
+        if (
+          !data?.isDemo &&
+          data?.role !== 'SUPER_ADMIN' &&
+          (!data?.tenantId || data?.personalSettings?.onboardingCompleted === false) &&
+          router.pathname.startsWith('/dashboard')
+        ) {
           router.push('/onboarding');
         }
       })
