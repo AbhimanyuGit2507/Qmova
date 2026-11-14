@@ -242,31 +242,42 @@ export function DeleteServiceModal({ isOpen, onClose, service, services }: Delet
                   className="mt-1"
                 />
                 <div className="flex-1">
-                  <p className="font-semibold text-sm text-red-500">Delete Everything</p>
+                  <p className="font-semibold text-sm text-red-500">Retire or Purge Service</p>
                   <p className="text-xs text-red-500/80 mt-1">
-                    Permanently delete this service and its dedicated queues. Shared queues will be unlinked safely.
+                    Remove this service from live booking and dedicated queues. Choose whether to preserve historical analytics in-place or permanently purge records.
                   </p>
 
                   {strategy === 'delete_all' && (
                     <div className="mt-3 space-y-3 pt-2 border-t border-red-500/10">
-                      <label className="flex items-center gap-2 cursor-pointer">
+                      <label className="flex items-start gap-2 cursor-pointer">
                         <input 
                           type="checkbox" 
                           checked={keepHistory} 
                           onChange={(e) => setKeepHistory(e.target.checked)} 
+                          className="mt-0.5"
                         />
-                        <span className="text-xs text-on-surface dark:text-zinc-300">Keep historical analytics data (Visits, Appointments)</span>
+                        <div>
+                          <span className="text-xs font-semibold text-on-surface dark:text-zinc-200">
+                            Archive in-place (Recommended)
+                          </span>
+                          <p className="text-[11px] text-on-surface-variant dark:text-zinc-400 mt-0.5">
+                            Preserves past visits and appointments under this service name for analytics & accounting, but immediately hides it from customer booking portals and frees up your service quota.
+                          </p>
+                        </div>
                       </label>
                       {!keepHistory && (
-                        <p className="text-xs text-red-500 flex items-center gap-1">
-                          <AlertTriangle className="w-3.5 h-3.5" /> Warning: Historical analytics data will be permanently deleted!
-                        </p>
+                        <div className="p-2.5 rounded-lg bg-red-500/10 border border-red-500/20 text-xs text-red-500 flex items-start gap-2">
+                          <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
+                          <span>
+                            <strong>Permanent Hard Delete:</strong> All historical visits, customer records, and appointments linked to this service will be permanently deleted from the database. Please download the backup (.ZIP) above before proceeding.
+                          </span>
+                        </div>
                       )}
 
                       {/* Confirm Typing Area */}
                       <div className="pt-2">
                         <label className="block text-xs font-medium text-red-600 dark:text-red-400 mb-1.5">
-                          Type <span className="font-bold underline">DELETE</span> below to confirm permanent deletion:
+                          Type <span className="font-bold underline">DELETE</span> below to confirm {keepHistory ? 'archiving' : 'permanent deletion'}:
                         </label>
                         <input
                           type="text"
@@ -303,7 +314,7 @@ export function DeleteServiceModal({ isOpen, onClose, service, services }: Delet
                   Processing...
                 </>
               ) : strategy === 'delete_all' ? (
-                'Delete Service & Dedicated Queues'
+                keepHistory ? 'Archive Service' : 'Permanently Delete Service & Data'
               ) : (
                 'Reassign & Delete'
               )}

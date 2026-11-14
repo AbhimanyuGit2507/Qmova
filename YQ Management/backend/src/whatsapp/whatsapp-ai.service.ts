@@ -438,7 +438,12 @@ If you don't know the answer or the user is frustrated, call transferToHuman.`;
 
     let serviceId = null;
     const services = await this.prisma.service.findMany({
-      where: { tenantId, locationId },
+      where: {
+        tenantId,
+        locationId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
+      },
     });
     if (services.length > 0) {
       if (serviceName) {

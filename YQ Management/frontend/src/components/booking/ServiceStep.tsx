@@ -33,7 +33,12 @@ export const ServiceStep: React.FC<ServiceStepProps> = ({
   primaryColor,
   onViewTickets,
 }) => {
-  const filteredServices = services.filter((s: AnyFixMe) => !s.locationId || s.locationId === selectedLocationId);
+  const filteredServices = services.filter((s: AnyFixMe) => {
+    if (s.isArchived || s.name === 'Archived Services' || s.name?.toLowerCase()?.includes('archived services')) {
+      return false;
+    }
+    return !s.locationId || s.locationId === selectedLocationId;
+  });
 
   return (
     <motion.div key="step2" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-6 flex-1">

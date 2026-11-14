@@ -98,7 +98,10 @@ export const getServerSideProps: GetServerSideProps = async (context) => {
       fetch(`${baseUrl}/queue/public/tenant/${tenant.id}`),
     ]);
 
-    const services: Service[] = servicesRes.ok ? await servicesRes.json() : [];
+    const servicesRaw: Service[] = servicesRes.ok ? await servicesRes.json() : [];
+    const services: Service[] = servicesRaw.filter(
+      (s: any) => !s.isArchived && s.name !== 'Archived Services' && !s.name?.toLowerCase()?.includes('archived services')
+    );
     const queues: Queue[] = queuesRes.ok ? await queuesRes.json() : [];
 
     const ipCountry = context.req.headers['x-vercel-ip-country'] as string || null;

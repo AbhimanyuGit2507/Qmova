@@ -34,6 +34,7 @@ export function ServicesSettings() {
 
   const filteredServices = React.useMemo(() => {
     return services.filter((s: any) => {
+      if (s.isArchived || s.name === 'Archived Services') return false;
       const matchLoc = selectedServiceLocationId === 'all' || s.locationId === selectedServiceLocationId;
       const matchSearch = !serviceSearchQuery || s.name.toLowerCase().includes(serviceSearchQuery.toLowerCase());
       return matchLoc && matchSearch;
@@ -60,19 +61,19 @@ export function ServicesSettings() {
           <div className="flex items-center gap-4">
             <div className="flex flex-col items-end shrink-0 mr-2">
               <span className="text-sm font-semibold text-on-surface dark:text-white mb-1">
-                {services.length} of {plan.limits.maxServices > 0 ? plan.limits.maxServices : 'Unlimited'} Services Used
+                {plan.usage.services} of {plan.limits.maxServices > 0 ? plan.limits.maxServices : 'Unlimited'} Services Used
               </span>
               <div className="w-32 h-2 bg-surface-container-low dark:bg-zinc-800 rounded-full overflow-hidden">
                 <div 
                   className="h-full bg-primary rounded-full transition-all duration-500"
-                  style={{ width: plan.limits.maxServices > 0 ? `${Math.min((services.length / plan.limits.maxServices) * 100, 100)}%` : '100%' }}
+                  style={{ width: plan.limits.maxServices > 0 ? `${Math.min((plan.usage.services / plan.limits.maxServices) * 100, 100)}%` : '100%' }}
                 />
               </div>
             </div>
             <button
               type="button"
               onClick={() => { setSelectedServiceForEdit(null); setIsServiceModalOpen(true); }}
-              disabled={(plan.limits.maxServices > 0 && services.length >= plan.limits.maxServices) || locations.length === 0}
+              disabled={(plan.limits.maxServices > 0 && plan.usage.services >= plan.limits.maxServices) || locations.length === 0}
               className={`px-4 py-2.5 rounded-xl font-semibold text-sm flex items-center gap-2 transition-all shadow-sm ${
                 (plan.limits.maxServices > 0 && services.length >= plan.limits.maxServices) || locations.length === 0
                   ? 'bg-gray-300 text-gray-500 cursor-not-allowed dark:bg-zinc-800 dark:text-zinc-500'
@@ -184,7 +185,7 @@ export function ServicesSettings() {
           isOpen={isDeleteModalOpen}
           onClose={() => setIsDeleteModalOpen(false)}
           service={selectedServiceForDelete}
-          services={services}
+          services={services.filter((s: any) => !s.isArchived && s.name !== 'Archived Services')}
         />
       )}
     </>

@@ -95,8 +95,14 @@ export class ServiceController {
   findAll(
     @Req() req: AuthenticatedRequest,
     @Query('locationId') locationId?: string,
+    @Query('includeArchived') includeArchived?: string,
   ) {
-    return this.serviceService.findAll(req.user.tenantId, locationId, req.user);
+    return this.serviceService.findAll(
+      req.user.tenantId,
+      locationId,
+      req.user,
+      includeArchived === 'true',
+    );
   }
 
   @UseGuards(JwtAuthGuard)

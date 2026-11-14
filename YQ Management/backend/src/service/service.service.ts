@@ -115,6 +115,8 @@ export class ServiceService {
     const servicesCount = await this.prisma.extendedClient.service.count({
       where: {
         tenantId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
       },
     });
 
@@ -210,8 +212,18 @@ export class ServiceService {
     return service;
   }
 
-  async findAll(tenantId: string, locationId?: string, reqUser?: any) {
-    const where: any = { tenantId };
+  async findAll(
+    tenantId: string,
+    locationId?: string,
+    reqUser?: any,
+    includeArchived = false,
+  ) {
+    const where: any = {
+      tenantId,
+      ...(includeArchived
+        ? {}
+        : { isArchived: false, name: { not: 'Archived Services' } }),
+    };
 
     if (locationId) {
       where.locationId = locationId;
@@ -249,7 +261,11 @@ export class ServiceService {
 
   async findAllPublic(tenantId: string) {
     const services = await this.prisma.extendedClient.service.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
+      },
       select: {
         id: true,
         name: true,
@@ -269,6 +285,7 @@ export class ServiceService {
         dateSelectionType: true,
         maxDaysInAdvance: true,
         enableCatalog: true,
+        isArchived: true,
         catalog: {
           select: {
             id: true,
@@ -655,34 +672,43 @@ export class ServiceService {
         });
 
         if (keepHistory) {
-          let archiveService = await tx.service.findFirst({
-            where: { name: 'Archived Services', tenantId },
+          // Soft-delete / Archive the service itself so its true name and analytics are preserved
+          await tx.service.update({
+            where: { id: exists.id },
+            data: {
+              isArchived: true,
+              allowAppointments: false,
+            },
           });
 
-          if (!archiveService) {
-            archiveService = await tx.service.create({
-              data: {
-                name: 'Archived Services',
-                tenantId,
-                description:
-                  'Container for historical data of deleted services.',
-              },
-            });
+          for (const flow of relatedWorkflows) {
+            await tx.serviceFlow.delete({ where: { id: flow.id } }).catch(() => {});
           }
 
-          await tx.visit.updateMany({
-            where: { serviceId: id },
-            data: { serviceId: archiveService.id, queueId: null, flowId: null },
-          });
+          // Disconnect from queues so it can no longer be called or joined
+          for (const queue of relatedQueues) {
+            if (queue.services.length <= 1) {
+              await tx.blockOff.deleteMany({ where: { queueId: queue.id } });
+              await tx.visit.updateMany({
+                where: { queueId: queue.id },
+                data: { queueId: null },
+              });
+              await tx.queue.delete({ where: { id: queue.id } });
+            } else {
+              await tx.queue.update({
+                where: { id: queue.id },
+                data: {
+                  services: { disconnect: { id } },
+                },
+              });
+            }
+          }
 
-          await tx.appointment.updateMany({
-            where: { serviceId: id },
-            data: { serviceId: archiveService.id },
-          });
+          return { ...exists, isArchived: true };
         }
 
         for (const flow of relatedWorkflows) {
-          await tx.serviceFlow.delete({ where: { id: flow.id } });
+          await tx.serviceFlow.delete({ where: { id: flow.id } }).catch(() => {});
         }
 
         // Only delete queues exclusive to this service; for shared queues, disconnect this service
@@ -703,12 +729,12 @@ export class ServiceService {
             });
           }
         }
-      }
 
-      // Finally, delete the service
-      return tx.service.delete({
-        where: { id: exists.id },
-      });
+        // Finally, delete the service and let cascade purge its records
+        return tx.service.delete({
+          where: { id: exists.id },
+        });
+      }
     });
   }
 

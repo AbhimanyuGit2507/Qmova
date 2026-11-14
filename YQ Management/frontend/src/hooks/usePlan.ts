@@ -211,12 +211,15 @@ export function usePlan(): UsePlanResult {
     // Usage
     const queueCount = Array.isArray(queues) ? queues.length : 0;
     const locationCount = Array.isArray(locations) ? locations.length : 0;
-    const serviceCount = Array.isArray(services) ? services.length : 0;
+    const activeServicesList = Array.isArray(services)
+      ? services.filter((s: { isArchived?: boolean; name?: string }) => !s.isArchived && s.name !== 'Archived Services')
+      : [];
+    const serviceCount = activeServicesList.length;
     const memberCount = Array.isArray(members) ? members.filter((m: { status?: string; isInvite?: boolean; frozenByQuota?: boolean }) => m.status === 'ACTIVE' || m.isInvite).length : 0;
 
     const frozenQueues = Array.isArray(queues) ? queues.filter((q: { frozenByQuota?: boolean }) => q.frozenByQuota).length : 0;
     const frozenLocations = Array.isArray(locations) ? locations.filter((l: { frozenByQuota?: boolean }) => l.frozenByQuota).length : 0;
-    const frozenServices = Array.isArray(services) ? services.filter((s: { frozenByQuota?: boolean }) => s.frozenByQuota).length : 0;
+    const frozenServices = activeServicesList.filter((s: { frozenByQuota?: boolean }) => s.frozenByQuota).length;
     const frozenMembers = Array.isArray(members) ? members.filter((m: { status?: string; isInvite?: boolean; frozenByQuota?: boolean }) => m.frozenByQuota).length : 0;
 
     const trialPermanentlyUsed = Boolean(sub?.trialEndDate && new Date(sub.trialEndDate) < new Date()) || (status === 'EXPIRED') || Boolean(sub?.metadata?.downgradedFrom);

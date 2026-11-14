@@ -781,7 +781,11 @@ export class SubscriptionService {
       select: { id: true, name: true, createdAt: true },
     });
     const services = await this.prisma.service.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
+      },
       orderBy: { createdAt: 'asc' },
       select: { id: true, name: true, createdAt: true },
     });
@@ -853,7 +857,11 @@ export class SubscriptionService {
 
     // Services
     const services = await this.prisma.service.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
+      },
       orderBy: { createdAt: 'asc' },
       select: { id: true },
     });

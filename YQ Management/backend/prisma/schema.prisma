@@ -593,6 +593,7 @@ model Service {
   allowOfflinePayment        Boolean       @default(false)
   enableCatalog              Boolean       @default(false)
   maxOverdueMinutes          Int           @default(60)
+  isArchived                 Boolean       @default(false)
   catalog                    ServiceCatalog?
   appointments               Appointment[]
   location                   Location?     @relation(fields: [locationId], references: [id], onDelete: Cascade)
@@ -605,6 +606,7 @@ model Service {
   staff                      Staff[]       @relation("StaffToService")
 
   @@index([tenantId])
+  @@index([tenantId, isArchived])
   @@index([locationId])
 }
 

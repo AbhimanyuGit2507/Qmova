@@ -479,7 +479,11 @@ export class AppointmentService {
 
     // Fetch services to get duration and operating hours data
     const services = await this.prisma.service.findMany({
-      where: { tenantId },
+      where: {
+        tenantId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
+      },
       include: {
         location: true,
         queues: { select: { id: true, name: true, status: true } },

@@ -880,7 +880,12 @@ export class WhatsappChatbot {
     session: any,
   ) {
     const services = await this.prisma.service.findMany({
-      where: { tenantId, locationId: locationId },
+      where: {
+        tenantId,
+        locationId: locationId,
+        isArchived: false,
+        name: { not: 'Archived Services' },
+      },
       orderBy: { name: 'asc' },
     });
 
