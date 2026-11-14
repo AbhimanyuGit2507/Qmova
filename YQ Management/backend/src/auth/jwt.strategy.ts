@@ -147,6 +147,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       }
 
       return {
+        id: payload.sub,
         userId: payload.sub,
         sub: payload.sub,
         staffId: linkedStaffId || undefined,
@@ -163,6 +164,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     }
 
     return {
+      id: payload.sub,
       userId: payload.sub,
       sub: payload.sub,
       email: payload.email,

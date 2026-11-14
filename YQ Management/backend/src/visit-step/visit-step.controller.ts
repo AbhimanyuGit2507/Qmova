@@ -20,6 +20,16 @@ import { RequirePagePermission } from '../auth/permissions.decorator';
 export class VisitStepController {
   constructor(private readonly visitStepService: VisitStepService) {}
 
+  private getActorId(req: any): string {
+    return (
+      req.user?.staffId ||
+      req.user?.userId ||
+      req.user?.id ||
+      req.user?.sub ||
+      'SYSTEM'
+    );
+  }
+
   @Get('by-visit/:visitId')
   getVisitSteps(@Req() req: any, @Param('visitId') visitId: string) {
     return this.visitStepService.getVisitSteps(req.user.tenantId, visitId);
@@ -30,7 +40,7 @@ export class VisitStepController {
     return this.visitStepService.handleScan(
       req.user.tenantId,
       dto.accessToken,
-      req.user.id,
+      this.getActorId(req),
       dto.targetStepId,
     );
   }
@@ -40,7 +50,7 @@ export class VisitStepController {
     return this.visitStepService.activateStep(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
     );
   }
 
@@ -54,7 +64,7 @@ export class VisitStepController {
     return this.visitStepService.advanceStep(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
       dto,
     );
   }
@@ -69,7 +79,7 @@ export class VisitStepController {
     return this.visitStepService.redeemCollection(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
       dto,
     );
   }
@@ -83,7 +93,7 @@ export class VisitStepController {
     return this.visitStepService.submitForm(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
       dto.formData,
     );
   }
@@ -97,7 +107,7 @@ export class VisitStepController {
     return this.visitStepService.submitOrder(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
       dto.selectedItems,
     );
   }
@@ -108,7 +118,7 @@ export class VisitStepController {
     return this.visitStepService.skipStep(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
     );
   }
 
@@ -118,7 +128,7 @@ export class VisitStepController {
     return this.visitStepService.revertStep(
       req.user.tenantId,
       stepId,
-      req.user.id,
+      this.getActorId(req),
     );
   }
 
@@ -143,7 +153,7 @@ export class VisitStepController {
     return this.visitStepService.recordCounterPayment(
       req.user.tenantId,
       visitId,
-      req.user.id,
+      this.getActorId(req),
       dto,
     );
   }

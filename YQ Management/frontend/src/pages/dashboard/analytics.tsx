@@ -334,7 +334,11 @@ export default function Analytics() {
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
               <p className="text-on-surface-variant text-xs mb-1 uppercase tracking-wider font-semibold">Avg Wait Time</p>
               <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">
-                {kpis.averageWaitTimeMins > 0 ? `${kpis.averageWaitTimeMins}m` : '—'}
+                {kpis.averageWaitTimeMins > 0
+                  ? `${kpis.averageWaitTimeMins}m`
+                  : (Number(kpis.totalCompleted ?? 0) > 0 || Number(kpis.totalServed ?? 0) > 0)
+                  ? '< 1m'
+                  : '—'}
               </p>
               <p className="text-xs text-outline mt-1">Queue to counter</p>
             </motion.div>
@@ -342,7 +346,11 @@ export default function Analytics() {
             <motion.div variants={kpiVariants} className="bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-xl p-5 shadow-sm">
               <p className="text-on-surface-variant text-xs mb-1 uppercase tracking-wider font-semibold">Avg Service Time</p>
               <p className="font-mono text-3xl font-bold text-on-surface dark:text-white">
-                {kpis.averageServiceTimeMins > 0 ? `${kpis.averageServiceTimeMins}m` : '—'}
+                {kpis.averageServiceTimeMins > 0
+                  ? `${kpis.averageServiceTimeMins}m`
+                  : Number(kpis.totalCompleted ?? 0) > 0
+                  ? '< 1m'
+                  : '—'}
               </p>
               <p className="text-xs text-outline mt-1">Active consultation</p>
             </motion.div>
@@ -435,32 +443,81 @@ export default function Analytics() {
                   {staffPerformance && staffPerformance.length > 0 ? (
                     <div className="flex-1 overflow-y-auto pr-2 space-y-3 max-h-[300px]">
                       {staffPerformance.map((op: any, i: number) => (
-                        <div key={op.email} className="flex items-center gap-3 p-3 bg-surface-container-low dark:bg-zinc-800/50 border border-border/50 rounded-xl relative">
-                          <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
-                            i === 0 ? 'bg-amber-100 text-amber-600' :
-                            i === 1 ? 'bg-slate-200 text-slate-700' :
-                            i === 2 ? 'bg-orange-100 text-orange-700' : 'bg-surface-container-high text-on-surface-variant'
-                          }`}>
-                            {i + 1}
+                        <div
+                          key={op.email || op.id || i}
+                          className="flex items-center gap-3 p-3 bg-surface-container-low dark:bg-zinc-800/50 border border-border/50 rounded-xl relative hover:border-primary/30 transition-colors"
+                        >
+                          <div
+                            className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm shrink-0 ${
+                              i === 0
+                                ? 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-300 dark:border-amber-800/60'
+                                : i === 1
+                                ? 'bg-slate-200 text-slate-700 dark:bg-zinc-700 dark:text-zinc-200 border border-slate-300 dark:border-zinc-600'
+                                : i === 2
+                                ? 'bg-orange-100 text-orange-700 dark:bg-orange-950/60 dark:text-orange-400 border border-orange-300 dark:border-orange-800/60'
+                                : 'bg-surface-container-high text-on-surface-variant'
+                            }`}
+                          >
+                            {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : i + 1}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="font-semibold text-sm text-on-surface truncate">{op.name}</p>
-                            <div className="flex gap-2 text-xs text-outline mt-0.5">
-                              <span>{op.served} served</span> • <span>{op.avgServiceTimeMins}m avg</span>
+                            <div className="flex items-center gap-2">
+                              <p className="font-semibold text-sm text-on-surface dark:text-white truncate">
+                                {op.name}
+                              </p>
+                              {op.role && (
+                                <span className="text-[9px] font-medium uppercase px-1.5 py-0.5 rounded bg-surface-container-high dark:bg-zinc-700 text-on-surface-variant dark:text-zinc-300">
+                                  {op.title || op.role}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 text-xs text-outline mt-0.5">
+                              {op.served > 0 ? (
+                                <>
+                                  <span className="font-medium text-on-surface-variant dark:text-zinc-300">
+                                    {op.served} served
+                                  </span>
+                                  <span>•</span>
+                                  <span>
+                                    {op.avgServiceTimeMins > 0
+                                      ? `${op.avgServiceTimeMins}m avg`
+                                      : '< 1m avg'}
+                                  </span>
+                                </>
+                              ) : (
+                                <span className="text-emerald-600 dark:text-emerald-400 font-medium">
+                                  Ready on duty
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="text-right shrink-0">
-                            <p className="font-bold text-sm flex items-center justify-end gap-1 text-on-surface">
-                              {op.csat > 0 ? op.csat : '—'} <Star className={`w-3.5 h-3.5 ${op.csat > 0 ? 'fill-amber-400 text-amber-400' : 'text-gray-300'}`} />
+                            <p className="font-bold text-sm flex items-center justify-end gap-1 text-on-surface dark:text-white">
+                              {op.csat > 0 ? op.csat : '—'}{' '}
+                              <Star
+                                className={`w-3.5 h-3.5 ${
+                                  op.csat > 0
+                                    ? 'fill-amber-400 text-amber-400'
+                                    : 'text-gray-300 dark:text-zinc-600'
+                                }`}
+                              />
                             </p>
-                            <p className="text-[10px] text-rose-500">{op.noShows > 0 ? `${op.noShows} walkaways` : ''}</p>
+                            <p className="text-[10px] text-rose-500">
+                              {op.noShows > 0 ? `${op.noShows} walkaways` : ''}
+                            </p>
                           </div>
                         </div>
                       ))}
                     </div>
                   ) : (
-                    <div className="flex-1 flex items-center justify-center text-sm text-outline">
-                      No operator data found.
+                    <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-sm text-outline">
+                      <Medal className="w-8 h-8 text-outline/40 mb-2" />
+                      <p className="font-medium text-on-surface-variant dark:text-zinc-400">
+                        No operator activity logged
+                      </p>
+                      <p className="text-xs text-outline mt-1">
+                        Staff will appear on this leaderboard as customer visits are served.
+                      </p>
                     </div>
                   )}
                 </motion.div>

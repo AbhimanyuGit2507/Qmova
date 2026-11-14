@@ -529,6 +529,17 @@ export class VisitStepService {
       },
     });
 
+    // Ensure parent visit serviceStart and operatorId are recorded
+    const now = new Date();
+    await this.prisma.visit.updateMany({
+      where: { id: step.visitId, serviceStart: null },
+      data: {
+        serviceStart: now,
+        currentState: 'IN_SERVICE',
+        operatorId: staffId && staffId !== 'SYSTEM' ? staffId : undefined,
+      },
+    });
+
     await this.logEvent(
       step.id,
       step.visitId,
@@ -871,7 +882,14 @@ export class VisitStepService {
     if (isCompleted) {
       await this.prisma.visitStep.update({
         where: { id: step.id },
-        data: { status: 'DONE', completedAt: new Date() },
+        data: {
+          status: 'DONE',
+          completedAt: new Date(),
+          assignedStaffId:
+            staffId && staffId !== 'SYSTEM' ? staffId : step.assignedStaffId,
+          lastRedeemedBy:
+            staffId && staffId !== 'SYSTEM' ? staffId : step.lastRedeemedBy,
+        },
       });
     }
 
@@ -892,7 +910,7 @@ export class VisitStepService {
     );
 
     if (isCompleted) {
-      await this.evaluateNextSteps(step.visitId, step.id);
+      await this.evaluateNextSteps(step.visitId, step.id, undefined, staffId);
     }
 
     return updated;
@@ -933,7 +951,7 @@ export class VisitStepService {
       { formData },
     );
 
-    await this.evaluateNextSteps(step.visitId, step.id);
+    await this.evaluateNextSteps(step.visitId, step.id, undefined, staffId);
     return updated;
   }
 
@@ -1034,7 +1052,7 @@ export class VisitStepService {
       });
     }
 
-    await this.evaluateNextSteps(step.visitId, step.id);
+    await this.evaluateNextSteps(step.visitId, step.id, undefined, staffId);
     return updated;
   }
 
@@ -1323,6 +1341,11 @@ export class VisitStepService {
             where: { id: visitId },
             data: {
               currentState: 'IN_SERVICE',
+              serviceStart: oldVisit?.serviceStart || activatedNow,
+              operatorId:
+                activeStaff && activeStaff !== 'SYSTEM'
+                  ? activeStaff
+                  : oldVisit?.operatorId || undefined,
               serviceId:
                 nextStepToActivate.serviceId ||
                 oldVisit?.serviceId ||
@@ -1428,11 +1451,31 @@ export class VisitStepService {
           }
         } else {
           // Mark entire visit completed
+          const visitSteps = await tx.visitStep.findMany({
+            where: { visitId },
+            orderBy: { stepOrder: 'asc' },
+          });
+          const earliestActivated = visitSteps.find(
+            (s) => s.activatedAt,
+          )?.activatedAt;
+          const stepOperator =
+            (staffId && staffId !== 'SYSTEM' ? staffId : null) ||
+            visitSteps.find(
+              (s) => s.assignedStaffId && s.assignedStaffId !== 'SYSTEM',
+            )?.assignedStaffId ||
+            visitSteps.find(
+              (s) => s.lastRedeemedBy && s.lastRedeemedBy !== 'SYSTEM',
+            )?.lastRedeemedBy;
+
+          const now = new Date();
           await tx.visit.update({
             where: { id: visitId },
             data: {
               currentState: 'COMPLETED',
-              completedAt: new Date(),
+              serviceStart: oldVisit?.serviceStart || earliestActivated || now,
+              serviceEnd: now,
+              completedAt: now,
+              operatorId: oldVisit?.operatorId || (stepOperator ?? undefined),
               balanceDue: balanceDue > 0 ? balanceDue : 0,
             },
           });

@@ -160,14 +160,39 @@ export class AnalyticsService {
         actualArrival: true,
         waitingStart: true,
         serviceStart: true,
+        serviceEnd: true,
         completedAt: true,
+        operatorId: true,
+        assignedStaffId: true,
         rating: true,
         feedbackText: true,
         customer: { select: { id: true, name: true, phone: true } },
         service: { select: { id: true, name: true } },
         queue: { select: { id: true, name: true } },
         operatorUser: {
-          select: { id: true, email: true, personalSettings: true },
+          select: { id: true, email: true, name: true, role: true, personalSettings: true },
+        },
+        staff: {
+          select: {
+            id: true,
+            name: true,
+            email: true,
+            title: true,
+            status: true,
+            userId: true,
+          },
+        },
+        visitSteps: {
+          select: {
+            id: true,
+            name: true,
+            status: true,
+            activatedAt: true,
+            completedAt: true,
+            stepOrder: true,
+            assignedStaffId: true,
+            lastRedeemedBy: true,
+          },
         },
       },
     });
@@ -238,11 +263,40 @@ export class AnalyticsService {
         COUNT(CASE WHEN "currentState" IN ('NO_SHOW', 'CANCELLED', 'MISSED') THEN 1 END)::int as total_missed,
         COUNT(CASE WHEN "currentState" = 'CANCELLED' THEN 1 END)::int as total_cancelled,
         COUNT(CASE WHEN "currentState" = 'NO_SHOW' THEN 1 END)::int as total_no_show,
-        COALESCE(SUM(EXTRACT(EPOCH FROM ("serviceStart" - COALESCE("waitingStart", "checkInTime", "createdAt")))), 0)::float as total_wait_time_secs,
-        COALESCE(SUM(CASE WHEN "serviceStart" IS NOT NULL AND ("currentState" NOT IN ('NO_SHOW', 'CANCELLED', 'MISSED')) THEN 1 ELSE 0 END), 0)::int as wait_time_count,
-        COUNT(CASE WHEN "serviceStart" IS NOT NULL AND ("serviceStart" - COALESCE("waitingStart", "checkInTime", "createdAt")) > INTERVAL '15 minutes' THEN 1 END)::int as sla_violations,
-        COALESCE(SUM(EXTRACT(EPOCH FROM ("completedAt" - "serviceStart"))), 0)::float as total_service_time_secs,
-        COALESCE(SUM(CASE WHEN "completedAt" IS NOT NULL THEN 1 ELSE 0 END), 0)::int as service_time_count,
+        COALESCE(SUM(
+          CASE 
+            WHEN ("serviceStart" IS NOT NULL OR "completedAt" IS NOT NULL) AND ("currentState" NOT IN ('NO_SHOW', 'CANCELLED', 'MISSED'))
+            THEN EXTRACT(EPOCH FROM (COALESCE("serviceStart", "completedAt") - COALESCE("waitingStart", "checkInTime", "actualArrival", "createdAt")))
+            ELSE 0
+          END
+        ), 0)::float as total_wait_time_secs,
+        COALESCE(SUM(
+          CASE 
+            WHEN ("serviceStart" IS NOT NULL OR "completedAt" IS NOT NULL) AND ("currentState" NOT IN ('NO_SHOW', 'CANCELLED', 'MISSED'))
+            THEN 1 
+            ELSE 0 
+          END
+        ), 0)::int as wait_time_count,
+        COUNT(CASE 
+          WHEN ("serviceStart" IS NOT NULL OR "completedAt" IS NOT NULL) 
+            AND ("currentState" NOT IN ('NO_SHOW', 'CANCELLED', 'MISSED')) 
+            AND (COALESCE("serviceStart", "completedAt") - COALESCE("waitingStart", "checkInTime", "actualArrival", "createdAt")) > INTERVAL '15 minutes' 
+          THEN 1 
+        END)::int as sla_violations,
+        COALESCE(SUM(
+          CASE 
+            WHEN "completedAt" IS NOT NULL
+            THEN EXTRACT(EPOCH FROM ("completedAt" - COALESCE("serviceStart", "waitingStart", "checkInTime", "createdAt")))
+            ELSE 0
+          END
+        ), 0)::float as total_service_time_secs,
+        COALESCE(SUM(
+          CASE 
+            WHEN "completedAt" IS NOT NULL AND ("currentState" = 'COMPLETED')
+            THEN 1 
+            ELSE 0 
+          END
+        ), 0)::int as service_time_count,
         COALESCE(SUM(rating), 0)::float as total_rating,
         COUNT(rating)::int as rating_count
       FROM "Visit"
@@ -266,31 +320,16 @@ export class AnalyticsService {
     const totalMissed = Number(rawStats.total_missed ?? 0);
     const totalCancelled = Number(rawStats.total_cancelled ?? 0);
     const totalNoShow = Number(rawStats.total_no_show ?? 0);
-    const totalWaitTimeSecs = Number(rawStats.total_wait_time_secs ?? 0);
-    const waitTimeCount = Number(rawStats.wait_time_count ?? 0);
-    const slaViolations = Number(rawStats.sla_violations ?? 0);
-    const totalServiceTimeSecs = Number(rawStats.total_service_time_secs ?? 0);
-    const serviceTimeCount = Number(rawStats.service_time_count ?? 0);
     const totalRating = Number(rawStats.total_rating ?? 0);
     const ratingCount = Number(rawStats.rating_count ?? 0);
 
-    const totalServed = waitTimeCount;
-    const averageWaitTimeMins =
-      waitTimeCount > 0
-        ? Math.floor(totalWaitTimeSecs / waitTimeCount / 60)
-        : 0;
-    const averageServiceTimeMins =
-      serviceTimeCount > 0
-        ? Math.floor(totalServiceTimeSecs / serviceTimeCount / 60)
-        : 0;
-    const csatScore =
-      ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : 0;
-    const denominator =
-      totalVisitsCount > 0 ? totalVisitsCount : totalCompleted + totalMissed;
-    const dropOffRate =
-      denominator > 0 ? Math.round((totalMissed / denominator) * 100) : 0;
-
     const SLA_THRESHOLD_MINS = 15;
+
+    let computedWaitTimeSecs = 0;
+    let computedWaitCount = 0;
+    let computedServiceTimeSecs = 0;
+    let computedServiceCount = 0;
+    let computedSlaViolations = 0;
 
     const svcMap = new Map<
       string,
@@ -317,8 +356,13 @@ export class AnalyticsService {
     const operatorStats = new Map<
       string,
       {
+        id: string;
+        staffId?: string;
         email: string;
         name: string;
+        role: string;
+        title: string;
+        status: string;
         served: number;
         serviceTimeMs: number;
         ratingSum: number;
@@ -326,6 +370,84 @@ export class AnalyticsService {
         noShows: number;
       }
     >();
+
+    // Pre-populate all workspace staff & operational users so the leaderboard reflects the full team
+    const [workspaceUsers, workspaceStaff] = await Promise.all([
+      this.prisma.user.findMany({
+        where: {
+          tenantId,
+          role: { in: ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'STAFF', 'MANAGER'] },
+        },
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          role: true,
+          personalSettings: true,
+        },
+      }),
+      this.prisma.staff.findMany({
+        where: { tenantId },
+        select: {
+          id: true,
+          userId: true,
+          name: true,
+          email: true,
+          title: true,
+          status: true,
+        },
+      }),
+    ]);
+
+    for (const u of workspaceUsers) {
+      const matchedStaff = workspaceStaff.find(
+        (s) => s.userId === u.id || s.email?.toLowerCase() === u.email.toLowerCase(),
+      );
+      const settings: any = u.personalSettings || {};
+      const displayName =
+        matchedStaff?.name ||
+        u.name ||
+        (settings.firstName
+          ? `${settings.firstName} ${settings.lastName || ''}`.trim()
+          : u.email.split('@')[0]);
+
+      operatorStats.set(u.id, {
+        id: u.id,
+        staffId: matchedStaff?.id,
+        email: u.email,
+        name: displayName,
+        role: u.role,
+        title: matchedStaff?.title || u.role,
+        status: matchedStaff?.status || 'ACTIVE',
+        served: 0,
+        serviceTimeMs: 0,
+        ratingSum: 0,
+        ratingCount: 0,
+        noShows: 0,
+      });
+    }
+
+    for (const s of workspaceStaff) {
+      const alreadyAdded = Array.from(operatorStats.values()).some(
+        (op) => op.staffId === s.id || op.email.toLowerCase() === s.email?.toLowerCase(),
+      );
+      if (!alreadyAdded) {
+        operatorStats.set(s.id, {
+          id: s.id,
+          staffId: s.id,
+          email: s.email || `${s.name.toLowerCase().replace(/\s+/g, '.')}@workspace`,
+          name: s.name,
+          role: 'STAFF',
+          title: s.title || 'Staff',
+          status: s.status || 'ACTIVE',
+          served: 0,
+          serviceTimeMs: 0,
+          ratingSum: 0,
+          ratingCount: 0,
+          noShows: 0,
+        });
+      }
+    }
 
     // Pre-populate all services and their linked queues so they show up even with 0 visits
     const allServices = await this.prisma.service.findMany({
@@ -368,24 +490,77 @@ export class AnalyticsService {
       const isWalkaway = ['NO_SHOW', 'CANCELLED', 'MISSED'].includes(
         t.currentState,
       );
+      const isCompleted = t.currentState === 'COMPLETED';
 
-      let waitMs = 0;
-      let hasWait = false;
-      if (t.serviceStart && (t.waitingStart || t.createdAt)) {
-        waitMs =
-          t.serviceStart.getTime() -
-          (t.waitingStart?.getTime() || t.createdAt.getTime());
-        hasWait = true;
+      // 1. Resolve Arrival
+      const arrival =
+        t.waitingStart ||
+        t.checkInTime ||
+        t.actualArrival ||
+        t.createdAt;
+      t._resolvedArrival = arrival;
+
+      // 2. Resolve Service Start with step fallback
+      let resolvedServiceStart = t.serviceStart;
+      if (!resolvedServiceStart && t.visitSteps && t.visitSteps.length > 0) {
+        const sortedSteps = [...t.visitSteps].sort(
+          (a, b) => (a.stepOrder ?? 0) - (b.stepOrder ?? 0),
+        );
+        const firstActivated = sortedSteps.find((s) => s.activatedAt)?.activatedAt;
+        if (firstActivated) {
+          resolvedServiceStart = firstActivated;
+        }
       }
 
-      if (
-        hasWait &&
-        t.currentState !== 'MISSED' &&
-        t.currentState !== 'CANCELLED' &&
-        t.currentState !== 'NO_SHOW'
-      ) {
-        if (t.completedAt) {
+      // 3. Resolve Completed At with step fallback
+      let resolvedCompletedAt = t.completedAt || t.serviceEnd;
+      if (!resolvedCompletedAt && isCompleted && t.visitSteps && t.visitSteps.length > 0) {
+        const lastCompleted = [...t.visitSteps]
+          .reverse()
+          .find((s) => s.completedAt)?.completedAt;
+        if (lastCompleted) {
+          resolvedCompletedAt = lastCompleted;
         }
+      }
+
+      // If completed but no serviceStart, fallback intelligently
+      if (isCompleted && !resolvedServiceStart) {
+        if (resolvedCompletedAt && arrival && resolvedCompletedAt > arrival) {
+          resolvedServiceStart = arrival;
+        } else if (resolvedCompletedAt) {
+          resolvedServiceStart = new Date(resolvedCompletedAt.getTime() - 60000);
+        }
+      }
+      t._resolvedServiceStart = resolvedServiceStart;
+      t._resolvedCompletedAt = resolvedCompletedAt;
+
+      // Wait Time calculation
+      let waitMs = 0;
+      let hasWait = false;
+      if (resolvedServiceStart && arrival && !isWalkaway) {
+        waitMs = Math.max(0, resolvedServiceStart.getTime() - arrival.getTime());
+        hasWait = true;
+        computedWaitTimeSecs += Math.round(waitMs / 1000);
+        computedWaitCount++;
+        if (waitMs > SLA_THRESHOLD_MINS * 60000) {
+          computedSlaViolations++;
+        }
+      }
+
+      // Service Time calculation
+      let serviceMs = 0;
+      let hasService = false;
+      if (isCompleted && resolvedCompletedAt && resolvedServiceStart) {
+        serviceMs = Math.max(
+          0,
+          resolvedCompletedAt.getTime() - resolvedServiceStart.getTime(),
+        );
+        if (serviceMs < 30000) {
+          serviceMs = 60000;
+        }
+        hasService = true;
+        computedServiceTimeSecs += Math.round(serviceMs / 1000);
+        computedServiceCount++;
       }
 
       // Populate Service and Queue metrics
@@ -427,18 +602,101 @@ export class AnalyticsService {
         }
       }
 
-      if (t.operatorUser && t.serviceStart) {
-        const opId = t.operatorUser.id;
-        const opEmail = t.operatorUser.email;
-        const settings: any = t.operatorUser.personalSettings || {};
-        const opName = settings.firstName
-          ? `${settings.firstName} ${settings.lastName || ''}`.trim()
-          : opEmail.split('@')[0];
+      // Operator Attribution
+      let operatorUserId: string | null = null;
+      let operatorEmail: string | null = null;
+      let operatorName: string | null = null;
+      let operatorRole: string = 'STAFF';
 
-        if (!operatorStats.has(opId)) {
-          operatorStats.set(opId, {
-            email: opEmail,
-            name: opName,
+      if (t.operatorUser?.id) {
+        operatorUserId = t.operatorUser.id;
+        operatorEmail = t.operatorUser.email;
+        operatorName =
+          t.operatorUser.name ||
+          (t.operatorUser.personalSettings?.firstName
+            ? `${t.operatorUser.personalSettings.firstName} ${t.operatorUser.personalSettings.lastName || ''}`.trim()
+            : null);
+        operatorRole = t.operatorUser.role || 'STAFF';
+      } else if (t.staff?.id) {
+        operatorUserId = t.staff.userId || t.staff.id;
+        operatorEmail = t.staff.email;
+        operatorName = t.staff.name;
+        operatorRole = 'STAFF';
+      } else if (t.operatorId) {
+        const matched =
+          workspaceUsers.find((u) => u.id === t.operatorId) ||
+          workspaceStaff.find(
+            (s) => s.id === t.operatorId || s.userId === t.operatorId,
+          );
+        if (matched) {
+          operatorUserId =
+            'userId' in matched && matched.userId ? matched.userId : matched.id;
+          operatorEmail = matched.email;
+          operatorName = matched.name;
+          operatorRole = 'role' in matched ? (matched as any).role : 'STAFF';
+        }
+      } else if (t.assignedStaffId) {
+        const matched =
+          workspaceStaff.find(
+            (s) => s.id === t.assignedStaffId || s.userId === t.assignedStaffId,
+          ) || workspaceUsers.find((u) => u.id === t.assignedStaffId);
+        if (matched) {
+          operatorUserId =
+            'userId' in matched && matched.userId ? matched.userId : matched.id;
+          operatorEmail = matched.email;
+          operatorName = matched.name;
+          operatorRole = 'role' in matched ? (matched as any).role : 'STAFF';
+        }
+      }
+
+      if (!operatorUserId && t.visitSteps && t.visitSteps.length > 0) {
+        const stepWithActor = t.visitSteps.find(
+          (s: any) =>
+            (s.assignedStaffId && s.assignedStaffId !== 'SYSTEM') ||
+            (s.lastRedeemedBy && s.lastRedeemedBy !== 'SYSTEM'),
+        );
+        const actorId =
+          stepWithActor?.assignedStaffId || stepWithActor?.lastRedeemedBy;
+        if (actorId) {
+          const matched =
+            workspaceUsers.find((u) => u.id === actorId) ||
+            workspaceStaff.find((s) => s.id === actorId || s.userId === actorId);
+          if (matched) {
+            operatorUserId =
+              'userId' in matched && matched.userId ? matched.userId : matched.id;
+            operatorEmail = matched.email;
+            operatorName = matched.name;
+            operatorRole = 'role' in matched ? (matched as any).role : 'STAFF';
+          }
+        }
+      }
+
+      // If there's only 1 active workspace user/admin and the visit was completed, attribute to that primary operator
+      if (
+        !operatorUserId &&
+        workspaceUsers.length === 1 &&
+        (isCompleted || hasService || hasWait)
+      ) {
+        const primary = workspaceUsers[0];
+        operatorUserId = primary.id;
+        operatorEmail = primary.email;
+        operatorName = primary.name;
+        operatorRole = primary.role;
+      }
+
+      if (operatorUserId) {
+        if (!operatorStats.has(operatorUserId)) {
+          const fallbackName =
+            operatorName ||
+            (operatorEmail ? operatorEmail.split('@')[0] : 'Operator');
+          operatorStats.set(operatorUserId, {
+            id: operatorUserId,
+            staffId: undefined,
+            email: operatorEmail || `${operatorUserId}@workspace`,
+            name: fallbackName,
+            role: operatorRole,
+            title: operatorRole,
+            status: 'ACTIVE',
             served: 0,
             serviceTimeMs: 0,
             ratingSum: 0,
@@ -447,23 +705,64 @@ export class AnalyticsService {
           });
         }
 
-        const stats = operatorStats.get(opId)!;
-
-        if (t.currentState === 'COMPLETED' && t.completedAt) {
+        const stats = operatorStats.get(operatorUserId)!;
+        if (isCompleted || hasService) {
           stats.served++;
-          stats.serviceTimeMs +=
-            t.completedAt.getTime() - t.serviceStart.getTime();
+          stats.serviceTimeMs += serviceMs;
           if (t.rating) {
             stats.ratingSum += t.rating;
             stats.ratingCount++;
           }
         }
-
         if (isWalkaway) {
           stats.noShows++;
         }
       }
     });
+
+    const finalWaitTimeCount = Math.max(
+      Number(rawStats.wait_time_count ?? 0),
+      computedWaitCount,
+    );
+    const finalWaitTimeSecs = Math.max(
+      Number(rawStats.total_wait_time_secs ?? 0),
+      computedWaitTimeSecs,
+    );
+    const finalServiceTimeCount = Math.max(
+      Number(rawStats.service_time_count ?? 0),
+      computedServiceCount,
+    );
+    const finalServiceTimeSecs = Math.max(
+      Number(rawStats.total_service_time_secs ?? 0),
+      computedServiceTimeSecs,
+    );
+    const finalSlaViolations = Math.max(
+      Number(rawStats.sla_violations ?? 0),
+      computedSlaViolations,
+    );
+
+    const totalServed = Math.max(
+      totalCompleted,
+      finalWaitTimeCount,
+      finalServiceTimeCount,
+    );
+    const averageWaitTimeMins =
+      finalWaitTimeCount > 0
+        ? Math.round(finalWaitTimeSecs / finalWaitTimeCount / 60)
+        : 0;
+    const averageServiceTimeMins =
+      finalServiceTimeCount > 0
+        ? Math.max(
+            1,
+            Math.round(finalServiceTimeSecs / finalServiceTimeCount / 60),
+          )
+        : 0;
+    const csatScore =
+      ratingCount > 0 ? Number((totalRating / ratingCount).toFixed(1)) : 0;
+    const denominator =
+      totalVisitsCount > 0 ? totalVisitsCount : totalCompleted + totalMissed;
+    const dropOffRate =
+      denominator > 0 ? Math.round((totalMissed / denominator) * 100) : 0;
 
     const getVisitOperationalTime = (t: any): Date => {
       return (
@@ -543,11 +842,11 @@ export class AnalyticsService {
             const entry = hourlyDataMap.get(h)!;
             entry.actualVisits++;
             entry.volume++;
-            if (t.serviceStart) {
+            const sStart = t.serviceStart || t._resolvedServiceStart;
+            const wStart = t.waitingStart || t._resolvedArrival || opTime;
+            if (sStart && sStart >= wStart) {
               entry.waitTimeSum +=
-                (t.serviceStart.getTime() -
-                  (t.waitingStart?.getTime() || opTime.getTime())) /
-                60000;
+                (sStart.getTime() - wStart.getTime()) / 60000;
               entry.waitCount++;
             }
           }
@@ -618,11 +917,11 @@ export class AnalyticsService {
           if (isActual) {
             entry.actualVisits++;
             entry.volume++;
-            if (t.serviceStart) {
+            const sStart = t.serviceStart || t._resolvedServiceStart;
+            const wStart = t.waitingStart || t._resolvedArrival || opTime;
+            if (sStart && sStart >= wStart) {
               entry.waitTimeSum +=
-                (t.serviceStart.getTime() -
-                  (t.waitingStart?.getTime() || opTime.getTime())) /
-                60000;
+                (sStart.getTime() - wStart.getTime()) / 60000;
               entry.waitCount++;
             }
           } else if (isSched) {
@@ -689,11 +988,11 @@ export class AnalyticsService {
           if (isActual) {
             entry.actualVisits++;
             entry.volume++;
-            if (t.serviceStart) {
+            const sStart = t.serviceStart || t._resolvedServiceStart;
+            const wStart = t.waitingStart || t._resolvedArrival || opTime;
+            if (sStart && sStart >= wStart) {
               entry.waitTimeSum +=
-                (t.serviceStart.getTime() -
-                  (t.waitingStart?.getTime() || opTime.getTime())) /
-                60000;
+                (sStart.getTime() - wStart.getTime()) / 60000;
               entry.waitCount++;
             }
           } else if (isSched) {
@@ -712,20 +1011,30 @@ export class AnalyticsService {
       }));
     }
 
-    const staffPerformance = Array.from(operatorStats.values()).map((op) => ({
-      name: op.name,
-      email: op.email,
-      served: op.served,
-      noShows: op.noShows,
-      csat:
-        op.ratingCount > 0
-          ? Number((op.ratingSum / op.ratingCount).toFixed(1))
-          : 0,
-      avgServiceTimeMins:
-        op.served > 0 ? Math.floor(op.serviceTimeMs / op.served / 60000) : 0,
-    }));
-    // Sort leaderboard by most served
-    staffPerformance.sort((a, b) => b.served - a.served);
+    const staffPerformance = Array.from(operatorStats.values())
+      .map((op) => ({
+        id: op.id,
+        name: op.name,
+        email: op.email,
+        role: op.role,
+        title: op.title,
+        status: op.status,
+        served: op.served,
+        noShows: op.noShows,
+        csat:
+          op.ratingCount > 0
+            ? Number((op.ratingSum / op.ratingCount).toFixed(1))
+            : 0,
+        avgServiceTimeMins:
+          op.served > 0
+            ? Math.max(1, Math.round(op.serviceTimeMs / op.served / 60000))
+            : 0,
+      }))
+      .sort((a, b) => {
+        if (b.served !== a.served) return b.served - a.served;
+        if (b.csat !== a.csat) return b.csat - a.csat;
+        return a.name.localeCompare(b.name);
+      });
 
     const servicePerformance = Array.from(svcMap.values())
       .filter((s) => !(s.name === 'Archived Services' && s.count === 0))
@@ -746,20 +1055,34 @@ export class AnalyticsService {
 
     const customerReviews = tokens
       .filter((t: any) => t.rating !== null && t.rating !== undefined)
-      .map((t: any) => ({
-        id: t.id,
-        displayId: t.displayId,
-        customerName: t.customer?.name || 'Guest',
-        serviceName: t.service?.name || 'General Service',
-        queueName: t.queue?.name || 'Queue',
-        operatorName:
-          t.operatorUser?.personalSettings?.name ||
-          t.operatorUser?.email?.split('@')[0] ||
-          'Unassigned',
-        rating: t.rating,
-        feedbackText: t.feedbackText,
-        date: t.completedAt || t.createdAt,
-      }))
+      .map((t: any) => {
+        let opName = 'Operator';
+        if (t.operatorUser?.name) {
+          opName = t.operatorUser.name;
+        } else if (t.operatorUser?.personalSettings?.firstName) {
+          opName = `${t.operatorUser.personalSettings.firstName} ${t.operatorUser.personalSettings.lastName || ''}`.trim();
+        } else if (t.operatorUser?.email) {
+          opName = t.operatorUser.email.split('@')[0];
+        } else if (t.staff?.name) {
+          opName = t.staff.name;
+        } else if (workspaceUsers.length === 1) {
+          opName =
+            workspaceUsers[0].name ||
+            workspaceUsers[0].email.split('@')[0];
+        }
+
+        return {
+          id: t.id,
+          displayId: t.displayId,
+          customerName: t.customer?.name || 'Guest',
+          serviceName: t.service?.name || 'General Service',
+          queueName: t.queue?.name || 'Queue',
+          operatorName: opName,
+          rating: t.rating,
+          feedbackText: t.feedbackText,
+          date: t.completedAt || t.createdAt,
+        };
+      })
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
     return {
@@ -774,7 +1097,7 @@ export class AnalyticsService {
         averageServiceTimeMins,
         dropOffRate,
         csatScore,
-        slaViolations,
+        slaViolations: finalSlaViolations,
       },
       chartData,
       heatmapData,
