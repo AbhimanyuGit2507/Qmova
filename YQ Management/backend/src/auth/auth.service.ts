@@ -188,7 +188,12 @@ export class AuthService {
 
       const effectiveExpiry = tokenExpiry || new Date(Date.now() + 3600 * 1000);
 
-      if (user && user.role === 'OWNER' && (accessToken || refreshToken)) {
+      const canManageIntegrations =
+        user?.role === 'OWNER' ||
+        user?.role === 'SUPER_ADMIN' ||
+        user?.role === 'ADMIN';
+
+      if (user && canManageIntegrations && user.tenantId && (accessToken || refreshToken)) {
         await this.prisma.googleIntegration.upsert({
           where: {
             tenantId_email: {
@@ -235,7 +240,11 @@ export class AuthService {
 
     const effectiveExpiry = tokenExpiry || new Date(Date.now() + 3600 * 1000);
 
-    if (user.role === 'OWNER' || user.role === 'SUPER_ADMIN') {
+    if (
+      user.role === 'OWNER' ||
+      user.role === 'SUPER_ADMIN' ||
+      user.role === 'ADMIN'
+    ) {
       await this.prisma.googleIntegration.upsert({
         where: {
           tenantId_email: {

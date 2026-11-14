@@ -34,6 +34,7 @@ export class GoogleStrategy extends PassportStrategy(Strategy, 'google', 6) {
       scope: [
         'email',
         'profile',
+        'https://www.googleapis.com/auth/calendar',
         'https://www.googleapis.com/auth/calendar.readonly',
         'https://www.googleapis.com/auth/calendar.events',
         'https://www.googleapis.com/auth/business.manage',

@@ -149,8 +149,7 @@ export class GoogleService {
         auth: authClient,
       });
 
-      // Use the specific calendarId if configured, otherwise fall back to 'primary'
-      const calendarId = location?.googleCalendarId || 'primary';
+      let calendarId = location?.googleCalendarId || 'primary';
 
       const event = {
         summary: `Appointment for ${appointmentDetails.customer?.name || 'Customer'}`,
@@ -163,10 +162,26 @@ export class GoogleService {
         },
       };
 
-      const response = await calendar.events.insert({
-        calendarId,
-        requestBody: event,
-      });
+      let response;
+      try {
+        response = await calendar.events.insert({
+          calendarId,
+          requestBody: event,
+        });
+      } catch (insertErr: any) {
+        if (calendarId !== 'primary') {
+          this.logger.warn(
+            `Failed to insert Google Calendar event into custom calendar "${calendarId}", retrying with primary: ${insertErr?.message}`,
+          );
+          calendarId = 'primary';
+          response = await calendar.events.insert({
+            calendarId: 'primary',
+            requestBody: event,
+          });
+        } else {
+          throw insertErr;
+        }
+      }
 
       if (response.data.id) {
         const formData = appointmentDetails.formData || {};
@@ -309,37 +324,32 @@ export class GoogleService {
       }));
     } catch (err: any) {
       const errMsg = err?.message || '';
+      const errDetails = JSON.stringify(err?.response?.data || '');
       this.logger.warn(
         `Failed to fetch Google Calendars for integration ${integrationId}: ${errMsg}`,
       );
 
-      // Check if Google Calendar API is disabled or not activated in GCP project
-      if (
-        errMsg.includes('Google Calendar API has not been used in project') ||
-        errMsg.includes('disabled') ||
-        err?.code === 403 ||
-        err?.status === 403
-      ) {
-        const urlMatch = errMsg.match(
-          /https:\/\/console\.developers\.google\.com[^\s]+/,
-        );
-        const activationUrl = urlMatch
-          ? urlMatch[0]
-          : 'https://console.developers.google.com/apis/api/calendar-json.googleapis.com/overview';
+      // Check if insufficient scopes (e.g. token granted with calendar.events before calendar.readonly was added)
+      const isScopeInsufficient =
+        errMsg.includes('insufficient authentication scopes') ||
+        errMsg.includes('Insufficient Permission') ||
+        errDetails.includes('ACCESS_TOKEN_SCOPE_INSUFFICIENT') ||
+        errDetails.includes('insufficientPermissions');
 
+      if (isScopeInsufficient) {
         return [
           {
             id: 'primary',
             summary: 'Primary Calendar (Default)',
             primary: true,
-            warning:
-              'Google Calendar API is not enabled in your Google Cloud Console project.',
-            activationUrl,
+            isScopeLimited: true,
+            notice:
+              'Appointments sync to your Primary Calendar. To select custom secondary calendars, please reconnect your Google account.',
           },
         ];
       }
 
-      // If token expired
+      // If token expired or revoked
       if (
         errMsg.includes('invalid_grant') ||
         err?.code === 401 ||
@@ -350,19 +360,39 @@ export class GoogleService {
             id: 'primary',
             summary: 'Primary Calendar (Default)',
             primary: true,
+            isExpired: true,
             warning:
-              'Google authorization has expired. Please re-authorize your Google account.',
+              'Google authorization has expired. Please re-authorize your Google account to sync calendars.',
           },
         ];
       }
 
-      // General fallback
+      // Check if Google Calendar API is disabled in platform GCP project
+      if (
+        errMsg.includes('Google Calendar API has not been used in project') ||
+        errMsg.includes('disabled')
+      ) {
+        this.logger.error(
+          `Google Calendar API is not enabled in platform GCP project: ${errMsg}`,
+        );
+        return [
+          {
+            id: 'primary',
+            summary: 'Primary Calendar (Default)',
+            primary: true,
+            notice:
+              'Calendar service is currently operating on your default calendar.',
+          },
+        ];
+      }
+
+      // General fallback — always return Primary Calendar safely
       return [
         {
           id: 'primary',
           summary: 'Primary Calendar (Default)',
           primary: true,
-          warning: errMsg || 'Unable to load custom calendars from Google.',
+          notice: 'Operating on your Primary Calendar.',
         },
       ];
     }
