@@ -1992,7 +1992,7 @@ export default function ServiceDeskToday() {
             </div>
             <div className="flex flex-wrap items-center gap-2 w-full xl:w-auto mt-4 xl:mt-0">
               <div className="relative flex-1 min-w-[150px]">
-                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline text-[18px]">
+                <span className="material-symbols-outlined absolute left-3 top-1/2 -translate-y-1/2 text-outline dark:text-zinc-400 text-[18px]">
                   search
                 </span>
                 <input
@@ -2000,18 +2000,18 @@ export default function ServiceDeskToday() {
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={`Search ${industry.terminology.customers.toLowerCase()}...`}
-                  className="w-full pl-9 pr-4 py-1.5 bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-lg text-body-sm focus:border-primary focus:ring-1 focus:ring-primary outline-none"
+                  className="w-full pl-9 pr-4 py-1.5 bg-card dark:bg-dark-card border border-border dark:border-dark-border rounded-lg text-body-sm text-foreground dark:text-zinc-100 placeholder:text-outline dark:placeholder:text-zinc-500 focus:border-primary focus:ring-1 focus:ring-primary outline-none"
                 />
               </div>
               <button
                 onClick={() => setIsScannerOpen(true)}
-                className="bg-surface-container hover:bg-surface-container-high text-on-surface px-3 py-1.5 rounded-lg text-body-sm font-semibold transition-colors flex items-center gap-1 border border-border cursor-pointer"
+                className="bg-surface-container hover:bg-surface-container-high dark:bg-zinc-800 dark:hover:bg-zinc-700 text-on-surface dark:text-zinc-200 px-3 py-1.5 rounded-lg text-body-sm font-semibold transition-colors flex items-center gap-1.5 border border-border dark:border-zinc-700 cursor-pointer shadow-xs"
               >
-                <ScanLine className="w-[18px] h-[18px]" /> Scan QR
+                <ScanLine className="w-[18px] h-[18px] text-on-surface-variant dark:text-zinc-400" /> Scan QR
               </button>
               <button
                 onClick={() => setIsVisitModalOpen(true)}
-                className="bg-primary hover:bg-primary-container text-on-primary px-3 py-1.5 rounded-lg text-body-sm font-semibold transition-colors flex items-center gap-1 cursor-pointer"
+                className="bg-primary hover:bg-primary-container text-on-primary px-3 py-1.5 rounded-lg text-body-sm font-semibold transition-colors flex items-center gap-1 cursor-pointer shadow-xs"
               >
                 <span className="material-symbols-outlined text-[18px]">
                   add
