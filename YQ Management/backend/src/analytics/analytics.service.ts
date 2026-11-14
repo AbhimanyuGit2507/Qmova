@@ -285,7 +285,7 @@ export class AnalyticsService {
         END)::int as sla_violations,
         COALESCE(SUM(
           CASE 
-            WHEN "completedAt" IS NOT NULL
+            WHEN "completedAt" IS NOT NULL AND "currentState" = 'COMPLETED'
             THEN EXTRACT(EPOCH FROM ("completedAt" - COALESCE("serviceStart", "waitingStart", "checkInTime", "createdAt")))
             ELSE 0
           END
@@ -720,26 +720,26 @@ export class AnalyticsService {
       }
     });
 
-    const finalWaitTimeCount = Math.max(
-      Number(rawStats.wait_time_count ?? 0),
-      computedWaitCount,
-    );
-    const finalWaitTimeSecs = Math.max(
-      Number(rawStats.total_wait_time_secs ?? 0),
-      computedWaitTimeSecs,
-    );
-    const finalServiceTimeCount = Math.max(
-      Number(rawStats.service_time_count ?? 0),
-      computedServiceCount,
-    );
-    const finalServiceTimeSecs = Math.max(
-      Number(rawStats.total_service_time_secs ?? 0),
-      computedServiceTimeSecs,
-    );
-    const finalSlaViolations = Math.max(
-      Number(rawStats.sla_violations ?? 0),
-      computedSlaViolations,
-    );
+    const finalWaitTimeCount =
+      computedWaitCount > 0
+        ? computedWaitCount
+        : Number(rawStats.wait_time_count ?? 0);
+    const finalWaitTimeSecs =
+      computedWaitCount > 0
+        ? computedWaitTimeSecs
+        : Number(rawStats.total_wait_time_secs ?? 0);
+    const finalServiceTimeCount =
+      computedServiceCount > 0
+        ? computedServiceCount
+        : Number(rawStats.service_time_count ?? 0);
+    const finalServiceTimeSecs =
+      computedServiceCount > 0
+        ? computedServiceTimeSecs
+        : Number(rawStats.total_service_time_secs ?? 0);
+    const finalSlaViolations =
+      computedWaitCount > 0
+        ? computedSlaViolations
+        : Number(rawStats.sla_violations ?? 0);
 
     const totalServed = Math.max(
       totalCompleted,
