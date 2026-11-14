@@ -5,28 +5,29 @@ import SettingsLayout from '../../../components/SettingsLayout';
 import StaffSettingsPage from '../../../components/settings/staff';
 import { RolesTable as RolesSettingsPage } from '../../../components/settings/RolesTable';
 import SecuritySettingsPage from '../../../components/settings/security';
-import ProvidersSettings from '../../../components/settings/providers';
 import StaffViewBuilder from '../../../components/settings/StaffViewBuilder';
 
-type Tab = 'staff' | 'on-ground' | 'staff-view' | 'roles' | 'security';
+type Tab = 'team' | 'staff-view' | 'roles' | 'security';
 
 const TABS: { id: Tab; label: string; desc: string }[] = [
-  { id: 'staff',      label: 'Platform Users',     desc: 'People who log into Qmova' },
-  { id: 'on-ground',  label: 'On-Ground Staff',    desc: 'Bookable workers, doctors, waiters, etc.' },
+  { id: 'team',       label: 'Team Members',       desc: 'Workspace members & on-ground specialists' },
   { id: 'staff-view', label: 'Staff View Builder', desc: 'Design desk layouts & widget templates' },
-  { id: 'roles',      label: 'Roles & Permissions', desc: '' },
-  { id: 'security',   label: 'Security & Access',   desc: '' },
+  { id: 'roles',      label: 'Roles & Permissions', desc: '4-tier permission matrix' },
+  { id: 'security',   label: 'Security & Access',   desc: 'MFA & authentication rules' },
 ];
 
 export default function TeamSettingsWrapper() {
   const router = useRouter();
   
-  // Derive activeTab directly from URL query param if present
-  const queryTab = (typeof router.query.tab === 'string' && TABS.some(t => t.id === router.query.tab))
-    ? (router.query.tab as Tab)
+  // Normalize legacy query tabs ('staff', 'on-ground') to 'team'
+  const rawTab = typeof router.query.tab === 'string' ? router.query.tab : null;
+  const queryTab: Tab | null = (rawTab === 'staff' || rawTab === 'on-ground' || rawTab === 'team')
+    ? 'team'
+    : (rawTab === 'staff-view' || rawTab === 'roles' || rawTab === 'security')
+    ? rawTab
     : null;
 
-  const [localTab, setLocalTab] = useState<Tab>('staff');
+  const [localTab, setLocalTab] = useState<Tab>('team');
   const activeTab = queryTab || localTab;
 
   const handleTabChange = (tabId: Tab) => {
@@ -68,8 +69,7 @@ export default function TeamSettingsWrapper() {
       </div>
 
       <div className="flex flex-col gap-8 w-full mx-auto">
-        {activeTab === 'staff'      && <StaffSettingsPage />}
-        {activeTab === 'on-ground'  && <ProvidersSettings />}
+        {activeTab === 'team'       && <StaffSettingsPage />}
         {activeTab === 'staff-view' && <StaffViewBuilder />}
         {activeTab === 'roles'      && <RolesSettingsPage />}
         {activeTab === 'security'   && <SecuritySettingsPage />}
@@ -77,7 +77,6 @@ export default function TeamSettingsWrapper() {
     </>
   );
 }
-
 
 TeamSettingsWrapper.getLayout = function getLayout(page: React.ReactElement) {
   return (

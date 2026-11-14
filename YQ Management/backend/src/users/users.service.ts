@@ -86,20 +86,42 @@ export class UsersService {
       (activeUsers.find((u) => u.role === 'OWNER') || activeUsers[0])?.id ??
       null;
 
-    const staffList: any[] = activeUsers.map((u) => ({
-      id: u.id,
-      email: u.email,
-      name: u.name,
-      phone: u.phone,
-      description: u.description,
-      role: u.role,
-      status: 'ACTIVE',
-      isInvite: false,
-      isOwner: u.id === resolvedOwnerId,
-      allowedLocationIds: u.allowedLocationIds || [],
-      allowedPages: u.allowedPages || [],
-      allowedServiceIds: u.allowedServiceIds || [],
-    }));
+    const onGroundStaff = await this.prisma.staff.findMany({
+      where: { tenantId },
+      include: {
+        services: { select: { id: true, name: true } },
+        location: { select: { id: true, name: true } },
+      },
+    });
+
+    const staffList: any[] = activeUsers.map((u) => {
+      const staff = onGroundStaff.find(
+        (s) =>
+          s.userId === u.id ||
+          (s.email && u.email && s.email.toLowerCase() === u.email.toLowerCase()),
+      );
+      return {
+        id: u.id,
+        email: u.email,
+        name: u.name || staff?.name,
+        phone: u.phone || staff?.phone,
+        description: u.description || staff?.bio,
+        title: staff?.title,
+        color: staff?.color,
+        role: u.role,
+        status: 'ACTIVE',
+        isInvite: false,
+        isOwner: u.id === resolvedOwnerId,
+        staffId: staff?.id || null,
+        deskToken: staff?.deskToken || null,
+        services: staff?.services || [],
+        location: staff?.location || null,
+        capacity: staff?.capacity ?? 1,
+        allowedLocationIds: u.allowedLocationIds || [],
+        allowedPages: u.allowedPages || [],
+        allowedServiceIds: u.allowedServiceIds || [],
+      };
+    });
 
     const invites = await this.prisma.invitation.findMany({
       where: { tenantId, email: { not: null } },
@@ -177,21 +199,134 @@ export class UsersService {
       }
     }
 
+    // Also include any kiosk-only staff (created without a User login) in the unified team list
+    for (const s of onGroundStaff) {
+      const alreadyIncluded = staffList.some(
+        (u) =>
+          u.staffId === s.id ||
+          (s.userId && u.id === s.userId) ||
+          (s.email && u.email?.toLowerCase() === s.email.toLowerCase()),
+      );
+      if (!alreadyIncluded) {
+        staffList.push({
+          id: s.id,
+          staffId: s.id,
+          email: s.email || null,
+          name: s.name,
+          phone: s.phone,
+          description: s.bio,
+          title: s.title,
+          color: s.color,
+          role: 'STAFF',
+          status: s.status,
+          isInvite: false,
+          isOwner: false,
+          isKioskOnly: true,
+          deskToken: s.deskToken,
+          services: s.services || [],
+          location: s.location || null,
+          capacity: s.capacity ?? 1,
+          allowedLocationIds: s.locationId ? [s.locationId] : [],
+          allowedPages: ['my-desk'],
+          allowedServiceIds: s.services?.map((svc) => svc.id) || [],
+        });
+      }
+    }
+
     return staffList;
   }
 
   async createUser(
     tenantId: string,
     data: {
-      email: string;
+      email?: string;
+      name?: string;
+      phone?: string;
+      title?: string;
       role: any;
       password?: string;
       allowedLocationIds?: string[];
       allowedServiceIds?: string[];
       allowedPages?: string[];
       makeBookable?: boolean;
+      isKioskOnly?: boolean;
+      templateId?: string;
     },
   ) {
+    // If isKioskOnly, create a Staff record with dedicated deskToken directly
+    if (data.isKioskOnly) {
+      const currentStaffCount = await this.prisma.staff.count({
+        where: { tenantId },
+      });
+      await this.subscriptionService.checkLimit(
+        tenantId,
+        'staff',
+        currentStaffCount,
+      );
+
+      const token = randomBytes(24).toString('hex');
+      const staff = await this.prisma.staff.create({
+        data: {
+          tenantId,
+          name: data.name || (data.email ? data.email.split('@')[0] : 'Staff Station'),
+          email: data.email || null,
+          phone: data.phone || null,
+          title: data.title || 'Staff Specialist',
+          status: 'ACTIVE',
+          deskToken: token,
+          locationId: data.allowedLocationIds?.[0] || undefined,
+          ...(data.allowedServiceIds && data.allowedServiceIds.length > 0
+            ? {
+                services: {
+                  connect: data.allowedServiceIds.map((id) => ({ id })),
+                },
+              }
+            : {}),
+        },
+        include: {
+          services: { select: { id: true, name: true } },
+          location: { select: { id: true, name: true } },
+        },
+      });
+
+      if (data.templateId) {
+        const tenantWithLayout = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { staffViewLayout: true },
+        });
+        const currentSvl: any = tenantWithLayout?.staffViewLayout || {
+          version: 2,
+          templates: [],
+          assignments: {},
+        };
+        const updatedAssignments = {
+          ...(currentSvl.assignments || {}),
+          [staff.id]: data.templateId,
+        };
+        await this.prisma.tenant.update({
+          where: { id: tenantId },
+          data: {
+            staffViewLayout: {
+              ...currentSvl,
+              version: 2,
+              assignments: updatedAssignments,
+            },
+          },
+        });
+      }
+
+      return {
+        status: 'USER_ADDED',
+        staff,
+        deskToken: staff.deskToken,
+        message: 'On-ground staff member created with dedicated desk kiosk.',
+      };
+    }
+
+    if (!data.email) {
+      throw new BadRequestException('Email is required to invite a team member.');
+    }
+
     const existingUser = await this.prisma.user.findUnique({
       where: { email: data.email },
     });
@@ -217,25 +352,80 @@ export class UsersService {
       totalStaffCount,
     );
 
-    const handleMakeBookable = async (userId?: string) => {
-      if (!data.makeBookable) return;
+    const handleMakeStaff = async (userId?: string) => {
+      if (data.role !== 'STAFF' && !data.makeBookable) return;
+      if (!data.email) return;
       const existingStaff = await this.prisma.staff.findFirst({
-        where: { tenantId, email: data.email },
+        where: { tenantId, OR: [{ email: data.email }, ...(userId ? [{ userId }] : [])] },
       });
+      const staffName = data.name || data.email.split('@')[0];
+      let staffRecord = existingStaff;
       if (!existingStaff) {
-        await this.prisma.staff.create({
+        const token = randomBytes(24).toString('hex');
+        staffRecord = await this.prisma.staff.create({
           data: {
             tenantId,
-            name: data.email.split('@')[0],
+            name: staffName,
             email: data.email,
+            title: data.title || 'Staff Specialist',
+            phone: data.phone,
             userId,
             status: 'ACTIVE',
+            deskToken: token,
+            locationId: data.allowedLocationIds?.[0] || undefined,
+            ...(data.allowedServiceIds && data.allowedServiceIds.length > 0
+              ? {
+                  services: {
+                    connect: data.allowedServiceIds.map((id) => ({ id })),
+                  },
+                }
+              : {}),
           },
         });
-      } else if (userId && !existingStaff.userId) {
-        await this.prisma.staff.update({
+      } else {
+        staffRecord = await this.prisma.staff.update({
           where: { id: existingStaff.id },
-          data: { userId },
+          data: {
+            userId: userId || existingStaff.userId,
+            name: data.name || existingStaff.name,
+            phone: data.phone || existingStaff.phone,
+            title: data.title || existingStaff.title,
+            locationId: data.allowedLocationIds?.[0] || existingStaff.locationId,
+            ...(data.allowedServiceIds && data.allowedServiceIds.length > 0
+              ? {
+                  services: {
+                    set: data.allowedServiceIds.map((id) => ({ id })),
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+
+      if (data.templateId && staffRecord) {
+        const tenantWithLayout = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { staffViewLayout: true },
+        });
+        const currentSvl: any = tenantWithLayout?.staffViewLayout || {
+          version: 2,
+          templates: [],
+          assignments: {},
+        };
+        const updatedAssignments = {
+          ...(currentSvl.assignments || {}),
+          [staffRecord.id]: data.templateId,
+        };
+        if (userId) updatedAssignments[userId] = data.templateId;
+        await this.prisma.tenant.update({
+          where: { id: tenantId },
+          data: {
+            staffViewLayout: {
+              ...currentSvl,
+              version: 2,
+              assignments: updatedAssignments,
+            },
+          },
         });
       }
     };
@@ -276,7 +466,7 @@ export class UsersService {
             },
           });
 
-      await handleMakeBookable();
+      await handleMakeStaff();
 
       return {
         status: 'USER_NOT_FOUND_INVITED',
@@ -314,7 +504,7 @@ export class UsersService {
       data: { used: true, usedAt: new Date() },
     });
 
-    await handleMakeBookable(updatedUser.id);
+    await handleMakeStaff(updatedUser.id);
 
     return {
       status: 'USER_ADDED',
@@ -394,7 +584,31 @@ export class UsersService {
         await this.prisma.invitation.delete({ where: { id: targetInvite.id } });
         return { success: true, message: 'Invitation removed.' };
       }
-      throw new NotFoundException('User or invitation not found.');
+
+      const targetStaff = await this.prisma.staff.findFirst({
+        where: { id, tenantId },
+      });
+      if (targetStaff) {
+        await this.prisma.staff.delete({ where: { id: targetStaff.id } });
+        const tenantLayout = await this.prisma.tenant.findUnique({
+          where: { id: tenantId },
+          select: { staffViewLayout: true },
+        });
+        if (tenantLayout?.staffViewLayout) {
+          const svl: any = tenantLayout.staffViewLayout;
+          if (svl.assignments && svl.assignments[id]) {
+            const nextAssignments = { ...svl.assignments };
+            delete nextAssignments[id];
+            await this.prisma.tenant.update({
+              where: { id: tenantId },
+              data: { staffViewLayout: { ...svl, assignments: nextAssignments } },
+            });
+          }
+        }
+        return { success: true, message: 'Staff member removed.' };
+      }
+
+      throw new NotFoundException('User, staff, or invitation not found.');
     }
 
     if (targetUser.tenantId !== tenantId) {
@@ -418,6 +632,14 @@ export class UsersService {
         );
       }
     }
+
+    // Clean up linked staff profile in this tenant if any
+    await this.prisma.staff.deleteMany({
+      where: {
+        tenantId,
+        OR: [{ userId: id }],
+      },
+    });
 
     await this.prisma.user.delete({
       where: { id },
@@ -500,6 +722,58 @@ export class UsersService {
       },
     });
 
+    // Sync Staff provider record if role is STAFF
+    if (newRole === 'STAFF') {
+      const existingStaff = await this.prisma.staff.findFirst({
+        where: {
+          tenantId,
+          OR: [{ userId: id }, ...(targetUser.email ? [{ email: targetUser.email }] : [])],
+        },
+      });
+      const staffName = updatedUser.name || targetUser.email.split('@')[0];
+      if (existingStaff) {
+        await this.prisma.staff.update({
+          where: { id: existingStaff.id },
+          data: {
+            userId: id,
+            name: staffName,
+            status: 'ACTIVE',
+            ...(updatedUser.phone ? { phone: updatedUser.phone } : {}),
+            ...(updatedUser.allowedLocationIds?.length ? { locationId: updatedUser.allowedLocationIds[0] } : {}),
+            ...(updatedUser.allowedServiceIds?.length
+              ? {
+                  services: {
+                    set: updatedUser.allowedServiceIds.map((sId) => ({ id: sId })),
+                  },
+                }
+              : {}),
+          },
+        });
+      } else {
+        const token = randomBytes(24).toString('hex');
+        await this.prisma.staff.create({
+          data: {
+            tenantId,
+            userId: id,
+            name: staffName,
+            email: targetUser.email,
+            phone: updatedUser.phone,
+            title: 'Staff Specialist',
+            deskToken: token,
+            status: 'ACTIVE',
+            locationId: updatedUser.allowedLocationIds?.[0],
+            ...(updatedUser.allowedServiceIds && updatedUser.allowedServiceIds.length > 0
+              ? {
+                  services: {
+                    connect: updatedUser.allowedServiceIds.map((sId) => ({ id: sId })),
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+    }
+
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },
       select: { name: true },
@@ -569,6 +843,58 @@ export class UsersService {
         allowedServiceIds: true,
       },
     });
+
+    // Sync Staff provider record if role is STAFF
+    if (newRole === 'STAFF') {
+      const existingStaff = await this.prisma.staff.findFirst({
+        where: {
+          tenantId,
+          OR: [{ userId: id }, ...(targetUser.email ? [{ email: targetUser.email }] : [])],
+        },
+      });
+      const staffName = updatedUser.name || targetUser.email.split('@')[0];
+      if (existingStaff) {
+        await this.prisma.staff.update({
+          where: { id: existingStaff.id },
+          data: {
+            userId: id,
+            name: staffName,
+            status: 'ACTIVE',
+            ...(updatedUser.phone ? { phone: updatedUser.phone } : {}),
+            ...(updatedUser.allowedLocationIds?.length ? { locationId: updatedUser.allowedLocationIds[0] } : {}),
+            ...(updatedUser.allowedServiceIds?.length
+              ? {
+                  services: {
+                    set: updatedUser.allowedServiceIds.map((sId) => ({ id: sId })),
+                  },
+                }
+              : {}),
+          },
+        });
+      } else {
+        const token = randomBytes(24).toString('hex');
+        await this.prisma.staff.create({
+          data: {
+            tenantId,
+            userId: id,
+            name: staffName,
+            email: targetUser.email,
+            phone: updatedUser.phone,
+            title: 'Staff Specialist',
+            deskToken: token,
+            status: 'ACTIVE',
+            locationId: updatedUser.allowedLocationIds?.[0],
+            ...(updatedUser.allowedServiceIds && updatedUser.allowedServiceIds.length > 0
+              ? {
+                  services: {
+                    connect: updatedUser.allowedServiceIds.map((sId) => ({ id: sId })),
+                  },
+                }
+              : {}),
+          },
+        });
+      }
+    }
 
     const tenant = await this.prisma.tenant.findUnique({
       where: { id: tenantId },

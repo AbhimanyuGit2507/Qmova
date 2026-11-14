@@ -99,6 +99,49 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         payload.allowedLocationIds = user.allowedLocationIds;
       if (user.allowedServiceIds)
         payload.allowedServiceIds = user.allowedServiceIds;
+
+      let linkedStaffId: string | null = null;
+      let linkedDeskToken: string | null = null;
+      if (user.role === 'STAFF') {
+        const staff = await this.prisma.staff.findFirst({
+          where: {
+            tenantId: user.tenantId,
+            OR: [{ userId: user.id }, ...(payload.email ? [{ email: payload.email }] : [])],
+          },
+          include: { services: { select: { id: true } } },
+        });
+        if (staff) {
+          linkedStaffId = staff.id;
+          linkedDeskToken = staff.deskToken;
+          if (
+            (!payload.allowedLocationIds || payload.allowedLocationIds.length === 0) &&
+            staff.locationId
+          ) {
+            payload.allowedLocationIds = [staff.locationId];
+          }
+          if (
+            (!payload.allowedServiceIds || payload.allowedServiceIds.length === 0) &&
+            staff.services?.length
+          ) {
+            payload.allowedServiceIds = staff.services.map((s) => s.id);
+          }
+        }
+      }
+
+      return {
+        userId: payload.sub,
+        sub: payload.sub,
+        staffId: linkedStaffId || undefined,
+        deskToken: linkedDeskToken || undefined,
+        email: payload.email,
+        role: payload.role,
+        tenantId: payload.tenantId,
+        personalSettings: payload.personalSettings,
+        allowedPages: payload.allowedPages ?? [],
+        allowedLocationIds: payload.allowedLocationIds ?? [],
+        allowedServiceIds: payload.allowedServiceIds ?? [],
+        jti: payload.jti,
+      };
     }
 
     return {

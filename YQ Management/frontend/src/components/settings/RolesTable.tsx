@@ -26,36 +26,36 @@ const FEATURE_MATRIX: FeatureRow[] = [
     ],
   },
   {
-    category: 'Team Management',
+    category: 'Team & Specialists',
     features: [
-      { label: 'View team members', owner: true, admin: true, manager: true, staff: false },
-      { label: 'Invite Admin members', description: 'Invite others as Admin', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Invite Managers & Staff', description: 'Managers can invite Staff', owner: true, admin: true, manager: 'partial', staff: false },
+      { label: 'View unified team members', owner: true, admin: true, manager: true, staff: false },
+      { label: 'Invite Admin members', description: 'Invite team leads as Admin', owner: true, admin: true, manager: false, staff: false },
+      { label: 'Invite Front Desk & Staff Specialists', description: 'Managers can add on-ground specialists', owner: true, admin: true, manager: 'partial', staff: false },
       { label: 'Remove team members', owner: true, admin: true, manager: 'partial', staff: false },
       { label: 'Change member roles', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Manage page permissions', description: 'Configure per-Staff access', owner: true, admin: true, manager: false, staff: false },
+      { label: 'Configure desk templates for staff', owner: true, admin: true, manager: false, staff: false },
     ],
   },
   {
-    category: 'Providers',
+    category: 'My Desk & Station Kiosks',
     features: [
-      { label: 'View providers', owner: true, admin: true, manager: true, staff: false },
-      { label: 'Add / edit providers', owner: true, admin: true, manager: true, staff: false },
-      { label: 'Manage provider schedules', owner: true, admin: true, manager: true, staff: false },
-      { label: 'Delete providers', owner: true, admin: true, manager: false, staff: false },
+      { label: 'Access My Desk workspace (/dashboard/my-desk)', owner: true, admin: true, manager: true, staff: true },
+      { label: 'Dedicated Tablet Kiosk station (/staff-desk/[token])', owner: true, admin: true, manager: true, staff: true },
+      { label: 'Design Staff View templates (Staff View Builder)', owner: true, admin: true, manager: false, staff: false },
+      { label: 'Fulfill queue visits & add clinical notes', owner: true, admin: true, manager: true, staff: true },
     ],
   },
   {
-    category: 'Queues & Operations',
+    category: 'Service Desk & Reception',
     features: [
-      { label: 'View queues', owner: true, admin: true, manager: true, staff: 'partial' },
-      { label: 'Create / configure queues', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Operate queues (serve, call next)', owner: true, admin: true, manager: true, staff: 'partial' },
-      { label: 'Delete queues', owner: true, admin: true, manager: false, staff: false },
+      { label: 'Operate Service Desk (/dashboard/service-desk)', owner: true, admin: true, manager: true, staff: false },
+      { label: 'Scan visitor boarding passes (QR Scanner)', owner: true, admin: true, manager: true, staff: 'partial' },
+      { label: 'Walk-in triage & client check-in', owner: true, admin: true, manager: true, staff: false },
+      { label: 'Manage live customer queues', owner: true, admin: true, manager: true, staff: 'partial' },
     ],
   },
   {
-    category: 'Appointments',
+    category: 'Appointments & Calendars',
     features: [
       { label: 'View all appointments', owner: true, admin: true, manager: true, staff: 'partial' },
       { label: 'Create / reschedule appointments', owner: true, admin: true, manager: true, staff: 'partial' },
@@ -71,47 +71,28 @@ const FEATURE_MATRIX: FeatureRow[] = [
     ],
   },
   {
-    category: 'Settings',
+    category: 'Settings & Integrations',
     features: [
-      { label: 'View general settings', owner: true, admin: true, manager: 'partial', staff: false },
-      { label: 'Edit business profile', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Manage locations', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Manage services', owner: true, admin: true, manager: false, staff: false },
-      { label: 'WhatsApp integration', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Webhook management', owner: true, admin: true, manager: false, staff: false },
-    ],
-  },
-  {
-    category: 'Inbox & Customers',
-    features: [
-      { label: 'View inbox & messages', owner: true, admin: true, manager: true, staff: 'partial' },
-      { label: 'Manage customers', owner: true, admin: true, manager: true, staff: 'partial' },
-    ],
-  },
-  {
-    category: 'Service Flow Operations',
-    features: [
-      { label: 'Configure & build service flows', description: 'Create, edit, apply templates to services', owner: true, admin: true, manager: false, staff: false },
-      { label: 'Advance steps (complete)', description: 'Mark a step as done', owner: true, admin: true, manager: true, staff: 'partial' },
-      { label: 'Skip optional steps', description: 'Skip an optional step on behalf of customer', owner: true, admin: true, manager: true, staff: 'partial' },
-      { label: 'Revert skipped steps', description: 'Undo a skip and return step to active', owner: true, admin: true, manager: true, staff: 'partial' },
-      { label: 'Redeem entitlements', description: 'Scan and redeem collection/entitlement steps', owner: true, admin: true, manager: true, staff: 'partial' },
+      { label: 'View workspace settings', owner: true, admin: true, manager: 'partial', staff: false },
+      { label: 'Manage locations & operating hours', owner: true, admin: true, manager: false, staff: false },
+      { label: 'Manage services & pricing', owner: true, admin: true, manager: false, staff: false },
+      { label: 'WhatsApp & communication integrations', owner: true, admin: true, manager: false, staff: false },
     ],
   },
 ];
 
 const COLUMNS = [
-  { key: 'owner', label: 'Owner', badgeClass: 'bg-primary/10 text-primary border border-primary/20' },
-  { key: 'admin', label: 'Admin', badgeClass: 'bg-primary/5 text-primary border border-primary/15' },
-  { key: 'manager', label: 'Manager', badgeClass: 'bg-surface-container dark:bg-dark-surface text-on-surface dark:text-white border border-border dark:border-dark-border' },
-  { key: 'staff', label: 'Staff', badgeClass: 'bg-surface-container dark:bg-dark-surface text-on-surface dark:text-white border border-border dark:border-dark-border' },
+  { key: 'owner', label: 'Owner', badgeClass: 'bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20' },
+  { key: 'admin', label: 'Admin', badgeClass: 'bg-purple-50 dark:bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20' },
+  { key: 'manager', label: 'Manager (Front Desk)', badgeClass: 'bg-cyan-50 dark:bg-cyan-500/10 text-cyan-700 dark:text-cyan-400 border border-cyan-500/20' },
+  { key: 'staff', label: 'Staff Specialist', badgeClass: 'bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20' },
 ] as const;
 
 function PermIcon({ value }: { value: Permission }) {
   if (value === true) return <Check className="w-4 h-4 text-emerald-500" />;
   if (value === false) return <X className="w-4 h-4 text-outline opacity-40" />;
   return (
-    <span title="Limited — depends on scope">
+    <span title="Limited — depends on assigned scope">
       <Minus className="w-4 h-4 text-amber-500" />
     </span>
   );
@@ -123,28 +104,28 @@ export function RolesTable() {
       {/* Legend */}
       <div className="flex items-center gap-4 text-xs text-on-surface-variant dark:text-zinc-400">
         <span className="flex items-center gap-1.5"><Check className="w-3.5 h-3.5 text-emerald-500" /> Full access</span>
-        <span className="flex items-center gap-1.5"><Minus className="w-3.5 h-3.5 text-amber-500" /> Limited / scope-dependent</span>
+        <span className="flex items-center gap-1.5"><Minus className="w-3.5 h-3.5 text-amber-500" /> Assigned scope only</span>
         <span className="flex items-center gap-1.5"><X className="w-3.5 h-3.5 text-outline opacity-50" /> No access</span>
       </div>
 
       {/* Role header cards */}
-      <div className="grid grid-cols-4 gap-3 mb-2">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-2">
         {COLUMNS.map(col => (
-          <div key={col.key} className={`rounded-xl p-3 text-center ${col.badgeClass}`}>
+          <div key={col.key} className={`rounded-xl p-3.5 text-center ${col.badgeClass}`}>
             <div className="font-bold text-sm">{col.label}</div>
-            <div className="text-xs text-on-surface-variant dark:text-zinc-400 mt-0.5">
-              {col.key === 'owner' && 'Primary account holder'}
-              {col.key === 'admin' && 'Full operational control'}
-              {col.key === 'manager' && 'Operational oversight'}
-              {col.key === 'staff' && 'Assigned-scope only'}
+            <div className="text-[11px] text-on-surface-variant dark:text-zinc-400 mt-1 leading-snug">
+              {col.key === 'owner' && 'Workspace creator, billing & root ownership'}
+              {col.key === 'admin' && 'Locations, services, templates & operations lead'}
+              {col.key === 'manager' && 'Service Desk, live triage & QR boarding pass scanner'}
+              {col.key === 'staff' && 'My Desk, station kiosk tablet & service fulfiller'}
             </div>
           </div>
         ))}
       </div>
 
       {/* Permission matrix */}
-      <div className="border border-border dark:border-dark-border rounded-xl overflow-hidden">
-        {FEATURE_MATRIX.map((section, si) => (
+      <div className="border border-border dark:border-dark-border rounded-xl overflow-hidden shadow-sm">
+        {FEATURE_MATRIX.map((section) => (
           <div key={section.category}>
             {/* Category row */}
             <div className="bg-surface-container dark:bg-zinc-800/80 px-4 py-2.5">
@@ -152,35 +133,43 @@ export function RolesTable() {
                 {section.category}
               </span>
             </div>
+
             {/* Feature rows */}
-            {section.features.map((feat, fi) => (
-              <div
-                key={feat.label}
-                className={`grid grid-cols-[1fr_repeat(4,_80px)] items-center gap-0 border-t border-border dark:border-dark-border ${
-                  (si + fi) % 2 === 0 ? '' : 'bg-surface-container-lowest/30 dark:bg-zinc-900/20'
-                }`}
-              >
-                <div className="px-4 py-3">
-                  <span className="text-sm text-on-surface dark:text-white">{feat.label}</span>
-                  {feat.description && (
-                    <p className="text-xs text-on-surface-variant dark:text-zinc-500 mt-0.5">{feat.description}</p>
-                  )}
-                </div>
-                {COLUMNS.map(col => (
-                  <div key={col.key} className="flex items-center justify-center py-3">
-                    <PermIcon value={feat[col.key]} />
+            <div className="divide-y divide-border dark:divide-dark-border">
+              {section.features.map(f => (
+                <div
+                  key={f.label}
+                  className="grid grid-cols-2 md:grid-cols-4 items-center px-4 py-3 bg-white dark:bg-zinc-900/60 hover:bg-surface-container-lowest dark:hover:bg-zinc-800/40 transition-colors"
+                >
+                  <div className="col-span-2 md:col-span-1 pr-2 mb-2 md:mb-0">
+                    <p className="text-xs font-medium text-on-surface dark:text-white">{f.label}</p>
+                    {f.description && (
+                      <p className="text-[10px] text-zinc-400 mt-0.5">{f.description}</p>
+                    )}
                   </div>
-                ))}
-              </div>
-            ))}
+                  <div className="flex items-center justify-around col-span-2 md:col-span-3">
+                    <div className="flex flex-col items-center gap-0.5 w-16">
+                      <span className="text-[10px] text-zinc-400 md:hidden font-semibold">Owner</span>
+                      <PermIcon value={f.owner} />
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 w-16">
+                      <span className="text-[10px] text-zinc-400 md:hidden font-semibold">Admin</span>
+                      <PermIcon value={f.admin} />
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 w-16">
+                      <span className="text-[10px] text-zinc-400 md:hidden font-semibold">Manager</span>
+                      <PermIcon value={f.manager} />
+                    </div>
+                    <div className="flex flex-col items-center gap-0.5 w-16">
+                      <span className="text-[10px] text-zinc-400 md:hidden font-semibold">Staff</span>
+                      <PermIcon value={f.staff} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         ))}
-      </div>
-
-      {/* Note about Staff */}
-      <div className="text-xs text-on-surface-variant dark:text-zinc-400 bg-surface-container dark:bg-zinc-800 border border-border dark:border-dark-border rounded-xl p-3 leading-relaxed">
-        <strong className="text-on-surface dark:text-white">Staff (Limited) </strong>
-        means access depends on which locations, services, and dashboard pages have been assigned to that specific team member. You can configure these when inviting or editing a Staff member.
       </div>
     </div>
   );

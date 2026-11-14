@@ -43,6 +43,7 @@ interface CreateProviderDto {
   userId?: string;
   capacity?: number;
   status?: string;
+  deskToken?: string;
   weeklySchedule?: WeeklyScheduleSlot[];
   exceptionDates?: ExceptionDate[];
   serviceIds?: string[];
@@ -67,11 +68,13 @@ export class StaffService {
     );
 
     const { serviceIds, weeklySchedule, exceptionDates, ...rest } = dto;
+    const deskToken = rest.deskToken || randomBytes(24).toString('hex');
 
     const provider = await this.prisma.staff.create({
       data: {
         ...rest,
         tenantId,
+        deskToken,
         weeklySchedule: weeklySchedule ? (weeklySchedule as any) : undefined,
         exceptionDates: exceptionDates ? (exceptionDates as any) : undefined,
         ...(serviceIds && serviceIds.length > 0
@@ -89,7 +92,7 @@ export class StaffService {
   }
 
   async findAll(tenantId: string, locationId?: string) {
-    return this.prisma.staff.findMany({
+    const staffMembers = await this.prisma.staff.findMany({
       where: {
         tenantId,
         ...(locationId && { locationId }),
@@ -100,6 +103,76 @@ export class StaffService {
       },
       orderBy: { name: 'asc' },
     });
+
+    // Auto-heal any User with role STAFF who doesn't have a staff record yet
+    const staffUsers = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        role: 'STAFF',
+      },
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        phone: true,
+        allowedLocationIds: true,
+        allowedServiceIds: true,
+      },
+    });
+
+    const unlinkedUsers = staffUsers.filter(
+      (u) =>
+        !staffMembers.some(
+          (s) =>
+            s.userId === u.id ||
+            (s.email && u.email && s.email.toLowerCase() === u.email.toLowerCase()),
+        ),
+    );
+
+    if (unlinkedUsers.length > 0) {
+      for (const u of unlinkedUsers) {
+        const token = randomBytes(24).toString('hex');
+        const createdStaff = await this.prisma.staff.create({
+          data: {
+            tenantId,
+            userId: u.id,
+            email: u.email,
+            name: u.name || u.email.split('@')[0],
+            phone: u.phone,
+            title: 'Staff Specialist',
+            status: 'ACTIVE',
+            deskToken: token,
+            locationId: u.allowedLocationIds?.[0] || undefined,
+            ...(u.allowedServiceIds && u.allowedServiceIds.length > 0
+              ? {
+                  services: {
+                    connect: u.allowedServiceIds.map((id) => ({ id })),
+                  },
+                }
+              : {}),
+          },
+          include: {
+            services: { select: { id: true, name: true } },
+            location: { select: { id: true, name: true } },
+          },
+        });
+        staffMembers.push(createdStaff);
+      }
+    }
+
+    // Ensure all staff have a deskToken
+    for (const s of staffMembers) {
+      if (!s.deskToken) {
+        const token = randomBytes(24).toString('hex');
+        await this.prisma.staff.update({
+          where: { id: s.id },
+          data: { deskToken: token },
+        });
+        s.deskToken = token;
+      }
+    }
+
+    return staffMembers;
   }
 
   async findOne(id: string, tenantId: string) {

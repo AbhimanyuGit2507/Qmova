@@ -993,13 +993,13 @@ export default function StaffViewSettings() {
       {/* On-ground staff list */}
       <div>
         <p className="text-xs font-semibold text-on-surface-variant dark:text-zinc-400 uppercase tracking-wider mb-3 flex items-center gap-1.5">
-          <Users className="w-3.5 h-3.5" /> On-Ground Staff — click to assign this desk layout
+          <Users className="w-3.5 h-3.5" /> Staff Specialists — click to assign this desk layout
         </p>
         {onGroundStaff.length === 0 ? (
           <div className="text-center py-12 rounded-2xl border-2 border-dashed border-border dark:border-dark-border">
             <Users className="w-8 h-8 text-zinc-300 dark:text-zinc-600 mx-auto mb-3" />
-            <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">No on-ground staff found</p>
-            <p className="text-xs text-zinc-400 mt-1">Add staff members in Settings → Team → On-Ground Staff</p>
+            <p className="text-sm font-semibold text-zinc-500 dark:text-zinc-400">No staff specialists found</p>
+            <p className="text-xs text-zinc-400 mt-1">Add staff specialists in Settings → Team &amp; Staff → Team Members</p>
           </div>
         ) : (
           <div className="space-y-2">
