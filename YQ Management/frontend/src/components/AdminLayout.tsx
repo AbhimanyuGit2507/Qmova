@@ -468,16 +468,16 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                     setPreviewOpen(!previewOpen);
                     if (previewOpen) setBookingPreviewExpanded(false);
                   }}
-                  className="bg-transparent hover:bg-surface-container-low text-on-surface hover:text-primary px-3.5 h-[38px] rounded-lg font-body-sm font-medium transition-colors flex items-center gap-2 text-sm border border-border/80 shadow-xs cursor-pointer"
+                  className="bg-transparent hover:bg-surface-container-low dark:hover:bg-zinc-800 text-on-surface dark:text-zinc-100 hover:text-primary dark:hover:text-primary-fixed px-3.5 h-[38px] rounded-lg font-body-sm font-medium transition-colors flex items-center gap-2 text-sm border border-border/80 dark:border-zinc-700 shadow-xs cursor-pointer"
                   title="View customer-facing live portals"
                 >
-                  <span className="material-symbols-outlined text-[16px] text-primary">open_in_new</span>
+                  <span className="material-symbols-outlined text-[16px] text-primary dark:text-sky-400">open_in_new</span>
                   <span>View Live Portal ↗</span>
                 </button>
                 {previewOpen && (
-                  <div className="absolute top-full right-0 mt-2 w-56 bg-card border border-border rounded-xl shadow-lg shadow-black/5 z-[100] py-1 animate-in fade-in" onClick={e => e.stopPropagation()}>
-                    <div className="px-4 py-2 border-b border-border">
-                      <p className="font-label-caps text-[10px] uppercase tracking-widest text-outline font-bold">Customer Views</p>
+                  <div className="absolute top-full right-0 mt-2 w-56 bg-card dark:bg-zinc-900 border border-border dark:border-zinc-800 rounded-xl shadow-lg shadow-black/5 dark:shadow-black/40 z-[100] py-1 animate-in fade-in" onClick={e => e.stopPropagation()}>
+                    <div className="px-4 py-2 border-b border-border dark:border-zinc-800">
+                      <p className="font-label-caps text-[10px] uppercase tracking-widest text-outline dark:text-zinc-400 font-bold">Customer Views</p>
                     </div>
                     <button
                       onClick={() => {
@@ -485,9 +485,9 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                         const locParam = activeLocationId && activeLocationId !== 'all' ? `?locationId=${activeLocationId}` : '';
                         window.open(getTenantUrl(tenant?.subdomain || '', `/tv/${tenant?.id}${locParam}`), '_blank');
                       }}
-                      className="flex items-center gap-3 w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-surface-container-low transition-colors text-on-surface"
+                      className="flex items-center gap-3 w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-surface-container-low dark:hover:bg-zinc-800 transition-colors text-on-surface dark:text-zinc-200 hover:text-primary dark:hover:text-white"
                     >
-                      <span className="material-symbols-outlined text-[18px] text-primary">live_tv</span>
+                      <span className="material-symbols-outlined text-[18px] text-primary dark:text-sky-400">live_tv</span>
                       Global TV Display
                     </button>
                     <button
@@ -495,13 +495,13 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                         setPreviewOpen(false);
                         setTvModalOpen(true);
                       }}
-                      className="flex items-center gap-3 w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-surface-container-low transition-colors text-on-surface"
+                      className="flex items-center gap-3 w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-surface-container-low dark:hover:bg-zinc-800 transition-colors text-on-surface dark:text-zinc-200 hover:text-primary dark:hover:text-white"
                     >
-                      <span className="material-symbols-outlined text-[18px] text-primary">tv</span>
+                      <span className="material-symbols-outlined text-[18px] text-primary dark:text-sky-400">tv</span>
                       Specific Queue TV
                     </button>
                     <button
-                      className="flex items-center justify-between w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-surface-container-low transition-colors text-on-surface"
+                      className="flex items-center justify-between w-full text-left px-4 py-2.5 text-sm font-medium hover:bg-surface-container-low dark:hover:bg-zinc-800 transition-colors text-on-surface dark:text-zinc-200 hover:text-primary dark:hover:text-white"
                       onClick={() => setBookingPreviewExpanded(!bookingPreviewExpanded)}
                     >
                       <div className="flex items-center gap-3">
@@ -512,12 +512,12 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                     </button>
                     
                     {bookingPreviewExpanded && (
-                      <div className="bg-surface-container-lowest/50 py-1 animate-in slide-in-from-top-1">
+                      <div className="bg-surface-container-lowest/50 dark:bg-zinc-950/60 py-1 animate-in slide-in-from-top-1">
                         <a
                           href={tenant?.subdomain ? getTenantUrl(tenant.subdomain, '/booking') : '#'}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className="block px-4 py-2 pl-11 text-sm text-on-surface hover:bg-surface-container-low transition-colors"
+                          className="block px-4 py-2 pl-11 text-sm text-on-surface dark:text-zinc-300 hover:bg-surface-container-low dark:hover:bg-zinc-800 transition-colors hover:text-primary dark:hover:text-white"
                           onClick={() => setPreviewOpen(false)}
                         >
                           Global Landing Page
@@ -528,7 +528,7 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
                             href={tenant?.subdomain ? getTenantUrl(tenant.subdomain, `/booking/${slugify(loc.name)}`) : '#'}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="block px-4 py-2 pl-11 text-sm text-on-surface hover:bg-surface-container-low transition-colors truncate"
+                            className="block px-4 py-2 pl-11 text-sm text-on-surface dark:text-zinc-300 hover:bg-surface-container-low dark:hover:bg-zinc-800 transition-colors hover:text-primary dark:hover:text-white truncate"
                             onClick={() => setPreviewOpen(false)}
                           >
                             {loc.name}

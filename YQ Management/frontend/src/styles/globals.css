@@ -214,6 +214,9 @@ body {
   --sidebar-accent-foreground: oklch(0.985 0.002 247.839); /* Zinc 50 */
   --sidebar-border: oklch(0.278 0.033 256.848); /* Zinc 900 */
   --sidebar-ring: #1571FF; /* Sky 500 */
+  --color-on-surface: #f4f4f5;
+  --color-on-surface-variant: #a1a1aa;
+  --color-surface-container-low: #1e1e24;
 }
 
 @layer base {
