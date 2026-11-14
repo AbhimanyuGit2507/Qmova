@@ -14,6 +14,8 @@ import { ServiceFlowService } from '../service-flow/service-flow.service';
 import { BUSINESS_CATALOG } from '../service-flow/business-catalog';
 import { ChangeIndustryDto } from './dto/change-industry.dto';
 
+import { applyPrivacyMask } from '../common/privacy.util';
+
 @Injectable()
 export class TenantService {
   private readonly logger = new Logger(TenantService.name);
@@ -198,7 +200,15 @@ export class TenantService {
   }
 
   async getTenantRecentlyCalledTokens(tenantId: string) {
-    return this.prisma.visit.findMany({
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { strictPrivacyMode: true, customerExperience: true },
+    });
+    const privacyMode =
+      (tenant?.customerExperience as any)?.tvPrivacyMode ||
+      (tenant?.strictPrivacyMode ? 'TICKET_ONLY' : 'FULL_NAME');
+
+    const visits = await this.prisma.visit.findMany({
       where: {
         tenantId,
         currentState: { in: ['IN_SERVICE', 'COMPLETED', 'NO_SHOW'] },
@@ -212,9 +222,30 @@ export class TenantService {
       orderBy: { serviceStart: 'desc' },
       take: 10,
     });
+
+    if (privacyMode !== 'FULL_NAME') {
+      return visits.map((v) => ({
+        ...v,
+        customer: v.customer
+          ? {
+              ...v.customer,
+              name: applyPrivacyMask(v.customer.name, privacyMode),
+            }
+          : null,
+      }));
+    }
+    return visits;
   }
 
   async getTenantUpcomingTokens(tenantId: string) {
+    const tenant = await this.prisma.tenant.findUnique({
+      where: { id: tenantId },
+      select: { strictPrivacyMode: true, customerExperience: true },
+    });
+    const privacyMode =
+      (tenant?.customerExperience as any)?.tvPrivacyMode ||
+      (tenant?.strictPrivacyMode ? 'TICKET_ONLY' : 'FULL_NAME');
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -247,7 +278,7 @@ export class TenantService {
       take: 30,
     });
 
-    return visits.sort((a, b) => {
+    const sorted = visits.sort((a, b) => {
       const timeA = a.scheduledTime
         ? new Date(a.scheduledTime).getTime()
         : new Date(a.waitingStart || a.createdAt).getTime();
@@ -260,6 +291,19 @@ export class TenantService {
       }
       return timeA - timeB;
     });
+
+    if (privacyMode !== 'FULL_NAME') {
+      return sorted.map((v) => ({
+        ...v,
+        customer: v.customer
+          ? {
+              ...v.customer,
+              name: applyPrivacyMask(v.customer.name, privacyMode),
+            }
+          : null,
+      }));
+    }
+    return sorted;
   }
 
   async createTenant(data: {

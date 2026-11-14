@@ -228,7 +228,9 @@ export function usePlan(): UsePlanResult {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
     monthStart.setHours(0, 0, 0, 0);
 
-    const tokensToday = Array.isArray(visits)
+    const tokensToday = sub?.liveUsage?.tokensToday !== undefined
+      ? sub.liveUsage.tokensToday
+      : Array.isArray(visits)
       ? visits.filter((v: { createdAt?: string }) => {
           if (!v.createdAt) return false;
           const d = new Date(v.createdAt);
@@ -236,7 +238,9 @@ export function usePlan(): UsePlanResult {
         }).length
       : 0;
 
-    const tokensThisMonth = Array.isArray(visits)
+    const tokensThisMonth = sub?.liveUsage?.tokensThisMonth !== undefined
+      ? sub.liveUsage.tokensThisMonth
+      : Array.isArray(visits)
       ? visits.filter((v: { createdAt?: string }) => {
           if (!v.createdAt) return false;
           const d = new Date(v.createdAt);

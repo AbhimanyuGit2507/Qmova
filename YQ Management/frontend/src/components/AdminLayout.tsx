@@ -43,6 +43,7 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
   const [mobileOpen, setMobileOpen] = useState(false);
   const { isSidebarCollapsed, toggleSidebar } = useUI();
   const plan = usePlan();
+  const queryClient = useQueryClient();
 
   const [profileOpen, setProfileOpen] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
@@ -51,9 +52,35 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
   const [bookingPreviewExpanded, setBookingPreviewExpanded] = useState(false);
   const [tvModalOpen, setTvModalOpen] = useState(false);
   const [isServiceModalOpen, setIsServiceModalOpen] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const locationDropdownRef = useRef<HTMLDivElement>(null);
   const previewDropdownRef = useRef<HTMLDivElement>(null);
   const profileDropdownRef = useRef<HTMLDivElement>(null);
+
+  // Offline detection and reconnection sync
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const handleOffline = () => {
+      setIsOffline(true);
+      toast.error('Network disconnected. Live queue updates are paused.', { duration: 8000 });
+    };
+    const handleOnline = () => {
+      setIsOffline(false);
+      toast.success('Connection restored! Re-syncing live queue...', { duration: 4000 });
+      queryClient.invalidateQueries();
+    };
+
+    if (!navigator.onLine) {
+      setIsOffline(true);
+    }
+
+    window.addEventListener('offline', handleOffline);
+    window.addEventListener('online', handleOnline);
+    return () => {
+      window.removeEventListener('offline', handleOffline);
+      window.removeEventListener('online', handleOnline);
+    };
+  }, [queryClient]);
 
   // Listen for admin-toast custom events (dispatched from inline components without Sonner access)
   useEffect(() => {
@@ -380,6 +407,14 @@ export default function AdminLayout({ children, pageTitle, pageSubtitle, topNavL
           className="fixed inset-0 bg-black/40 backdrop-blur-sm z-[65] md:hidden" 
           onClick={() => setMobileOpen(false)} 
         />
+      )}
+
+      {/* Offline Mode Resilience Alert */}
+      {isOffline && (
+        <div className="fixed top-0 left-0 right-0 z-[100] bg-rose-600 text-white text-xs font-bold py-1.5 px-4 text-center flex items-center justify-center gap-2 shadow-md">
+          <span className="material-symbols-outlined text-sm">wifi_off</span>
+          <span>Offline Mode: Internet connection lost. Operational actions are held locally and will sync once reconnected.</span>
+        </div>
       )}
 
       {/* TopAppBar */}

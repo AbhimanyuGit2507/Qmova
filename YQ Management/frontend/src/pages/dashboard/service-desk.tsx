@@ -2268,6 +2268,52 @@ export default function ServiceDeskToday() {
                           <h3 className="font-semibold text-sm text-on-surface dark:text-white truncate">
                             {customerName}
                           </h3>
+                          {/* Triage / Acuity Badges */}
+                          {(() => {
+                            const p = v.priority ?? 0;
+                            const meta = (v.metadata as any) || {};
+                            const acuity = meta.acuityLevel;
+
+                            if (p >= 1000 || acuity === 1) {
+                              return (
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded bg-rose-600 text-white animate-pulse shadow-sm flex items-center gap-1 shrink-0">
+                                  🚨 ESI 1: RESUSCITATION
+                                </span>
+                              );
+                            }
+                            if (p >= 500 || acuity === 2) {
+                              return (
+                                <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-500/20 text-amber-500 border border-amber-500/40 animate-pulse flex items-center gap-1 shrink-0">
+                                  ⚠️ ESI 2: EMERGENT
+                                </span>
+                              );
+                            }
+                            if (p >= 100 || acuity === 3) {
+                              return (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-orange-500/15 text-orange-400 border border-orange-500/30 flex items-center gap-0.5 shrink-0">
+                                  ESI 3: URGENT
+                                </span>
+                              );
+                            }
+                            if (p >= 10 || acuity === 4) {
+                              return (
+                                <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-indigo-500/15 text-indigo-400 border border-indigo-500/30 flex items-center gap-0.5 shrink-0">
+                                  PRIORITY
+                                </span>
+                              );
+                            }
+                            return null;
+                          })()}
+
+                          {/* WhatsApp Delivery Failure Warning */}
+                          {(v.metadata as any)?.whatsappDeliveryFailed && (
+                            <span
+                              title={`WhatsApp delivery failed: ${(v.metadata as any)?.whatsappError || 'Unreachable phone or rate limited'}`}
+                              className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-500/15 text-rose-400 border border-rose-500/30 flex items-center gap-1 shrink-0 cursor-help"
+                            >
+                              ⚠️ WhatsApp Failed
+                            </span>
+                          )}
                           {(() => {
                             const isPaid = v.bookingPayments?.some(
                               (p: any) => p.status === "SUCCEEDED",

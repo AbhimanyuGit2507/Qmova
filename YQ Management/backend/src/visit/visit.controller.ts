@@ -14,11 +14,12 @@ import { VisitService } from './visit.service';
 import { CreateVisitDto } from './dto/create-visit.dto';
 import { UpdateVisitDto } from './dto/update-visit.dto';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
+import { RolesGuard } from '../auth/roles.guard';
 import { Roles } from '../auth/roles.decorator';
 import { Role } from '@prisma/client';
 import type { AuthenticatedRequest } from '../auth/types/auth.types';
 
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, RolesGuard)
 @Controller('visits')
 export class VisitController {
   constructor(private readonly visitService: VisitService) {}
@@ -247,6 +248,7 @@ export class VisitController {
       accompanyingGuests?: number;
       notes?: string;
       priority?: number;
+      metadata?: Record<string, any>;
     },
   ) {
     return this.visitService.staffWalkIn(
@@ -257,11 +259,13 @@ export class VisitController {
   }
 
   @Get(':id/clinical-note')
+  @Roles(Role.SUPER_ADMIN, Role.OWNER, Role.ADMIN, Role.STAFF)
   getClinicalNote(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.visitService.getClinicalNote(id, req.user.tenantId);
   }
 
   @Post(':id/clinical-note')
+  @Roles(Role.SUPER_ADMIN, Role.OWNER, Role.ADMIN, Role.STAFF)
   createClinicalNote(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -276,6 +280,7 @@ export class VisitController {
   }
 
   @Patch(':id/clinical-note')
+  @Roles(Role.SUPER_ADMIN, Role.OWNER, Role.ADMIN, Role.STAFF)
   updateClinicalNote(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -290,11 +295,13 @@ export class VisitController {
   }
 
   @Get(':id/prescription')
+  @Roles(Role.SUPER_ADMIN, Role.OWNER, Role.ADMIN, Role.STAFF)
   getPrescription(@Req() req: AuthenticatedRequest, @Param('id') id: string) {
     return this.visitService.getPrescription(id, req.user.tenantId);
   }
 
   @Post(':id/prescription')
+  @Roles(Role.SUPER_ADMIN, Role.OWNER, Role.ADMIN, Role.STAFF)
   createPrescription(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,
@@ -309,6 +316,7 @@ export class VisitController {
   }
 
   @Patch(':id/prescription')
+  @Roles(Role.SUPER_ADMIN, Role.OWNER, Role.ADMIN, Role.STAFF)
   updatePrescription(
     @Req() req: AuthenticatedRequest,
     @Param('id') id: string,

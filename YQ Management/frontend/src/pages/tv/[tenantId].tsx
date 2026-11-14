@@ -62,6 +62,7 @@ export default function TVDisplay() {
     voice: 'female',
     template: 'Attention customers, this announcement is for service {{service}}, calling customer {{name}}, ticket {{token}}, at {{resource}}, please proceed.',
   });
+  const [tvPrivacyMode, setTvPrivacyMode] = useState<'FULL_NAME' | 'MASKED_NAME' | 'TICKET_ONLY'>('FULL_NAME');
 
   const [branding, setBranding] = useState<AnyFixMe>(null);
   const [tenantName, setTenantName] = useState<string>('Qmova');
@@ -139,11 +140,19 @@ export default function TVDisplay() {
       const serviceName = token.serviceName || token.queueName || resource;
       const customerName = token.customerName || 'next customer';
 
-      const text = ttsConfig.template
-        .replace(/\{\{token\}\}/g, tokenId)
-        .replace(/\{\{resource\}\}/g, resource)
-        .replace(/\{\{service\}\}/g, serviceName)
-        .replace(/\{\{name\}\}/g, customerName);
+      let text = ttsConfig.template;
+      if (tvPrivacyMode === 'TICKET_ONLY') {
+        text = `Attention customers, calling ticket ${tokenId} to ${resource}, please proceed.`;
+      } else {
+        const displayName = tvPrivacyMode === 'MASKED_NAME' && customerName !== 'next customer' && customerName !== 'Customer'
+          ? customerName.split(/\s+/).map((p: string) => p.length <= 2 ? `${p[0]}*` : `${p[0]}***${p[p.length - 1]}`).join(' ')
+          : customerName;
+        text = text
+          .replace(/\{\{token\}\}/g, tokenId)
+          .replace(/\{\{resource\}\}/g, resource)
+          .replace(/\{\{service\}\}/g, serviceName)
+          .replace(/\{\{name\}\}/g, displayName);
+      }
 
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = ttsConfig.language;
@@ -333,6 +342,11 @@ export default function TVDisplay() {
             voice: tts.voice || 'female',
             template: tts.template || 'Attention customers, this announcement is for service {{service}}, calling customer {{name}}, ticket {{token}}, at {{resource}}, please proceed.',
           });
+        }
+        if (data?.tvPrivacyMode) {
+          setTvPrivacyMode(data.tvPrivacyMode);
+        } else if (data?.strictPrivacyMode) {
+          setTvPrivacyMode('TICKET_ONLY');
         }
         if (data?.branding) setBranding(data.branding);
         if (data?.name) setTenantName(data.name);
@@ -708,11 +722,17 @@ export default function TVDisplay() {
                       {activeSpotlightToken.displayId}
                     </div>
 
-                    {/* Customer Name (LARGE, CLEAR, PROMINENT) */}
+                    {/* Customer Name or Privacy Token Badge */}
                     <div className="mt-2 mb-4 max-w-full px-4">
-                      <p className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-wide truncate drop-shadow-sm">
-                        {activeSpotlightToken.customerName}
-                      </p>
+                      {tvPrivacyMode === 'TICKET_ONLY' ? (
+                        <p className="text-2xl sm:text-3xl font-extrabold text-amber-400/90 tracking-wider uppercase drop-shadow-sm">
+                          {activeSpotlightToken.queueName || activeSpotlightToken.serviceName || 'Now Serving'}
+                        </p>
+                      ) : (
+                        <p className="text-3xl sm:text-4xl lg:text-5xl font-extrabold text-white tracking-wide truncate drop-shadow-sm">
+                          {activeSpotlightToken.customerName}
+                        </p>
+                      )}
                     </div>
 
                     {/* Destination Desk / Counter Card */}
@@ -773,7 +793,9 @@ export default function TVDisplay() {
                       }`}
                     >
                       <span className="font-mono font-bold text-amber-400">{t.displayId}</span>
-                      <span className="truncate max-w-[90px]">{t.customerName}</span>
+                      {tvPrivacyMode !== 'TICKET_ONLY' && (
+                        <span className="truncate max-w-[90px]">{t.customerName}</span>
+                      )}
                       <span className="text-zinc-500 font-medium">→ {t.resourceName}</span>
                     </div>
                   ))}
@@ -910,9 +932,9 @@ export default function TVDisplay() {
                               {isScheduled ? `Slot: ${timeFormatted || 'Booked'}` : t.currentState === 'CHECKED_IN' ? 'Checked In' : 'Waiting'}
                             </span>
                           </div>
-                          {/* Big Customer Name */}
+                          {/* Big Customer Name or Service/Token */}
                           <p className="text-base font-bold text-white truncate mt-0.5">
-                            {t.customerName}
+                            {tvPrivacyMode === 'TICKET_ONLY' ? (t.serviceName || t.queueName || 'Waiting Visitor') : t.customerName}
                           </p>
                         </div>
                       </div>
@@ -967,7 +989,9 @@ export default function TVDisplay() {
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
                       <span className="font-mono font-bold text-white text-sm">{t.displayId}</span>
-                      <span className="text-zinc-300 font-medium truncate max-w-[100px]">{t.customerName || 'Customer'}</span>
+                      {tvPrivacyMode !== 'TICKET_ONLY' && (
+                        <span className="text-zinc-300 font-medium truncate max-w-[100px]">{t.customerName || 'Customer'}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-2 shrink-0">
                       <span className="text-[10px] text-zinc-400 font-medium">→ {t.resourceName}</span>

@@ -269,6 +269,38 @@ export class VisitNotificationService {
       providerId: result.providerId,
       errorMessage: result.error,
     });
+
+    if (!result.success) {
+      try {
+        const existingMeta = (visit.metadata as Record<string, any>) || {};
+        await this.prisma.visit.update({
+          where: { id: visit.id },
+          data: {
+            metadata: {
+              ...existingMeta,
+              whatsappDeliveryFailed: true,
+              whatsappError: result.error || 'Failed to send message',
+              whatsappFailedAt: new Date().toISOString(),
+            },
+          },
+        });
+      } catch (err: any) {
+        this.logger.warn(`Failed to update visit metadata on message failure: ${err?.message}`);
+      }
+    } else {
+      const existingMeta = (visit.metadata as Record<string, any>) || {};
+      if (existingMeta.whatsappDeliveryFailed) {
+        try {
+          const { whatsappDeliveryFailed, whatsappError, whatsappFailedAt, ...cleanMeta } = existingMeta;
+          await this.prisma.visit.update({
+            where: { id: visit.id },
+            data: { metadata: cleanMeta },
+          });
+        } catch {
+          // non-critical
+        }
+      }
+    }
   }
 
   /** Builds the Qmova watermark based on the tenant's subscription plan. */

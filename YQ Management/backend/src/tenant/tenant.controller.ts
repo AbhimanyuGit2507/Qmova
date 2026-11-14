@@ -144,12 +144,18 @@ export class TenantController {
   async getPublicTenantById(@Param('tenantId') tenantId: string) {
     const tenant = await this.tenantService.getTenantById(tenantId);
     // Only expose safe, public fields for the TV display
+    const tvPrivacyMode =
+      (tenant?.customerExperience as any)?.tvPrivacyMode ||
+      (tenant?.strictPrivacyMode ? 'TICKET_ONLY' : 'FULL_NAME');
+
     return {
       id: tenant?.id,
       name: tenant?.name,
       branding: tenant?.branding,
       subdomain: tenant?.subdomain,
       customerExperience: tenant?.customerExperience,
+      strictPrivacyMode: tenant?.strictPrivacyMode,
+      tvPrivacyMode,
       planFeatures: (tenant as any)?.planFeatures,
       isPaused: (tenant as any)?.isPaused,
     };

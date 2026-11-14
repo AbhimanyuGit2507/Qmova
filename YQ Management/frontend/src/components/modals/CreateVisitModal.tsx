@@ -270,6 +270,8 @@ export function CreateVisitModal({
     if (!name.trim() || !locationId || !serviceId) return;
 
     if (bookingMode === 'walkin') {
+      const pNum = parseInt(priority, 10) || 0;
+      const acuity = pNum >= 1000 ? 1 : pNum >= 500 ? 2 : pNum >= 100 ? 3 : pNum >= 10 ? 4 : 5;
       walkInMutation.mutate({
         customerName: name.trim(),
         phone: phone || undefined,
@@ -281,7 +283,11 @@ export function CreateVisitModal({
         queueId: queueId || undefined,
         accompanyingGuests: parseInt(accompanyingGuests, 10) || 0,
         notes: notes || undefined,
-        priority: parseInt(priority, 10) || 0,
+        priority: pNum,
+        metadata: {
+          acuityLevel: acuity,
+          triageLabel: pNum >= 1000 ? 'ESI 1: RESUSCITATION' : pNum >= 500 ? 'ESI 2: EMERGENT' : pNum >= 100 ? 'ESI 3: URGENT' : pNum >= 10 ? 'PRIORITY' : 'ROUTINE',
+        },
       });
     } else {
       if (!scheduledDate || !scheduledTime) {
@@ -833,17 +839,18 @@ export function CreateVisitModal({
 
                   {bookingMode === 'walkin' && (
                     <div>
-                      <label className={labelCls}>Priority Level</label>
+                      <label className={labelCls}>Priority & Triage Level</label>
                       <div className="relative">
                         <select
                           value={priority}
                           onChange={(e) => setPriority(e.target.value)}
                           className={`${inputCls} appearance-none pr-9 cursor-pointer`}
                         >
-                          <option value="0">Normal</option>
-                          <option value="1">Elevated</option>
-                          <option value="2">High</option>
-                          <option value="3">Urgent / Priority</option>
+                          <option value="0">Standard / Routine (Normal)</option>
+                          <option value="10">Elevated / Priority (ESI 4)</option>
+                          <option value="100">Urgent Care (ESI 3)</option>
+                          <option value="500">Emergent / Very Urgent (ESI 2)</option>
+                          <option value="1000">Resuscitation / Immediate (ESI 1)</option>
                         </select>
                         <ChevronDown className="w-4 h-4 text-zinc-400 absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none" />
                       </div>

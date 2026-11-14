@@ -14,6 +14,8 @@ import { WebhooksService } from '../webhooks/webhooks.service';
 import { VisitService } from '../visit/visit.service';
 import { SubscriptionService } from '../subscription/subscription.service';
 
+import { applyPrivacyMask } from '../common/privacy.util';
+
 @Injectable()
 export class QueueService {
   constructor(
@@ -306,6 +308,18 @@ export class QueueService {
   }
 
   async getQueueTokens(queueId: string) {
+    const queue = await this.prisma.queue.findUnique({
+      where: { id: queueId },
+      include: {
+        tenant: {
+          select: { strictPrivacyMode: true, customerExperience: true },
+        },
+      },
+    });
+    const privacyMode =
+      (queue?.tenant?.customerExperience as any)?.tvPrivacyMode ||
+      (queue?.tenant?.strictPrivacyMode ? 'TICKET_ONLY' : 'FULL_NAME');
+
     const todayStart = new Date();
     todayStart.setHours(0, 0, 0, 0);
     const todayEnd = new Date();
@@ -338,7 +352,7 @@ export class QueueService {
       take: 30,
     });
 
-    return visits.sort((a, b) => {
+    const sorted = visits.sort((a, b) => {
       const timeA = a.scheduledTime
         ? new Date(a.scheduledTime).getTime()
         : new Date(a.waitingStart || a.createdAt).getTime();
@@ -351,6 +365,19 @@ export class QueueService {
       }
       return timeA - timeB;
     });
+
+    if (privacyMode !== 'FULL_NAME') {
+      return sorted.map((v) => ({
+        ...v,
+        customer: v.customer
+          ? {
+              ...v.customer,
+              name: applyPrivacyMask(v.customer.name, privacyMode),
+            }
+          : null,
+      }));
+    }
+    return sorted;
   }
 
   async getQueueTokensForTenant(queueId: string, tenantId: string) {
@@ -359,7 +386,19 @@ export class QueueService {
   }
 
   async getRecentlyCalledTokens(queueId: string) {
-    return this.prisma.visit.findMany({
+    const queue = await this.prisma.queue.findUnique({
+      where: { id: queueId },
+      include: {
+        tenant: {
+          select: { strictPrivacyMode: true, customerExperience: true },
+        },
+      },
+    });
+    const privacyMode =
+      (queue?.tenant?.customerExperience as any)?.tvPrivacyMode ||
+      (queue?.tenant?.strictPrivacyMode ? 'TICKET_ONLY' : 'FULL_NAME');
+
+    const visits = await this.prisma.visit.findMany({
       where: {
         queueId,
         currentState: { in: ['IN_SERVICE', 'COMPLETED', 'NO_SHOW'] },
@@ -373,6 +412,19 @@ export class QueueService {
       orderBy: { serviceStart: 'desc' },
       take: 10,
     });
+
+    if (privacyMode !== 'FULL_NAME') {
+      return visits.map((v) => ({
+        ...v,
+        customer: v.customer
+          ? {
+              ...v.customer,
+              name: applyPrivacyMask(v.customer.name, privacyMode),
+            }
+          : null,
+      }));
+    }
+    return visits;
   }
 
   async getHistory(tenantId: string) {

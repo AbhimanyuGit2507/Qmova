@@ -48,10 +48,30 @@ export class SubscriptionService {
     const isComplimentary = Boolean(subMeta.isFree || sub.plan?.price === 0);
     const effectiveRenewalDate = sub.nextBillingDate || sub.renewalDate || sub.currentPeriodEnd || null;
 
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+
+    const monthStart = new Date();
+    monthStart.setDate(1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const [tokensToday, tokensThisMonth] = await Promise.all([
+      this.prisma.visit.count({
+        where: { tenantId, createdAt: { gte: todayStart } },
+      }),
+      this.prisma.visit.count({
+        where: { tenantId, createdAt: { gte: monthStart } },
+      }),
+    ]);
+
     return {
       ...sub,
       effectiveRenewalDate,
       isComplimentary,
+      liveUsage: {
+        tokensToday,
+        tokensThisMonth,
+      },
     } as any;
   }
 

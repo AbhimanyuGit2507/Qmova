@@ -2103,13 +2103,27 @@ export class VisitService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      const updated = await tx.visit.update({
-        where: { id },
+      const { count } = await tx.visit.updateMany({
+        where: {
+          id,
+          tenantId,
+          currentState: { notIn: ['IN_SERVICE', 'COMPLETED', 'CANCELLED'] },
+        },
         data: {
           currentState: 'IN_SERVICE',
           serviceStart: new Date(),
           operatorId: operatorId || undefined,
         },
+      });
+
+      if (count === 0) {
+        throw new ConflictException(
+          'Visit is already being served or has completed/cancelled.',
+        );
+      }
+
+      const updated = await tx.visit.findUniqueOrThrow({
+        where: { id },
       });
       // Contextual Flow Support: activate the first pending step
       await this.visitStepService.activateFirstPendingStep(

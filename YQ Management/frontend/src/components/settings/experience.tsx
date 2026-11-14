@@ -3,7 +3,7 @@ import { useRouter } from 'next/router';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchApi } from '../../lib/api';
 import { toast } from 'sonner';
-import { Save, Plus, GripVertical, Trash2, MessagesSquare, FormInput, PhoneCall, LayoutTemplate, Loader2, Upload } from 'lucide-react';
+import { Save, Plus, GripVertical, Trash2, MessagesSquare, FormInput, PhoneCall, LayoutTemplate, Loader2, Upload, ShieldCheck } from 'lucide-react';
 import { FeatureNudge } from '../FeatureNudge';
 import { usePlan } from '../../hooks/usePlan';
 import { PlanSelectModal } from '../billing/PlanSelectModal';
@@ -62,6 +62,7 @@ export default function CustomerExperienceSettings() {
     portal: { welcomeTitle: '', welcomeMessage: '', supportContact: '' },
     globalIntakeForm: [],
     feedback: { enabled: false, questions: [] },
+    tvPrivacyMode: 'FULL_NAME',
   });
 
   const [brandingConfig, setBrandingConfig] = useState<AnyFixMe>({
@@ -77,7 +78,10 @@ export default function CustomerExperienceSettings() {
           portal: tenant.customerExperience.portal || { welcomeTitle: '', welcomeMessage: '', supportContact: '' },
           globalIntakeForm: tenant.customerExperience.globalIntakeForm || [],
           feedback: tenant.customerExperience.feedback || { enabled: false, questions: [] },
+          tvPrivacyMode: tenant.customerExperience.tvPrivacyMode || (tenant.strictPrivacyMode ? 'TICKET_ONLY' : 'FULL_NAME'),
         });
+      } else if (tenant.strictPrivacyMode) {
+        setConfig((prev: AnyFixMe) => ({ ...prev, tvPrivacyMode: 'TICKET_ONLY' }));
       }
       const canBrand = Boolean(
         tenant.planFeatures?.customBranding !== false &&
@@ -92,9 +96,13 @@ export default function CustomerExperienceSettings() {
   }, [tenant, plan]);
 
   const saveSettingsMutation = useMutation({
-    mutationFn: (data: { newConfig: AnyFixMe, branding: AnyFixMe }) => fetchApi(`/tenant/${tenant.id}`, {
+    mutationFn: (data: { newConfig: AnyFixMe, branding: AnyFixMe, strictPrivacyMode?: boolean }) => fetchApi(`/tenant/${tenant.id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ customerExperience: data.newConfig, branding: data.branding }),
+      body: JSON.stringify({
+        customerExperience: data.newConfig,
+        branding: data.branding,
+        strictPrivacyMode: data.strictPrivacyMode,
+      }),
     }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant', 'me'] });
@@ -123,14 +131,20 @@ export default function CustomerExperienceSettings() {
   });
 
   const handleSave = () => {
+    const tvMode = config.tvPrivacyMode || 'FULL_NAME';
     const newConfig = {
       ...(typeof tenant?.customerExperience === 'object' ? tenant.customerExperience : {}),
-      ...config
+      ...config,
+      tvPrivacyMode: tvMode,
     };
     const finalBranding = isCustomBrandingAllowed
       ? brandingConfig
       : { ...brandingConfig, enabled: false };
-    saveSettingsMutation.mutate({ newConfig, branding: finalBranding });
+    saveSettingsMutation.mutate({
+      newConfig,
+      branding: finalBranding,
+      strictPrivacyMode: tvMode === 'TICKET_ONLY',
+    });
   };
 
   const handleAddField = (path: 'globalIntakeForm' | 'feedback.questions') => {
@@ -499,6 +513,79 @@ export default function CustomerExperienceSettings() {
                     className="w-full h-[120px] bg-white dark:bg-zinc-900 border border-border dark:border-dark-border rounded-lg p-4 font-body-sm text-body-sm text-on-surface dark:text-white outline-none focus:border-primary transition-colors resize-none"
                   />
                 </div>
+              </div>
+            </div>
+
+            {/* TV & Waiting Room Privacy Mode (HIPAA / POPIA) */}
+            <div className="pt-6 border-t border-border dark:border-dark-border">
+              <div className="flex items-center gap-2 mb-2">
+                <ShieldCheck className="w-5 h-5 text-primary" />
+                <h3 className="font-body-lg text-body-lg font-semibold text-on-surface dark:text-white">
+                  Waiting Room & TV Privacy Mode
+                </h3>
+              </div>
+              <p className="font-body-sm text-body-sm text-on-surface-variant dark:text-outline mb-4">
+                Control how customer identity is presented on public TV displays and spoken announcements. Essential for hospitals, clinics, and confidential services.
+              </p>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                {[
+                  {
+                    id: 'FULL_NAME',
+                    title: 'Full Name',
+                    desc: 'Shows customer name & ticket number. Best for retail, salons, restaurants.',
+                    badge: 'Standard',
+                  },
+                  {
+                    id: 'MASKED_NAME',
+                    title: 'Masked Name',
+                    desc: 'Shows partial masked name (e.g. J*** D***). Balances recognition with privacy.',
+                    badge: 'Privacy+',
+                  },
+                  {
+                    id: 'TICKET_ONLY',
+                    title: 'Ticket Only (HIPAA)',
+                    desc: 'Ticket number and destination only. Zero patient names displayed or voiced.',
+                    badge: 'Healthcare Compliant',
+                  },
+                ].map((opt) => (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    onClick={() => setConfig({ ...config, tvPrivacyMode: opt.id })}
+                    className={`p-4 rounded-xl text-left border transition-all flex flex-col justify-between ${
+                      (config.tvPrivacyMode || 'FULL_NAME') === opt.id
+                        ? 'bg-primary/5 dark:bg-primary/10 border-primary shadow-sm ring-1 ring-primary'
+                        : 'bg-surface-container-low dark:bg-zinc-900 border-border dark:border-dark-border hover:border-outline'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between gap-2 mb-1.5">
+                        <span className="font-bold text-sm text-on-surface dark:text-white">{opt.title}</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                          opt.id === 'TICKET_ONLY'
+                            ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20'
+                            : 'bg-zinc-500/10 text-zinc-400'
+                        }`}>
+                          {opt.badge}
+                        </span>
+                      </div>
+                      <p className="text-xs text-on-surface-variant dark:text-outline leading-relaxed">{opt.desc}</p>
+                    </div>
+                    <div className="mt-3 flex items-center gap-2">
+                      <span className={`w-3.5 h-3.5 rounded-full border flex items-center justify-center ${
+                        (config.tvPrivacyMode || 'FULL_NAME') === opt.id ? 'border-primary' : 'border-zinc-500'
+                      }`}>
+                        {(config.tvPrivacyMode || 'FULL_NAME') === opt.id && (
+                          <span className="w-2 h-2 rounded-full bg-primary" />
+                        )}
+                      </span>
+                      <span className="text-[11px] font-medium text-zinc-400">
+                        {(config.tvPrivacyMode || 'FULL_NAME') === opt.id ? 'Active' : 'Select'}
+                      </span>
+                    </div>
+                  </button>
+                ))}
               </div>
             </div>
           </div>

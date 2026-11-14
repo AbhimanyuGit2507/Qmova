@@ -485,15 +485,23 @@ export default function StaffViewSettings() {
         layout: JSON.parse(JSON.stringify(p.layout)),
       }));
 
-      const staffList = (await fetchApi('/staff').catch(() => [])) as OnGroundStaff[];
+      const [staffList, users] = await Promise.all([
+        fetchApi('/staff').catch(() => []) as Promise<OnGroundStaff[]>,
+        fetchApi('/users').catch(() => []) as Promise<any[]>,
+      ]);
       const assignments: Record<string, string> = {};
       const primaryTplId = seededTemplates[0]?.id;
 
-      if (primaryTplId && staffList.length > 0) {
-        staffList.forEach(s => {
+      if (primaryTplId) {
+        (staffList || []).forEach(s => {
           assignments[s.id] = primaryTplId;
           if (s.userId) assignments[s.userId] = primaryTplId;
         });
+        (users || [])
+          .filter((u: any) => u.role === 'STAFF')
+          .forEach((u: any) => {
+            assignments[u.id] = primaryTplId;
+          });
       }
 
       const payload: StaffViewData = {
@@ -601,11 +609,39 @@ export default function StaffViewSettings() {
     setIsDirty(true);
   };
 
-  // ── Assignment — now uses on-ground staff list, not Qmova users ──
+  // ── Assignment — unifies on-ground staff table and workspace STAFF role members ──
   const { data: onGroundStaff = [] } = useQuery<OnGroundStaff[]>({
-    queryKey: ['staffList'],
-    queryFn: () => fetchApi('/staff') as Promise<OnGroundStaff[]>,
-    enabled: view === 'assign',
+    queryKey: ['staffListUnified'],
+    queryFn: async () => {
+      const [legacyStaff, users] = await Promise.all([
+        fetchApi('/staff').catch(() => []) as Promise<any[]>,
+        fetchApi('/users').catch(() => []) as Promise<any[]>,
+      ]);
+
+      const staffUsers: OnGroundStaff[] = (users || [])
+        .filter((u: any) => u.role === 'STAFF')
+        .map((u: any) => ({
+          id: u.id,
+          name: u.name || u.email?.split('@')[0] || 'Staff Specialist',
+          title: u.title || 'Staff Specialist',
+          status: (u.status as 'ACTIVE' | 'INACTIVE') || 'ACTIVE',
+          color: u.color || '#10b981',
+          deskToken: u.deskToken,
+          services: u.services || [],
+          location: u.location,
+          userId: u.id,
+        }));
+
+      const userIds = new Set(staffUsers.map((s) => s.id));
+      const combined = [...staffUsers];
+      for (const ls of legacyStaff || []) {
+        if (!userIds.has(ls.id)) {
+          combined.push(ls);
+        }
+      }
+      return combined;
+    },
+    enabled: view === 'assign' || view === 'templates',
   });
 
   const openAssign = (t: DeskTemplate) => { setAssignTemplate(t); setView('assign'); };
