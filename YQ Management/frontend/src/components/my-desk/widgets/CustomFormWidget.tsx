@@ -13,14 +13,14 @@ export const CustomFormWidget = ({ widgetId, formId }: { widgetId: string, formI
     setSaving(true);
     try {
       await fetchApi(`/visits/${activeVisit.id}/notes`, {
-        method: 'POST',
-        body: JSON.stringify({ note: notes, formId })
+        method: 'PATCH',
+        body: JSON.stringify({ notes }),
       });
       toast.success('Notes saved successfully');
       setNotes('');
       refetchVisits();
-    } catch (err) {
-      toast.error('Failed to save notes');
+    } catch (err: any) {
+      toast.error(err?.message || 'Failed to save notes');
     } finally {
       setSaving(false);
     }

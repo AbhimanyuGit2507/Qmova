@@ -1,15 +1,28 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { fetchApi } from '../../../lib/api';
+import { useMyDesk } from '../MyDeskContext';
 import { Calendar, Clock, RefreshCw, User, CheckCircle2 } from 'lucide-react';
 import { toast } from 'sonner';
 
 export const ScheduleWidget = ({ widgetId }: { widgetId: string }) => {
+  const { staffId, locationId } = useMyDesk();
   const [appointments, setAppointments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchSchedule = useCallback(async () => {
     try {
-      const data = await fetchApi('/appointments');
+      let url = '/appointments';
+      const params: string[] = [];
+      if (locationId && locationId !== 'all') {
+        params.push(`locationId=${encodeURIComponent(locationId)}`);
+      }
+      if (staffId) {
+        params.push(`staffId=${encodeURIComponent(staffId)}`);
+      }
+      if (params.length > 0) {
+        url += `?${params.join('&')}`;
+      }
+      const data = await fetchApi(url);
       const list: any[] = Array.isArray(data) ? data : (data?.data || []);
       
       const todayDateStr = new Date().toDateString();
@@ -32,7 +45,7 @@ export const ScheduleWidget = ({ widgetId }: { widgetId: string }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [staffId, locationId]);
 
   useEffect(() => {
     fetchSchedule();

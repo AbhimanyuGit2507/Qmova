@@ -70,8 +70,9 @@ export class AppointmentController {
     @Req() req: AuthenticatedRequest,
     @Query('status') status?: string,
     @Query('locationId') locationId?: string,
+    @Query('staffId') staffId?: string,
   ) {
-    return this.appointmentService.findAll(req.user, status, locationId);
+    return this.appointmentService.findAll(req.user, status, locationId, staffId);
   }
 
   @Get(':id')

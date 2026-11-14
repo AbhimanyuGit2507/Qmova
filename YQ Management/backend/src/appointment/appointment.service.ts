@@ -151,14 +151,31 @@ export class AppointmentService {
     return appointment;
   }
 
-  async findAll(userTokenPayload: any, status?: string, locationId?: string) {
+  async findAll(userTokenPayload: any, status?: string, locationId?: string, staffId?: string) {
     const where: any = { tenantId: userTokenPayload.tenantId };
 
     if (locationId) {
       where.locationId = locationId;
     }
 
-    if (userTokenPayload.role === 'MANAGER') {
+    if (userTokenPayload.role === 'STAFF' || userTokenPayload.isDeskToken) {
+      if (
+        userTokenPayload.allowedLocationIds &&
+        userTokenPayload.allowedLocationIds.length > 0
+      ) {
+        where.locationId = { in: userTokenPayload.allowedLocationIds };
+      }
+      if (
+        userTokenPayload.allowedServiceIds &&
+        userTokenPayload.allowedServiceIds.length > 0
+      ) {
+        where.serviceId = { in: userTokenPayload.allowedServiceIds };
+      }
+      const targetStaffId = staffId || userTokenPayload.staffId;
+      if (targetStaffId) {
+        where.staffId = targetStaffId;
+      }
+    } else if (userTokenPayload.role === 'MANAGER') {
       const user = await this.prisma.user.findUnique({
         where: { id: userTokenPayload.userId },
       });
@@ -173,6 +190,11 @@ export class AppointmentService {
       if (user && user.allowedServiceIds && user.allowedServiceIds.length > 0) {
         where.serviceId = { in: user.allowedServiceIds };
       }
+      if (staffId) {
+        where.staffId = staffId;
+      }
+    } else if (staffId) {
+      where.staffId = staffId;
     }
 
     if (status) {

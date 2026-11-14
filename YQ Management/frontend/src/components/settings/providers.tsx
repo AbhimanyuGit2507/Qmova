@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { fetchApi } from '../../lib/api';
 import {
   Plus, Trash2, Loader2, MapPin, Briefcase, Edit2, ToggleLeft, ToggleRight,
+  LayoutDashboard, Monitor, Copy, ExternalLink, Zap,
 } from 'lucide-react';
 import { useAuth } from '../AuthContext';
 import { useRouter } from 'next/router';
@@ -74,6 +75,53 @@ export default function ProvidersSettings() {
       fetchApi(`/staff/${id}`, { method: 'PATCH', body: JSON.stringify({ status }) }),
     onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['staffList'] }); toast.success('Provider updated'); },
     onError: (e: Error) => toast.error(e.message || 'Failed to update'),
+  });
+
+  const { data: tenant } = useQuery({
+    queryKey: ['tenant', 'me'],
+    queryFn: () => fetchApi('/tenant/me').catch(() => null),
+  });
+
+  const svl = tenant?.staffViewLayout;
+  const templates: any[] = svl?.version === 2 ? svl.templates || [] : [];
+  const assignments: Record<string, string> = svl?.version === 2 ? svl.assignments || {} : {};
+
+  const assignTemplateMutation = useMutation({
+    mutationFn: async ({ staffId, templateId }: { staffId: string; templateId: string }) => {
+      const updatedAssignments = { ...assignments };
+      if (!templateId) {
+        delete updatedAssignments[staffId];
+      } else {
+        updatedAssignments[staffId] = templateId;
+      }
+      const updatedSvl = {
+        version: 2,
+        templates,
+        assignments: updatedAssignments,
+      };
+      await fetchApi(`/tenant/${tenant.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ staffViewLayout: updatedSvl }),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant', 'me'] });
+      toast.success('Station layout updated');
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to update station layout'),
+  });
+
+  const generateDeskTokenMutation = useMutation({
+    mutationFn: (id: string) => fetchApi(`/staff/${id}/desk-token`, { method: 'POST' }),
+    onSuccess: (res: any) => {
+      queryClient.invalidateQueries({ queryKey: ['staffList'] });
+      if (res?.deskToken) {
+        const url = `${window.location.origin}/staff-desk/${res.deskToken}`;
+        navigator.clipboard.writeText(url);
+        toast.success('Desk link generated and copied to clipboard!');
+      }
+    },
+    onError: (e: any) => toast.error(e?.message || 'Failed to generate desk link'),
   });
 
           
@@ -148,6 +196,66 @@ export default function ProvidersSettings() {
                           <MapPin className="w-3 h-3" />
                           {provider.location.name}
                         </div>
+                      )}
+                    </div>
+                    {/* Station Layout & Kiosk Link controls */}
+                    <div className="flex items-center gap-2 mt-2 flex-wrap">
+                      {templates.length > 0 && (
+                        <div className="flex items-center gap-1.5 bg-zinc-50 dark:bg-zinc-800/80 px-2.5 py-1 rounded-lg border border-border dark:border-dark-border text-xs">
+                          <LayoutDashboard className="w-3 h-3 text-primary shrink-0" />
+                          <span className="text-zinc-400 text-[11px]">Station:</span>
+                          <select
+                            value={assignments[provider.id] || ''}
+                            onChange={(e) => assignTemplateMutation.mutate({ staffId: provider.id, templateId: e.target.value })}
+                            disabled={!canManageProviders || assignTemplateMutation.isPending}
+                            className="bg-transparent font-medium text-on-surface dark:text-white outline-none cursor-pointer text-xs"
+                          >
+                            <option value="" className="dark:bg-zinc-900">Default Layout</option>
+                            {templates.map((tpl: any) => (
+                              <option key={tpl.id} value={tpl.id} className="dark:bg-zinc-900">{tpl.name}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+
+                      {provider.deskToken ? (
+                        <div className="flex items-center gap-1.5 bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800/50 rounded-lg px-2 py-1">
+                          <Monitor className="w-3 h-3 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300">Desk Kiosk</span>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const url = `${window.location.origin}/staff-desk/${provider.deskToken}`;
+                              navigator.clipboard.writeText(url);
+                              toast.success(`Desk link for ${provider.name} copied!`);
+                            }}
+                            title="Copy Kiosk URL"
+                            className="p-0.5 text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                          >
+                            <Copy className="w-3.5 h-3.5" />
+                          </button>
+                          <a
+                            href={`/staff-desk/${provider.deskToken}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title="Open Station Desk"
+                            className="p-0.5 text-indigo-500 hover:text-indigo-700 dark:hover:text-indigo-300 rounded hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors"
+                          >
+                            <ExternalLink className="w-3.5 h-3.5" />
+                          </a>
+                        </div>
+                      ) : (
+                        canManageProviders && (
+                          <button
+                            type="button"
+                            onClick={() => generateDeskTokenMutation.mutate(provider.id)}
+                            disabled={generateDeskTokenMutation.isPending}
+                            className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 border border-border dark:border-dark-border transition-colors"
+                          >
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            <span>Enable Desk Link</span>
+                          </button>
+                        )
                       )}
                     </div>
                   </div>

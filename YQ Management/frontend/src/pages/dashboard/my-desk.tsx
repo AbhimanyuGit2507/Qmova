@@ -2,6 +2,7 @@ import React, { useMemo, useState } from 'react';
 import Head from 'next/head';
 import AdminLayout from '../../components/AdminLayout';
 import { useAuth } from '../../components/AuthContext';
+import { useLocation } from '../../components/LocationContext';
 import { MyDeskProvider, useMyDesk } from '../../components/my-desk/MyDeskContext';
 import { renderWidget } from '../../components/my-desk/WidgetRegistry';
 import { useQuery } from '@tanstack/react-query';
@@ -41,6 +42,7 @@ function MyDeskContent({ tenant }: { tenant: DeskTenant | null | undefined }) {
   const [selectedTemplateId, setSelectedTemplateId] = useState<string | null>(null);
 
   const currentTemplateId = selectedTemplateId || defaultTemplateId;
+  const currentTemplate = templates.find((t) => t.id === currentTemplateId);
 
   // Resolve layout: v2 template system → per-user/staff assignment → global → default
   const layout = useMemo<DeskWidgetConfig[]>(() => {
@@ -83,10 +85,18 @@ function MyDeskContent({ tenant }: { tenant: DeskTenant | null | undefined }) {
                 <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span> Live Station
               </span>
             </h1>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400">
-              Assigned: <span className="font-medium text-zinc-700 dark:text-zinc-300">{user?.name || user?.email || 'Staff Member'}</span> 
-              {user?.role && <span className="ml-1.5 uppercase font-mono text-[10px] text-zinc-400">({user.role})</span>}
-            </p>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                Operator: <span className="font-medium text-zinc-700 dark:text-zinc-300">{user?.name || user?.email || 'Staff Member'}</span> 
+                {user?.role && <span className="ml-1 uppercase font-mono text-[10px] text-zinc-400">({user.role})</span>}
+              </p>
+              {currentTemplate && (
+                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-semibold bg-primary/10 text-primary border border-primary/20">
+                  <LayoutDashboard className="w-3 h-3" />
+                  {currentTemplate.name}
+                </span>
+              )}
+            </div>
           </div>
         </div>
 
@@ -150,13 +160,17 @@ function MyDeskContent({ tenant }: { tenant: DeskTenant | null | undefined }) {
 }
 
 export default function MyDesk() {
+  const { user } = useAuth();
+  const { activeLocationId } = useLocation();
+  const staffOrUserId = (user as any)?.staffId || user?.userId;
+
   const { data: tenant } = useQuery({
     queryKey: ['tenant', 'me'],
     queryFn: () => fetchApi('/tenant/me').catch(() => null),
   });
 
   return (
-    <MyDeskProvider>
+    <MyDeskProvider staffId={staffOrUserId} locationId={activeLocationId || undefined}>
       <AdminLayout pageTitle="My Desk" pageSubtitle="Real-time staff service counter">
         <Head>
           <title>My Desk | {tenant?.name || 'Workspace'}</title>

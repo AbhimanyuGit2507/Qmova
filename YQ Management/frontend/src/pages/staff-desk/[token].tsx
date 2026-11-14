@@ -263,7 +263,7 @@ export default function StaffDeskKiosk() {
         <meta name="robots" content="noindex,nofollow" />
         <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1" />
       </Head>
-      <MyDeskProvider>
+      <MyDeskProvider staffId={staff.id} locationId={staff.locationId || staff.location?.id || undefined}>
         <DeskCanvas staff={staff} />
       </MyDeskProvider>
     </>

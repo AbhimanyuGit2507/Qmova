@@ -5,14 +5,21 @@ import { toast } from 'sonner';
 import { Phone, Clock, CheckCircle2, UserCheck, Play, ArrowRight, RefreshCw, AlertCircle } from 'lucide-react';
 
 export const CurrentTicketWidget = ({ widgetId }: { widgetId: string }) => {
-  const { activeVisit, setActiveVisit, refetchVisits } = useMyDesk();
+  const { activeVisit, setActiveVisit, refetchVisits, staffId, locationId } = useMyDesk();
   const [loading, setLoading] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
 
   const fetchNext = useCallback(async (preserveCurrent = false) => {
     setLoading(true);
     try {
-      const res = await fetchApi('/visits?status=ACTIVE');
+      let url = '/visits?status=ACTIVE';
+      if (locationId && locationId !== 'all') {
+        url += `&locationId=${encodeURIComponent(locationId)}`;
+      }
+      if (staffId) {
+        url += `&staffId=${encodeURIComponent(staffId)}`;
+      }
+      const res = await fetchApi(url);
       const list: any[] = Array.isArray(res) ? res : (res?.data || []);
       
       if (preserveCurrent && activeVisit) {
@@ -37,7 +44,7 @@ export const CurrentTicketWidget = ({ widgetId }: { widgetId: string }) => {
     } finally {
       setLoading(false);
     }
-  }, [activeVisit, setActiveVisit]);
+  }, [activeVisit, setActiveVisit, staffId, locationId]);
 
   useEffect(() => {
     if (!activeVisit) {

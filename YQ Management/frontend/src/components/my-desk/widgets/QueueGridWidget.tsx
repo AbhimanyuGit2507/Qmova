@@ -5,14 +5,21 @@ import { useMyDesk } from '../MyDeskContext';
 import { Clock, CheckCircle, RefreshCw, Flame, Users, AlertCircle } from 'lucide-react';
 
 export const QueueGridWidget = ({ widgetId }: { widgetId: string }) => {
-  const { activeVisit, setActiveVisit, refetchVisits } = useMyDesk();
+  const { activeVisit, setActiveVisit, refetchVisits, staffId, locationId } = useMyDesk();
   const [activeVisits, setActiveVisits] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [bumpingId, setBumpingId] = useState<string | null>(null);
 
   const fetchQueue = useCallback(async () => {
     try {
-      const res = await fetchApi('/visits?status=ACTIVE');
+      let url = '/visits?status=ACTIVE';
+      if (locationId && locationId !== 'all') {
+        url += `&locationId=${encodeURIComponent(locationId)}`;
+      }
+      if (staffId) {
+        url += `&staffId=${encodeURIComponent(staffId)}`;
+      }
+      const res = await fetchApi(url);
       const list = Array.isArray(res) ? res : (res?.data || []);
       setActiveVisits(list);
     } catch (err) {
@@ -20,7 +27,7 @@ export const QueueGridWidget = ({ widgetId }: { widgetId: string }) => {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [staffId, locationId]);
 
   useEffect(() => {
     fetchQueue();

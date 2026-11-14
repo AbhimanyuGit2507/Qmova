@@ -435,6 +435,7 @@ export class VisitService {
     search?: string,
     rating?: string,
     status?: string,
+    staffId?: string,
   ) {
     const where: any = { tenantId: userTokenPayload.tenantId };
     if (locationId) {
@@ -455,8 +456,34 @@ export class VisitService {
         where.currentState = status;
       }
     }
-    if (
-      userTokenPayload.role === 'MANAGER' ||
+
+    // Role-based scoping for STAFF / Kiosk desk sessions
+    if (userTokenPayload.role === 'STAFF' || userTokenPayload.isDeskToken) {
+      if (
+        userTokenPayload.allowedLocationIds &&
+        userTokenPayload.allowedLocationIds.length > 0
+      ) {
+        where.locationId = { in: userTokenPayload.allowedLocationIds };
+      }
+      if (
+        userTokenPayload.allowedServiceIds &&
+        userTokenPayload.allowedServiceIds.length > 0
+      ) {
+        where.serviceId = { in: userTokenPayload.allowedServiceIds };
+      }
+      const targetStaffId = staffId || userTokenPayload.staffId;
+      if (targetStaffId) {
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { assignedStaffId: targetStaffId },
+              { assignedStaffId: null },
+            ],
+          },
+        ];
+      }
+    } else if (
       userTokenPayload.role === 'MANAGER'
     ) {
       const user = await this.prisma.user.findUnique({
@@ -473,6 +500,27 @@ export class VisitService {
       if (user && user.allowedServiceIds && user.allowedServiceIds.length > 0) {
         where.serviceId = { in: user.allowedServiceIds };
       }
+      if (staffId) {
+        where.AND = [
+          ...(where.AND || []),
+          {
+            OR: [
+              { assignedStaffId: staffId },
+              { assignedStaffId: null },
+            ],
+          },
+        ];
+      }
+    } else if (staffId) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { assignedStaffId: staffId },
+            { assignedStaffId: null },
+          ],
+        },
+      ];
     }
     if (scope === 'today') {
       const tz = tzParam || 'UTC';

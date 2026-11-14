@@ -49,6 +49,7 @@ export class VisitController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('status') status?: string,
+    @Query('staffId') staffId?: string,
   ) {
     return this.visitService.findAll(
       req.user,
@@ -65,6 +66,7 @@ export class VisitController {
       search,
       rating,
       status,
+      staffId,
     );
   }
 

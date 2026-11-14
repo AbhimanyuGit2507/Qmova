@@ -402,6 +402,7 @@ function LayoutPreview({ layout, color }: { layout: WidgetConfig[]; color: strin
 export default function StaffViewSettings() {
   const { refetch: refetchAuth } = useAuth();
   const [tenantId, setTenantId] = useState('');
+  const [tenantBusinessType, setTenantBusinessType] = useState('');
   const [data, setData] = useState<StaffViewData>({ version: 2, templates: [], assignments: {} });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -425,6 +426,7 @@ export default function StaffViewSettings() {
       try {
         const t = await fetchApi('/tenant/me');
         setTenantId(t.id);
+        setTenantBusinessType(t.businessType || '');
         const raw = t.staffViewLayout;
         if (raw && raw.version === 2) {
           setData(raw as StaffViewData);
@@ -455,6 +457,59 @@ export default function StaffViewSettings() {
     } catch { toast.error('Failed to save'); }
     finally { setSaving(false); }
   }, [tenantId, refetchAuth]);
+
+  // ── Auto-seed recommended templates for the workspace ──
+  const handleAutoSeed = async () => {
+    setSaving(true);
+    try {
+      const bType = (tenantBusinessType || '').toLowerCase();
+      let matchedCategory = PRESET_CATEGORIES.find(c => 
+        bType.includes(c.presets[0]?.industry || '___')
+      ) || PRESET_CATEGORIES[4]; // Default to Retail & Service Counter
+
+      if (bType.includes('health') || bType.includes('clinic') || bType.includes('doctor')) {
+        matchedCategory = PRESET_CATEGORIES[0];
+      } else if (bType.includes('food') || bType.includes('restaurant') || bType.includes('cater')) {
+        matchedCategory = PRESET_CATEGORIES[1];
+      } else if (bType.includes('salon') || bType.includes('barber') || bType.includes('beauty')) {
+        matchedCategory = PRESET_CATEGORIES[2];
+      } else if (bType.includes('gym') || bType.includes('fitness')) {
+        matchedCategory = PRESET_CATEGORIES[3];
+      } else if (bType.includes('education') || bType.includes('school')) {
+        matchedCategory = PRESET_CATEGORIES[5];
+      }
+
+      const seededTemplates: DeskTemplate[] = matchedCategory.presets.map((p) => ({
+        ...p,
+        id: makeId('template'),
+        layout: JSON.parse(JSON.stringify(p.layout)),
+      }));
+
+      const staffList = (await fetchApi('/staff').catch(() => [])) as OnGroundStaff[];
+      const assignments: Record<string, string> = {};
+      const primaryTplId = seededTemplates[0]?.id;
+
+      if (primaryTplId && staffList.length > 0) {
+        staffList.forEach(s => {
+          assignments[s.id] = primaryTplId;
+          if (s.userId) assignments[s.userId] = primaryTplId;
+        });
+      }
+
+      const payload: StaffViewData = {
+        version: 2,
+        templates: seededTemplates,
+        assignments,
+      };
+
+      await save(payload);
+      toast.success(`Loaded ${seededTemplates.length} layouts for ${matchedCategory.label}!`);
+    } catch {
+      toast.error('Failed to auto-seed templates');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   // ── Template CRUD ──
   const openNew = () => {
@@ -703,16 +758,20 @@ export default function StaffViewSettings() {
           <div>
             <h3 className="font-bold text-on-surface dark:text-white mb-1">No desk layouts yet</h3>
             <p className="text-sm text-on-surface-variant dark:text-zinc-400 max-w-sm mx-auto">
-              Create a layout from scratch or start with an industry-specific template for doctors, chefs, stylists, and more.
+              Activate recommended industry layouts in one click, or create custom layouts for your on-ground staff.
             </p>
           </div>
           <div className="flex items-center justify-center gap-3 flex-wrap">
+            <button onClick={handleAutoSeed} disabled={saving}
+              className="flex items-center gap-2 px-5 h-10 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm disabled:opacity-50">
+              <Sparkles className="w-4 h-4" /> {saving ? 'Setting up…' : 'Quick-Setup Recommended Layouts'}
+            </button>
             <button onClick={() => { setPresetsCategory(null); setView('presets'); }}
-              className="flex items-center gap-2 px-5 h-10 bg-primary hover:bg-primary/90 text-white text-sm font-semibold rounded-xl transition-colors shadow-sm">
-              <Sparkles className="w-4 h-4" /> Browse Industry Templates
+              className="flex items-center gap-2 px-5 h-10 border border-border dark:border-dark-border text-sm font-semibold rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-on-surface dark:text-zinc-300">
+              Browse All Presets
             </button>
             <button onClick={openNew}
-              className="flex items-center gap-2 px-5 h-10 border border-border dark:border-dark-border text-sm font-semibold rounded-xl hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors text-on-surface dark:text-zinc-300">
+              className="flex items-center gap-2 px-4 h-10 text-zinc-400 hover:text-zinc-600 dark:hover:text-zinc-200 text-sm font-medium transition-colors">
               <Plus className="w-4 h-4" /> Blank Layout
             </button>
           </div>
