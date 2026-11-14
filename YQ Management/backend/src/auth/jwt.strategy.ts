@@ -91,6 +91,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         throw new UnauthorizedException('User no longer exists');
       }
 
+      // Throttled update of lastActiveAt in userSession (at most once every 5 minutes per session)
+      if (payload.jti) {
+        const touchKey = `session_touch:${payload.sub}:${payload.jti}`;
+        this.redisService.client
+          .set(touchKey, '1', 'EX', 300, 'NX')
+          .then((res) => {
+            if (res) {
+              this.prisma.userSession
+                .updateMany({
+                  where: { userId: payload.sub, isRevoked: false },
+                  data: { lastActiveAt: new Date() },
+                })
+                .catch(() => {});
+            }
+          })
+          .catch(() => {});
+      }
+
       // Sync role, tenantId and allowed scopes from DB in case they were updated
       payload.role = user.role;
       payload.tenantId = user.tenantId;

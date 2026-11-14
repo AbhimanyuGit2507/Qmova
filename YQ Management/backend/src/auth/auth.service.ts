@@ -13,6 +13,7 @@ import { EmailService } from '../email/email.service';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '@prisma/client';
 import { RedisService } from '../redis/redis.service';
+import { parseUserAgent } from './utils/user-agent.util';
 
 @Injectable()
 export class AuthService {
@@ -297,13 +298,62 @@ export class AuthService {
     const access_token = this.jwtService.sign(payload);
 
     try {
+      // 1. Enforce max 2 concurrent active devices limit
+      const MAX_ACTIVE_DEVICES = 2;
+      const activeSessions = await this.prisma.userSession.findMany({
+        where: {
+          userId: user.id,
+          isRevoked: false,
+          expiresAt: { gt: new Date() },
+        },
+        orderBy: { lastActiveAt: 'asc' }, // oldest first
+      });
+
+      if (activeSessions.length >= MAX_ACTIVE_DEVICES) {
+        const excessCount = activeSessions.length - MAX_ACTIVE_DEVICES + 1;
+        const sessionsToEvict = activeSessions.slice(0, excessCount);
+
+        for (const oldSession of sessionsToEvict) {
+          await this.prisma.userSession.update({
+            where: { id: oldSession.id },
+            data: { isRevoked: true },
+          });
+
+          // Blocklist old session JWT in Redis
+          try {
+            const decoded: any = this.jwtService.decode(oldSession.token);
+            if (decoded?.jti) {
+              await this.redisService.client.set(
+                `blocklist:${decoded.jti}`,
+                '1',
+                'EX',
+                7 * 24 * 60 * 60,
+              );
+            }
+          } catch {}
+          this.logger.log(
+            `Evicted oldest active session ${oldSession.id} for user ${user.email} (Enforcing max ${MAX_ACTIVE_DEVICES} devices limit)`,
+          );
+        }
+      }
+
+      // 2. Parse device info
+      const parsedDevice = parseUserAgent(userAgent);
+
+      // 3. Create new session with parsed device metadata
       await this.prisma.userSession.create({
         data: {
           userId: user.id,
           token: access_token,
           ipAddress: ip,
           userAgent: userAgent,
-          deviceInfo: { raw: userAgent },
+          deviceInfo: {
+            raw: userAgent,
+            browser: parsedDevice.browser,
+            os: parsedDevice.os,
+            deviceType: parsedDevice.deviceType,
+            clientName: parsedDevice.clientName,
+          },
           expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });

@@ -26,6 +26,7 @@ import { PasswordResetService } from './password-reset.service';
 import type { AuthenticatedRequest } from './types/auth.types';
 import { RedisService } from '../redis/redis.service';
 import { SubscriptionService } from '../subscription/subscription.service';
+import { parseUserAgent } from './utils/user-agent.util';
 
 @Controller('auth')
 export class AuthController {
@@ -167,6 +168,22 @@ export class AuthController {
         7 * 24 * 60 * 60,
       );
     }
+
+    const currentToken =
+      req.cookies?.token ||
+      (req.headers.authorization
+        ? req.headers.authorization.replace('Bearer ', '').trim()
+        : null);
+
+    if (currentToken && req.user?.sub) {
+      await this.usersService['prisma'].userSession
+        .updateMany({
+          where: { userId: req.user.sub, token: currentToken },
+          data: { isRevoked: true },
+        })
+        .catch(() => {});
+    }
+
     res.clearCookie('token', {
       path: '/',
       domain:
@@ -426,31 +443,89 @@ export class AuthController {
   @UseGuards(AuthGuard('jwt'))
   @Get('sessions')
   async getSessions(@Req() req: any) {
-    const sessions = await this.usersService['prisma'].userSession.findMany({
-      where: { userId: req.user.sub, isRevoked: false },
+    const MAX_ALLOWED_DEVICES = 2;
+    const userId = req.user.sub || req.user.userId;
+
+    let sessions = await this.usersService['prisma'].userSession.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { lastActiveAt: 'desc' },
     });
 
-    // We don't want to expose the raw JWT tokens to the frontend
-    return sessions.map((s) => ({
-      id: s.id,
-      ipAddress: s.ipAddress,
-      userAgent: s.userAgent,
-      deviceInfo: s.deviceInfo,
-      lastActiveAt: s.lastActiveAt,
-      isCurrentSession:
-        req.cookies?.token === s.token ||
-        req.headers.authorization?.includes(s.token),
-    }));
+    // Auto-evict any legacy sessions that exceed the 2-device cap
+    if (sessions.length > MAX_ALLOWED_DEVICES) {
+      const activeSessions = sessions.slice(0, MAX_ALLOWED_DEVICES);
+      const staleSessions = sessions.slice(MAX_ALLOWED_DEVICES);
+
+      for (const stale of staleSessions) {
+        await this.usersService['prisma'].userSession
+          .update({
+            where: { id: stale.id },
+            data: { isRevoked: true },
+          })
+          .catch(() => {});
+
+        try {
+          const decoded: any = this.authService['jwtService'].decode(stale.token);
+          if (decoded?.jti) {
+            await this.redisService.client.set(
+              `blocklist:${decoded.jti}`,
+              '1',
+              'EX',
+              7 * 24 * 60 * 60,
+            );
+          }
+        } catch {}
+      }
+      sessions = activeSessions;
+    }
+
+    const currentToken =
+      req.cookies?.token ||
+      (req.headers.authorization
+        ? req.headers.authorization.replace('Bearer ', '').trim()
+        : null);
+
+    return sessions.map((s) => {
+      const dev =
+        s.deviceInfo && (s.deviceInfo as any).browser
+          ? (s.deviceInfo as any)
+          : parseUserAgent(s.userAgent || (s.deviceInfo as any)?.raw);
+
+      const isCurrentSession =
+        (currentToken && s.token === currentToken) ||
+        Boolean(req.cookies?.token === s.token) ||
+        Boolean(req.headers.authorization?.includes(s.token));
+
+      return {
+        id: s.id,
+        ipAddress: s.ipAddress,
+        userAgent: s.userAgent,
+        deviceInfo: {
+          raw: dev.raw || s.userAgent,
+          browser: dev.browser,
+          os: dev.os,
+          deviceType: dev.deviceType,
+          clientName: dev.clientName,
+        },
+        lastActiveAt: s.lastActiveAt,
+        createdAt: s.createdAt,
+        isCurrentSession,
+      };
+    });
   }
 
   @UseGuards(AuthGuard('jwt'))
   @Delete('sessions/:id')
   async revokeSession(@Req() req: any, @Param('id') id: string) {
+    const userId = req.user.sub || req.user.userId;
     const session = await this.usersService['prisma'].userSession.findUnique({
       where: { id },
     });
-    if (!session || session.userId !== req.user.sub) {
+    if (!session || session.userId !== userId) {
       throw new UnauthorizedException('Session not found');
     }
     await this.usersService['prisma'].userSession.update({
@@ -458,9 +533,9 @@ export class AuthController {
       data: { isRevoked: true },
     });
 
-    // Attempt to parse token for jti to blocklist it
+    // Parse token for jti to blocklist it in Redis
     try {
-      const decoded = this.authService['jwtService'].decode(session.token);
+      const decoded: any = this.authService['jwtService'].decode(session.token);
       if (decoded?.jti) {
         await this.redisService.client.set(
           `blocklist:${decoded.jti}`,
@@ -472,6 +547,111 @@ export class AuthController {
     } catch (e) {}
 
     return { success: true };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('sessions/revoke-others')
+  async revokeOtherSessions(@Req() req: any) {
+    const userId = req.user.sub || req.user.userId;
+    const currentToken =
+      req.cookies?.token ||
+      (req.headers.authorization
+        ? req.headers.authorization.replace('Bearer ', '').trim()
+        : null);
+
+    const otherSessions = await this.usersService['prisma'].userSession.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+        ...(currentToken ? { token: { not: currentToken } } : {}),
+      },
+    });
+
+    for (const session of otherSessions) {
+      await this.usersService['prisma'].userSession
+        .update({
+          where: { id: session.id },
+          data: { isRevoked: true },
+        })
+        .catch(() => {});
+
+      try {
+        const decoded: any = this.authService['jwtService'].decode(session.token);
+        if (decoded?.jti) {
+          await this.redisService.client.set(
+            `blocklist:${decoded.jti}`,
+            '1',
+            'EX',
+            7 * 24 * 60 * 60,
+          );
+        }
+      } catch {}
+    }
+
+    return { success: true, count: otherSessions.length };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('google/disconnect')
+  async disconnectGoogle(@Req() req: any) {
+    const userId = req.user.sub || req.user.userId;
+    const user = await this.usersService.findOneById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    if (!user.password) {
+      throw new BadRequestException(
+        'You must set a password before disconnecting your Google account so you do not get locked out of your workspace.',
+      );
+    }
+
+    await this.usersService['prisma'].user.update({
+      where: { id: user.id },
+      data: { googleId: null },
+    });
+
+    await this.usersService['prisma'].googleIntegration
+      .deleteMany({
+        where: { tenantId: user.tenantId, email: user.email },
+      })
+      .catch(() => {});
+
+    return { success: true, message: 'Google account disconnected successfully.' };
+  }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Get('security-overview')
+  async getSecurityOverview(@Req() req: any) {
+    const userId = req.user.sub || req.user.userId;
+    const user = await this.usersService.findOneById(userId);
+    if (!user) throw new UnauthorizedException('User not found');
+
+    const sessions = await this.usersService['prisma'].userSession.findMany({
+      where: {
+        userId,
+        isRevoked: false,
+        expiresAt: { gt: new Date() },
+      },
+      orderBy: { lastActiveAt: 'desc' },
+    });
+
+    const googleIntegration = await this.usersService['prisma'].googleIntegration.findFirst({
+      where: { tenantId: user.tenantId, email: user.email },
+      select: { email: true, createdAt: true },
+    });
+
+    return {
+      userId: user.id,
+      email: user.email,
+      role: user.role,
+      hasPassword: Boolean(user.password),
+      googleConnected: Boolean(user.googleId),
+      googleEmail: googleIntegration?.email || (user.googleId ? user.email : null),
+      activeDeviceCount: sessions.length,
+      maxAllowedDevices: 2,
+      isDeviceCapReached: sessions.length >= 2,
+      twoFactorEnabled: true,
+      twoFactorMethod: 'EMAIL_OTP',
+    };
   }
 
   @UseGuards(AuthGuard('jwt'))
@@ -768,7 +948,10 @@ export class AuthController {
     @Req() req: AuthenticatedRequest,
     @Body() body: { currentPassword?: string; newPassword: string },
   ) {
-    const userId = (req.user as any)?.id || (req.user as any)?.userId;
+    const userId =
+      (req.user as any)?.id ||
+      (req.user as any)?.userId ||
+      (req.user as any)?.sub;
     if (!userId) throw new UnauthorizedException();
     if (!body.newPassword || body.newPassword.length < 6) {
       throw new BadRequestException('New password must be at least 6 characters.');
