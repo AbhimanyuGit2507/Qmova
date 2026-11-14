@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { CheckCircle2, AlertCircle, Loader2, Zap, ArrowRight, Sparkles, Crown, CreditCard, Shield } from 'lucide-react';
+import { CheckCircle2, AlertCircle, Loader2, Zap, ArrowRight, Sparkles, Crown, CreditCard, Shield, Ban, Clock, Printer, FileText, Check, X } from 'lucide-react';
 import { fetchApi } from '../../lib/api';
 import { useRouter } from 'next/router';
 import { toast } from 'sonner';
@@ -48,6 +48,8 @@ export default function BillingSettings() {
   const [billingInterval, setBillingInterval] = useState('monthly');
   const [showEnterpriseModal, setShowEnterpriseModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyTab, setHistoryTab] = useState<'invoices' | 'all'>('invoices');
+  const [selectedReceiptTx, setSelectedReceiptTx] = useState<any>(null);
   const [checkoutPlan, setCheckoutPlan] = useState<AnyFixMe>(null);
   const [enterpriseForm, setEnterpriseForm] = useState({ name: '', companyName: '', email: '', phone: '', message: '' });
   const ozowFields = useMemo<Array<keyof OzowPaymentData>>(
@@ -150,15 +152,75 @@ export default function BillingSettings() {
     }
   });
 
+  const cancelTxMutation = useMutation({
+    mutationFn: (txRef?: string) =>
+      fetchApi('/payments/cancel', {
+        method: 'POST',
+        body: JSON.stringify({ transactionRef: txRef }),
+      }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['workspace-billing'] });
+      queryClient.invalidateQueries({ queryKey: ['current-subscription'] });
+      toast.success('Pending checkout session cancelled.');
+    },
+    onError: () => {
+      toast.error('Failed to cancel checkout session.');
+    },
+  });
+
+  // Automatically sync cancellation to backend if user returns from checkout with cancelled status
+  useEffect(() => {
+    if (paymentStatus === 'cancelled' || paymentStatus === 'error') {
+      const ref =
+        (router.query.ref as string) ||
+        (router.query.TransactionReference as string) ||
+        (router.query.transactionReference as string);
+      fetchApi('/payments/cancel', {
+        method: 'POST',
+        body: JSON.stringify({ transactionRef: ref }),
+      })
+        .then(() => {
+          queryClient.invalidateQueries({ queryKey: ['workspace-billing'] });
+          queryClient.invalidateQueries({ queryKey: ['current-subscription'] });
+        })
+        .catch((err) => {
+          console.error('Failed to cancel transaction on backend', err);
+        });
+    }
+  }, [paymentStatus, router.query]);
+
+  const formatTxAmount = (amount: number, currency = 'ZAR') => {
+    // Normalization: system stores cents (499900 = R4,999.00). Legacy records stored whole rands (< 10000).
+    const rands = amount >= 10000 ? amount / 100 : amount;
+    return new Intl.NumberFormat('en-ZA', {
+      style: 'currency',
+      currency: currency || 'ZAR',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(rands);
+  };
+
   const statusMessage = useMemo(() => {
     if (paymentStatus === 'success') {
-      return { type: 'success' as const, text: 'Payment completed successfully! Your subscription is now active.' };
+      return {
+        type: 'success' as const,
+        title: 'Payment Successful',
+        text: 'Payment completed successfully! Your enterprise workspace subscription is now active.',
+      };
     }
     if (paymentStatus === 'cancelled') {
-      return { type: 'error' as const, text: 'Payment was cancelled.' };
+      return {
+        type: 'cancelled' as const,
+        title: 'Checkout Cancelled',
+        text: 'The checkout session was safely cancelled. No funds were debited from your bank account.',
+      };
     }
     if (paymentStatus === 'error') {
-      return { type: 'error' as const, text: 'An error occurred during payment processing.' };
+      return {
+        type: 'error' as const,
+        title: 'Payment Incomplete',
+        text: 'An error occurred during payment processing or the checkout session timed out. Please try again.',
+      };
     }
     return null;
   }, [paymentStatus]);
@@ -263,23 +325,29 @@ export default function BillingSettings() {
           <div className="bg-card dark:bg-zinc-900 border border-border dark:border-white/10 rounded-[32px] shadow-2xl w-full max-w-md overflow-hidden flex flex-col items-center text-center relative animate-in zoom-in-95 duration-500 ease-out">
             {/* Top decorative glow */}
             <div className={`absolute top-0 left-1/2 -translate-x-1/2 w-[200%] h-32 blur-[64px] rounded-full opacity-20 pointer-events-none ${
-              statusMessage.type === 'success' ? 'bg-emerald-500' : 'bg-red-500'
+              statusMessage.type === 'success' ? 'bg-emerald-500' :
+              statusMessage.type === 'cancelled' ? 'bg-amber-500' : 'bg-red-500'
             }`}></div>
             
             <div className="p-10 w-full relative z-10 flex flex-col items-center">
               <div className={`w-24 h-24 rounded-[32px] flex items-center justify-center mb-8 rotate-3 shadow-xl backdrop-blur-md border ${
                 statusMessage.type === 'success' 
-                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 shadow-emerald-500/20' 
+                  ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-500 shadow-emerald-500/20' :
+                statusMessage.type === 'cancelled'
+                  ? 'bg-amber-500/10 border-amber-500/30 text-amber-500 shadow-amber-500/20'
                   : 'bg-red-500/10 border-red-500/30 text-red-500 shadow-red-500/20'
               }`}>
-                {statusMessage.type === 'success' 
-                  ? <CheckCircle2 strokeWidth={2.5} className="w-12 h-12 -rotate-3" /> 
-                  : <AlertCircle strokeWidth={2.5} className="w-12 h-12 -rotate-3" />
-                }
+                {statusMessage.type === 'success' ? (
+                  <CheckCircle2 strokeWidth={2.5} className="w-12 h-12 -rotate-3" /> 
+                ) : statusMessage.type === 'cancelled' ? (
+                  <Ban strokeWidth={2.5} className="w-12 h-12 -rotate-3" />
+                ) : (
+                  <AlertCircle strokeWidth={2.5} className="w-12 h-12 -rotate-3" />
+                )}
               </div>
               
               <h2 className="text-2xl font-bold text-on-surface dark:text-white tracking-tight mb-3">
-                {statusMessage.type === 'success' ? 'Payment Successful' : 'Payment Failed'}
+                {statusMessage.title}
               </h2>
               <p className="text-on-surface-variant dark:text-zinc-400 mb-10 leading-relaxed max-w-[280px]">
                 {statusMessage.text}
@@ -287,18 +355,21 @@ export default function BillingSettings() {
               
               <button 
                 onClick={async () => {
-                  // Invalidate subscription caches so the page shows the fresh ACTIVE subscription
+                  // Invalidate subscription & billing caches so the page is 100% fresh
                   await queryClient.invalidateQueries({ queryKey: ['billing-subscription'] });
                   await queryClient.invalidateQueries({ queryKey: ['current-subscription'] });
-                  router.replace('/dashboard/settings/billing');
+                  await queryClient.invalidateQueries({ queryKey: ['workspace-billing'] });
+                  router.replace('/dashboard/settings/billing', undefined, { shallow: true });
                 }}
                 className={`w-full h-14 rounded-2xl font-semibold text-[15px] transition-all shadow-lg hover:shadow-xl hover:-translate-y-0.5 active:translate-y-0 flex items-center justify-center gap-2 group ${
                   statusMessage.type === 'success' 
-                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/25' 
+                    ? 'bg-emerald-500 hover:bg-emerald-400 text-white shadow-emerald-500/25' :
+                  statusMessage.type === 'cancelled'
+                    ? 'bg-zinc-800 hover:bg-zinc-700 text-white shadow-zinc-800/25'
                     : 'bg-red-500 hover:bg-red-400 text-white shadow-red-500/25'
                 }`}
               >
-                {statusMessage.type === 'success' ? 'Go to Dashboard' : 'Try Again'}
+                {statusMessage.type === 'success' ? 'Go to Dashboard' : statusMessage.type === 'cancelled' ? 'Return to Billing' : 'Try Again'}
                 <ArrowRight className="w-4 h-4 opacity-70 group-hover:opacity-100 group-hover:translate-x-1 transition-all" />
               </button>
             </div>
@@ -1071,78 +1142,245 @@ export default function BillingSettings() {
       )}
 
       {/* Billing & Invoicing History Modal */}
-      {showHistoryModal && (
-        <div className="fixed inset-0 bg-zinc-950/60 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setShowHistoryModal(false)}>
-          <div className="bg-white dark:bg-zinc-900 border border-border dark:border-white/10 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200" onClick={(e) => e.stopPropagation()}>
-            <div className="px-8 py-6 border-b border-border dark:border-white/10 flex items-center justify-between">
-              <div>
-                <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
-                  <CreditCard className="w-5 h-5 text-primary" /> Billing & Invoicing History
-                </h2>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Receipts and automated settlement records for this workspace</p>
+      {showHistoryModal && (() => {
+        const rawTransactions = workspaceBilling?.transactions?.transactions || [];
+        const settledInvoices = rawTransactions.filter((tx: any) =>
+          ['COMPLETE', 'SUCCESS', 'SUCCEEDED', 'PAID'].includes((tx.status || '').toUpperCase())
+        );
+        const displayList = historyTab === 'invoices' ? settledInvoices : rawTransactions;
+
+        return (
+          <div className="fixed inset-0 bg-zinc-950/60 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setShowHistoryModal(false)}>
+            <div className="bg-white dark:bg-zinc-900 border border-border dark:border-white/10 rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in zoom-in-95 duration-200 flex flex-col max-h-[85vh]" onClick={(e) => e.stopPropagation()}>
+              <div className="px-8 py-6 border-b border-border dark:border-white/10 flex items-center justify-between">
+                <div>
+                  <h2 className="text-xl font-bold text-gray-900 dark:text-white flex items-center gap-2.5">
+                    <CreditCard className="w-5 h-5 text-primary" /> Billing & Invoicing History
+                  </h2>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">Receipts and automated settlement records for this workspace</p>
+                </div>
+                <button onClick={() => setShowHistoryModal(false)} className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors">
+                  <span className="material-symbols-outlined text-[20px]">close</span>
+                </button>
               </div>
-              <button onClick={() => setShowHistoryModal(false)} className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full transition-colors">
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
 
-            <div className="p-8 max-h-[60vh] overflow-y-auto">
-              {isWorkspaceBillingLoading ? (
-                <div className="flex items-center justify-center py-12 text-zinc-400 gap-3">
-                  <Loader2 className="w-5 h-5 animate-spin" /> Loading transactions...
-                </div>
-              ) : !workspaceBilling?.transactions?.transactions || workspaceBilling.transactions.transactions.length === 0 ? (
-                <div className="text-center py-12">
-                  <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4 border border-primary/20 shadow-inner">
-                    <Shield className="w-7 h-7" />
+              {/* Sub-tabs */}
+              <div className="flex border-b border-border dark:border-white/10 px-8 pt-2 bg-gray-50/50 dark:bg-white/[0.02]">
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('invoices')}
+                  className={`pb-3 px-4 font-semibold text-xs transition-colors flex items-center gap-2 border-b-2 ${
+                    historyTab === 'invoices'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-white'
+                  }`}
+                >
+                  <FileText className="w-3.5 h-3.5" /> Tax Invoices & Receipts
+                  <span className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
+                    historyTab === 'invoices' ? 'bg-primary/10 text-primary' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'
+                  }`}>
+                    {settledInvoices.length}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('all')}
+                  className={`pb-3 px-4 font-semibold text-xs transition-colors flex items-center gap-2 border-b-2 ${
+                    historyTab === 'all'
+                      ? 'border-primary text-primary'
+                      : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-white'
+                  }`}
+                >
+                  <Clock className="w-3.5 h-3.5" /> All Activity
+                  <span className={`text-[10px] px-2 py-0.2 rounded-full font-bold ${
+                    historyTab === 'all' ? 'bg-primary/10 text-primary' : 'bg-zinc-200 dark:bg-zinc-800 text-zinc-500'
+                  }`}>
+                    {rawTransactions.length}
+                  </span>
+                </button>
+              </div>
+
+              <div className="p-8 overflow-y-auto flex-1">
+                {isWorkspaceBillingLoading ? (
+                  <div className="flex items-center justify-center py-12 text-zinc-400 gap-3">
+                    <Loader2 className="w-5 h-5 animate-spin" /> Loading records...
                   </div>
-                  <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
-                    {isComplimentary ? 'Complimentary Enterprise Allocation' : 'No Invoices Yet'}
-                  </h3>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed">
-                    {isComplimentary 
-                      ? 'Your workspace is active under an enterprise-sponsored plan. No direct billing transactions have been levied.'
-                      : 'Past receipts and payment confirmation invoices will appear here once processed.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="divide-y divide-gray-100 dark:divide-white/5 border border-border dark:border-white/10 rounded-2xl overflow-hidden">
-                  {workspaceBilling.transactions.transactions.map((tx: any) => (
-                    <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
-                      <div className="space-y-1">
-                        <div className="flex items-center gap-2">
-                          <span className="font-mono text-xs font-semibold text-gray-900 dark:text-white">{tx.transactionRef || tx.id.slice(0, 8)}</span>
-                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                            tx.status === 'COMPLETE' || tx.status === 'SUCCEEDED' ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
-                            tx.status === 'PENDING' ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
-                            'bg-rose-500/10 text-rose-500 border border-rose-500/20'
-                          }`}>{tx.status}</span>
-                        </div>
-                        <p className="text-xs text-zinc-500 dark:text-zinc-400">
-                          {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
-                        </p>
-                      </div>
-                      <div className="text-right">
-                        <div className="font-bold text-gray-900 dark:text-white">
-                          {tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}
-                        </div>
-                        <div className="text-[11px] text-zinc-400">Instant EFT</div>
-                      </div>
+                ) : displayList.length === 0 ? (
+                  <div className="text-center py-12">
+                    <div className="w-14 h-14 rounded-2xl bg-primary/10 text-primary flex items-center justify-center mx-auto mb-4 border border-primary/20 shadow-inner">
+                      <Shield className="w-7 h-7" />
                     </div>
-                  ))}
-                </div>
-              )}
-            </div>
+                    <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">
+                      {historyTab === 'invoices'
+                        ? (isComplimentary ? 'Complimentary Enterprise Allocation' : 'No Settled Invoices Yet')
+                        : 'No Billing Activity Found'}
+                    </h3>
+                    <p className="text-xs text-zinc-500 dark:text-zinc-400 max-w-sm mx-auto leading-relaxed">
+                      {historyTab === 'invoices'
+                        ? (isComplimentary
+                            ? 'Your workspace is active under an enterprise-sponsored plan. No direct billing charges have been levied.'
+                            : 'Official tax invoices are automatically generated as soon as a payment successfully settles.')
+                        : 'No checkout sessions or subscription transactions recorded for this workspace.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="divide-y divide-gray-100 dark:divide-white/5 border border-border dark:border-white/10 rounded-2xl overflow-hidden">
+                    {displayList.map((tx: any) => {
+                      const isSettled = ['COMPLETE', 'SUCCESS', 'SUCCEEDED', 'PAID'].includes((tx.status || '').toUpperCase());
+                      const isPending = (tx.status || '').toUpperCase() === 'PENDING';
+                      const isCancelled = ['CANCELLED', 'EXPIRED'].includes((tx.status || '').toUpperCase());
 
-            <div className="px-8 py-4 bg-gray-50 dark:bg-white/5 border-t border-border dark:border-white/10 flex justify-between items-center text-xs text-zinc-500 dark:text-zinc-400">
-              <span>VAT registered · Instant settlement</span>
-              <button onClick={() => setShowHistoryModal(false)} className="px-5 py-2 bg-gray-200 dark:bg-zinc-800 hover:bg-gray-300 dark:hover:bg-zinc-700 text-gray-900 dark:text-white rounded-xl font-bold transition-colors">
-                Close
-              </button>
+                      return (
+                        <div key={tx.id} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-white/5 transition-colors gap-4">
+                          <div className="space-y-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="font-mono text-xs font-semibold text-gray-900 dark:text-white truncate max-w-[200px] sm:max-w-none">
+                                {tx.transactionRef || tx.id.slice(0, 8)}
+                              </span>
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                                isSettled ? 'bg-emerald-500/10 text-emerald-500 border border-emerald-500/20' :
+                                isPending ? 'bg-amber-500/10 text-amber-500 border border-amber-500/20' :
+                                isCancelled ? 'bg-zinc-500/10 text-zinc-400 border border-zinc-500/20' :
+                                'bg-rose-500/10 text-rose-500 border border-rose-500/20'
+                              }`}>
+                                {tx.status}
+                              </span>
+                            </div>
+                            <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                              {tx.createdAt ? new Date(tx.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '-'}
+                            </p>
+                          </div>
+                          
+                          <div className="text-right flex items-center gap-4 flex-shrink-0">
+                            <div>
+                              <div className="font-bold text-gray-900 dark:text-white">
+                                {formatTxAmount(tx.amount || 0, tx.currency)}
+                              </div>
+                              <div className="text-[11px] text-zinc-400">Instant EFT</div>
+                            </div>
+
+                            {isPending && (
+                              <button
+                                type="button"
+                                disabled={cancelTxMutation.isPending}
+                                onClick={() => cancelTxMutation.mutate(tx.transactionRef)}
+                                className="px-3 py-1.5 text-xs font-medium bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded-lg transition-colors border border-zinc-200 dark:border-zinc-700 flex items-center gap-1.5"
+                                title="Cancel this pending checkout attempt"
+                              >
+                                {cancelTxMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <X className="w-3.5 h-3.5" />}
+                                Cancel
+                              </button>
+                            )}
+
+                            {isSettled && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedReceiptTx(tx)}
+                                className="px-3 py-1.5 text-xs font-medium bg-primary/10 hover:bg-primary/20 text-primary rounded-lg transition-colors border border-primary/20 flex items-center gap-1.5"
+                              >
+                                <Printer className="w-3.5 h-3.5" />
+                                Receipt
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              <div className="px-8 py-4 bg-gray-50 dark:bg-white/5 border-t border-border dark:border-white/10 flex justify-between items-center text-xs text-zinc-500 dark:text-zinc-400">
+                <span>VAT registered · Instant settlement</span>
+                <button onClick={() => setShowHistoryModal(false)} className="px-5 py-2 bg-gray-200 dark:bg-zinc-800 hover:bg-gray-300 dark:hover:bg-zinc-700 text-gray-900 dark:text-white rounded-xl font-bold transition-colors">
+                  Close
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
+
+      {/* Tax Invoice & Printable Receipt Modal */}
+      {selectedReceiptTx && (() => {
+        const rands = (selectedReceiptTx.amount >= 10000 ? selectedReceiptTx.amount / 100 : selectedReceiptTx.amount) || 0;
+        const subtotal = rands / 1.15;
+        const vat = rands - subtotal;
+        const currency = selectedReceiptTx.currency || 'ZAR';
+
+        return (
+          <div className="fixed inset-0 bg-zinc-950/70 dark:bg-black/85 backdrop-blur-md z-[120] flex items-center justify-center p-4 animate-in fade-in duration-200" onClick={() => setSelectedReceiptTx(null)}>
+            <div className="bg-white dark:bg-zinc-900 border border-border dark:border-white/10 rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden animate-in zoom-in-95 duration-200 p-8 space-y-6" onClick={(e) => e.stopPropagation()}>
+              <div className="flex items-center justify-between border-b border-border dark:border-white/10 pb-4">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">Tax Invoice & Settlement Receipt</h3>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-400">Qmova Cloud Technologies (Pty) Ltd</p>
+                </div>
+                <button onClick={() => setSelectedReceiptTx(null)} className="p-2 text-zinc-400 hover:text-white hover:bg-white/5 rounded-full">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="space-y-3 text-xs text-zinc-600 dark:text-zinc-300">
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Invoice / Reference:</span>
+                  <span className="font-mono font-semibold text-gray-900 dark:text-white">{selectedReceiptTx.transactionRef}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Settlement Date:</span>
+                  <span>{new Date(selectedReceiptTx.createdAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Payment Channel:</span>
+                  <span>Instant EFT (Ozow Payment Gateway)</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-zinc-400">Settlement Status:</span>
+                  <span className="text-emerald-500 font-bold uppercase">{selectedReceiptTx.status}</span>
+                </div>
+              </div>
+
+              <div className="border border-border dark:border-white/10 rounded-xl p-4 bg-gray-50/50 dark:bg-white/[0.02] space-y-2 text-xs">
+                <div className="flex justify-between font-semibold text-gray-900 dark:text-white">
+                  <span>Enterprise Cloud Subscription</span>
+                  <span>{formatTxAmount(selectedReceiptTx.amount, currency)}</span>
+                </div>
+                <div className="border-t border-border dark:border-white/10 pt-2 space-y-1.5 text-zinc-500 dark:text-zinc-400">
+                  <div className="flex justify-between">
+                    <span>Subtotal (Excl. VAT):</span>
+                    <span>{currency} {subtotal.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>VAT (15%):</span>
+                    <span>{currency} {vat.toFixed(2)}</span>
+                  </div>
+                  <div className="flex justify-between text-sm font-bold text-gray-900 dark:text-white pt-1 border-t border-dashed border-border dark:border-white/10">
+                    <span>Total Settled:</span>
+                    <span className="text-primary">{formatTxAmount(selectedReceiptTx.amount, currency)}</span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  className="px-4 py-2.5 rounded-xl border border-border dark:border-white/10 font-semibold text-xs text-gray-900 dark:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-colors flex items-center gap-2"
+                >
+                  <Printer className="w-4 h-4" /> Print / Save PDF
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSelectedReceiptTx(null)}
+                  className="px-5 py-2.5 bg-primary hover:bg-primary/90 text-white font-semibold text-xs rounded-xl transition-colors"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

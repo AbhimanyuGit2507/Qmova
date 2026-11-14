@@ -33,6 +33,21 @@ export class PaymentsController {
     );
   }
 
+  @UseGuards(AuthGuard('jwt'), RolesGuard)
+  @Roles(Role.OWNER, Role.SUPER_ADMIN, Role.ADMIN)
+  @Post('cancel')
+  async cancelPayment(
+    @Req() req: any,
+    @Body() body: { transactionRef?: string; transactionId?: string },
+  ) {
+    const tenantId = req.user.tenantId;
+    return this.paymentsService.cancelTransaction(
+      tenantId,
+      body?.transactionRef,
+      body?.transactionId,
+    );
+  }
+
   @Post('webhook')
   async handleWebhook(
     @Body() body: any,

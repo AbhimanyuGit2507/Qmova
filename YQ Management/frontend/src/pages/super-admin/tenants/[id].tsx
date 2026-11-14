@@ -972,11 +972,14 @@ export default function SuperAdminTenantDetail() {
                       ) : tenant.transactions.map((tx: any) => (
                         <tr key={tx.id} className="hover:bg-gray-50 dark:hover:bg-white/5 transition-colors">
                           <td className="px-6 py-4 font-mono text-xs text-gray-500 break-all max-w-[150px] sm:max-w-none">{tx.id}</td>
-                          <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">{tx.currency} {Number((tx.amount || 0) / 100).toFixed(2)}</td>
+                          <td className="px-6 py-4 font-bold text-gray-900 dark:text-white">
+                            {tx.currency} {Number((tx.amount >= 10000 ? tx.amount / 100 : tx.amount) || 0).toFixed(2)}
+                          </td>
                           <td className="px-6 py-4">
                             <span className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-medium ${
-                              ['COMPLETE','SUCCEEDED'].includes(tx.status) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
-                              ['PENDING','PROCESSING'].includes(tx.status) ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
+                              ['COMPLETE','SUCCESS','SUCCEEDED','PAID'].includes((tx.status || '').toUpperCase()) ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-400' :
+                              ['PENDING','PROCESSING'].includes((tx.status || '').toUpperCase()) ? 'bg-amber-100 text-amber-800 dark:bg-amber-500/10 dark:text-amber-400' :
+                              ['CANCELLED','EXPIRED'].includes((tx.status || '').toUpperCase()) ? 'bg-zinc-100 text-zinc-600 dark:bg-zinc-500/10 dark:text-zinc-400' :
                               'bg-rose-100 text-rose-800 dark:bg-rose-500/10 dark:text-rose-400'
                             }`}>{tx.status}</span>
                           </td>

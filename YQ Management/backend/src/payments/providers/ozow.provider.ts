@@ -204,7 +204,8 @@ export class OzowProvider implements PaymentProvider {
     }
 
     return {
-      verified: transaction.status === 'SUCCESS',
+      verified:
+        transaction.status === 'SUCCESS' || transaction.status === 'COMPLETE',
       status: transaction.status,
       amount: transaction.amount,
       currency: transaction.currency,

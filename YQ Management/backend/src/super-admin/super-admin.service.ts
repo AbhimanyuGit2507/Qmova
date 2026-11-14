@@ -95,7 +95,7 @@ export class SuperAdminService {
 
     const totalRevenueResult = await this.prisma.transaction.aggregate({
       _sum: { amount: true },
-      where: { status: 'COMPLETE' },
+      where: { status: { in: ['COMPLETE', 'SUCCESS', 'PAID', 'SUCCEEDED'] } },
     });
 
     const totalCustomersResult = await this.prisma.visit.count({

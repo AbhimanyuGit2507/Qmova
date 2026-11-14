@@ -62,33 +62,38 @@ export class PaymentsService {
       throw new BadRequestException('Plan not found');
     }
 
-    let finalAmount = plan.price;
+    let finalAmountInCents = plan.price;
     if (
       billingInterval === 'yearly' &&
       plan.annualPrice != null &&
       plan.annualPrice > 0
     ) {
-      finalAmount = plan.annualPrice;
+      finalAmountInCents = plan.annualPrice;
     }
 
-    // If price is stored in cents (>= 1000), convert to Rands for processor
-    const amountInCurrency =
-      finalAmount >= 1000 ? finalAmount / 100 : finalAmount;
-    const formattedAmount = amountInCurrency.toFixed(2);
+    // Normalize: standard financial representation is integer cents (e.g. 499900 = R4,999.00)
+    // If entered in major units (e.g. 10 or 4999), normalize to cents
+    if (finalAmountInCents > 0 && finalAmountInCents < 1000) {
+      finalAmountInCents = Math.round(finalAmountInCents * 100);
+    }
 
-    // 1. Create a pending transaction
+    // Ozow expects decimal formatted currency (e.g. "4999.00")
+    const formattedAmount = (finalAmountInCents / 100).toFixed(2);
+    const txRef = `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`;
+
+    // 1. Create a pending transaction storing amount in CENTS
     const transaction = await this.prisma.transaction.create({
       data: {
         tenantId,
         planId,
         billingInterval,
-        transactionRef: `TXN-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-        amount: amountInCurrency,
+        transactionRef: txRef,
+        amount: finalAmountInCents,
         currency: plan.currency || 'ZAR',
       },
     });
 
-    // 2. Build the Ozow Payload
+    // 2. Build the Ozow Payload with explicit transactionRef in query parameters
     const payload = {
       siteCode: this.siteCode,
       countryCode: 'ZA',
@@ -96,9 +101,9 @@ export class PaymentsService {
       amount: formattedAmount,
       transactionReference: transaction.transactionRef,
       bankReference: `QMOVA-${transaction.transactionRef.substring(4, 12)}`,
-      cancelUrl: `${this.frontendUrl}/dashboard/settings/billing?status=cancelled`,
-      errorUrl: `${this.frontendUrl}/dashboard/settings/billing?status=error`,
-      successUrl: `${this.frontendUrl}/dashboard/settings/billing?status=success`,
+      cancelUrl: `${this.frontendUrl}/dashboard/settings/billing?status=cancelled&ref=${transaction.transactionRef}`,
+      errorUrl: `${this.frontendUrl}/dashboard/settings/billing?status=error&ref=${transaction.transactionRef}`,
+      successUrl: `${this.frontendUrl}/dashboard/settings/billing?status=success&ref=${transaction.transactionRef}`,
       notifyUrl: `${this.baseUrl}/payments/webhook`,
       isTest:
         process.env.OZOW_IS_TEST !== undefined
@@ -197,10 +202,13 @@ export class PaymentsService {
       return { success: true };
     }
 
+    const statusLower = (status || '').toString().toLowerCase();
     const newStatus =
-      status === 'Complete' || status === 'complete'
-        ? 'SUCCESS'
-        : status === 'Cancelled' || status === 'cancelled'
+      statusLower === 'complete' ||
+      statusLower === 'success' ||
+      statusLower === 'successful'
+        ? 'COMPLETE'
+        : statusLower === 'cancelled' || statusLower === 'abandoned'
           ? 'CANCELLED'
           : 'FAILED';
 
@@ -209,7 +217,7 @@ export class PaymentsService {
       data: { status: newStatus },
     });
 
-    if (newStatus === 'SUCCESS' && transaction.tenantId) {
+    if (newStatus === 'COMPLETE' && transaction.tenantId) {
       // NOTE: Removed legacy workspace update
       if (transaction.planId) {
         const currentPeriodEnd = this.addBillingPeriod(
@@ -278,6 +286,36 @@ export class PaymentsService {
     );
   }
 
+  async cancelTransaction(
+    tenantId: string,
+    transactionRef?: string,
+    transactionId?: string,
+  ) {
+    const where: any = { tenantId, status: 'PENDING' };
+    if (transactionRef) {
+      where.transactionRef = transactionRef;
+    } else if (transactionId) {
+      where.id = transactionId;
+    }
+
+    const tx = await this.prisma.transaction.findFirst({
+      where,
+      orderBy: { createdAt: 'desc' },
+    });
+
+    if (tx) {
+      this.logger.log(
+        `Marking pending transaction ${tx.transactionRef} as CANCELLED for tenant ${tenantId}`,
+      );
+      return this.prisma.transaction.update({
+        where: { id: tx.id },
+        data: { status: 'CANCELLED' },
+      });
+    }
+
+    return null;
+  }
+
   async getPaymentStatus(transactionRef: string) {
     const transaction = await this.prisma.transaction.findUnique({
       where: { transactionRef },
@@ -286,6 +324,19 @@ export class PaymentsService {
   }
 
   async getTransactionHistory(tenantId: string, offset = 0, limit = 20) {
+    // Automatically transition stale pending transactions older than 30 minutes to EXPIRED
+    const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+    await this.prisma.transaction.updateMany({
+      where: {
+        tenantId,
+        status: 'PENDING',
+        createdAt: { lt: thirtyMinutesAgo },
+      },
+      data: {
+        status: 'EXPIRED',
+      },
+    });
+
     const transactions = await this.prisma.transaction.findMany({
       where: { tenantId },
       skip: offset,
