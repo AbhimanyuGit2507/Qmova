@@ -610,9 +610,12 @@ export default function BillingSettings() {
                 <h3 className="text-xl font-bold text-on-surface dark:text-white mb-1">Tickets</h3>
                 <p className="text-zinc-500 dark:text-zinc-400 text-xs font-medium">Daily Ticket Allowance</p>
                 <div className="mt-4 flex items-baseline justify-center gap-1.5">
-                  <span className="text-4xl font-black text-on-surface dark:text-white tracking-tighter">{usage.tokensThisMonth}</span>
+                  <span className="text-4xl font-black text-on-surface dark:text-white tracking-tighter">{usage.tokensToday}</span>
                   <span className="text-zinc-400 font-bold text-base">/ {limits.maxTokens > 0 ? limits.maxTokens.toLocaleString() : '∞'}</span>
                 </div>
+                <p className="text-[11px] text-zinc-400 dark:text-zinc-500 mt-2 font-medium">
+                  Resets midnight • {usage.tokensThisMonth.toLocaleString()} this month
+                </p>
               </div>
 
               <div className="relative z-10 w-28 h-28 flex items-center justify-center shrink-0">

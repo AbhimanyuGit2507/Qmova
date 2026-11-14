@@ -16,10 +16,10 @@ export function QuotaExhaustedModal({ isOpen, onClose, type, usage, limit, planN
   if (!isOpen || typeof document === 'undefined') return null;
 
   const isQueue = type === 'queues';
-  const title = isQueue ? 'Queue Limit Reached' : 'Monthly Token Limit Reached';
+  const title = isQueue ? 'Queue Limit Reached' : 'Daily Ticket Limit Reached';
   const description = isQueue
     ? `You've used all ${limit} queue${limit !== 1 ? 's' : ''} allowed on your current plan.`
-    : `You've used ${usage} of ${limit} tokens this month on your current plan.`;
+    : `You've issued ${usage} of ${limit} tickets today allowed on your current plan. The allowance resets at midnight.`;
 
   return createPortal(
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-[300] flex items-center justify-center p-4">
@@ -50,7 +50,7 @@ export function QuotaExhaustedModal({ isOpen, onClose, type, usage, limit, planN
           {/* Usage bar */}
           <div className="mb-6">
             <div className="flex justify-between text-xs font-medium text-on-surface-variant dark:text-zinc-400 mb-2">
-              <span>{isQueue ? 'Queues' : 'Tokens this month'}</span>
+              <span>{isQueue ? 'Queues' : 'Tickets today'}</span>
               <span className="text-amber-600 dark:text-amber-400 font-semibold">{usage} / {limit}</span>
             </div>
             <div className="h-2.5 bg-surface-container-low dark:bg-white/10 rounded-full overflow-hidden">

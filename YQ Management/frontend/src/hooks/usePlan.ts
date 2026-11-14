@@ -7,7 +7,7 @@ export type PlanStatus = 'TRIAL' | 'ACTIVE' | 'PENDING_PAYMENT' | 'CANCELLED' | 
 export interface PlanLimits {
   maxServices: number;
   maxQueues: number;
-  maxTokens: number; // per month
+  maxTokens: number; // daily allowance
   maxLocations: number;
   maxMembers: number;
 }
@@ -34,7 +34,14 @@ export interface UsePlanResult {
   trialDaysLeft: number;
   limits: PlanLimits;
   features: PlanFeatures;
-  usage: { queues: number; tokensThisMonth: number; locations: number; services: number; members: number };
+  usage: {
+    queues: number;
+    tokensToday: number;
+    tokensThisMonth: number;
+    locations: number;
+    services: number;
+    members: number;
+  };
   frozenCounts: { queues: number; locations: number; services: number; members: number };
   trialPermanentlyUsed: boolean;
   isFeatureEnabled: (key: keyof PlanFeatures) => boolean;
@@ -151,6 +158,8 @@ export function usePlan(): UsePlanResult {
 
       if (parsedLimitsRaw.maxTokens !== undefined) {
         parsedLimits.maxTokens = Number(parsedLimitsRaw.maxTokens);
+      } else if (parsedLimitsRaw.dailyTicketCap !== undefined) {
+        parsedLimits.maxTokens = Number(parsedLimitsRaw.dailyTicketCap);
       } else if (parsedLimitsRaw.maxVisits !== undefined) {
         parsedLimits.maxTokens = Number(parsedLimitsRaw.maxVisits);
       }
@@ -165,6 +174,7 @@ export function usePlan(): UsePlanResult {
     if (customLimits.maxStaff !== undefined) normalizedCustomLimits.maxMembers = Number(customLimits.maxStaff);
     if (customLimits.maxMembers !== undefined) normalizedCustomLimits.maxMembers = Number(customLimits.maxMembers);
     if (customLimits.maxTokens !== undefined) normalizedCustomLimits.maxTokens = Number(customLimits.maxTokens);
+    if (customLimits.dailyTicketCap !== undefined) normalizedCustomLimits.maxTokens = Number(customLimits.dailyTicketCap);
     if (customLimits.maxVisits !== undefined) normalizedCustomLimits.maxTokens = Number(customLimits.maxVisits);
 
     const limits: PlanLimits = { 
@@ -212,21 +222,38 @@ export function usePlan(): UsePlanResult {
     const trialPermanentlyUsed = Boolean(sub?.trialEndDate && new Date(sub.trialEndDate) < new Date()) || (status === 'EXPIRED') || Boolean(sub?.metadata?.downgradedFrom);
 
     const now = new Date();
+    const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    todayStart.setHours(0, 0, 0, 0);
+
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    monthStart.setHours(0, 0, 0, 0);
+
+    const tokensToday = Array.isArray(visits)
+      ? visits.filter((v: { createdAt?: string }) => {
+          if (!v.createdAt) return false;
+          const d = new Date(v.createdAt);
+          return !isNaN(d.getTime()) && d >= todayStart;
+        }).length
+      : 0;
+
     const tokensThisMonth = Array.isArray(visits)
-      ? visits.filter((v: { createdAt?: string }) => v.createdAt && new Date(v.createdAt) >= monthStart).length
+      ? visits.filter((v: { createdAt?: string }) => {
+          if (!v.createdAt) return false;
+          const d = new Date(v.createdAt);
+          return !isNaN(d.getTime()) && d >= monthStart;
+        }).length
       : 0;
 
     const queueUsagePct = limits.maxQueues > 0 ? Math.min(100, (queueCount / Math.max(1, limits.maxQueues)) * 100) : 0;
     const serviceUsagePct = limits.maxServices > 0 ? Math.min(100, (serviceCount / Math.max(1, limits.maxServices)) * 100) : 0;
     const locationUsagePct = limits.maxLocations > 0 ? Math.min(100, (locationCount / Math.max(1, limits.maxLocations)) * 100) : 0;
-    const tokenUsagePct = limits.maxTokens > 0 ? Math.min(100, (tokensThisMonth / Math.max(1, limits.maxTokens)) * 100) : 0;
+    const tokenUsagePct = limits.maxTokens > 0 ? Math.min(100, (tokensToday / Math.max(1, limits.maxTokens)) * 100) : 0;
     const memberUsagePct = limits.maxMembers > 0 ? Math.min(100, (memberCount / Math.max(1, limits.maxMembers)) * 100) : 0;
 
     const isAtQueueLimit = queueCount >= limits.maxQueues && limits.maxQueues > 0;
     const isAtServiceLimit = serviceCount >= limits.maxServices && limits.maxServices > 0;
     const isAtLocationLimit = locationCount >= limits.maxLocations && limits.maxLocations > 0;
-    const isAtTokenLimit = tokensThisMonth >= limits.maxTokens && limits.maxTokens > 0;
+    const isAtTokenLimit = tokensToday >= limits.maxTokens && limits.maxTokens > 0;
     const isAtMemberLimit = memberCount >= limits.maxMembers && limits.maxMembers > 0;
 
     // If status is null (no subscription found — e.g. SUPER_ADMIN or API error), grant access by default.
@@ -241,7 +268,14 @@ export function usePlan(): UsePlanResult {
       trialDaysLeft,
       limits,
       features,
-      usage: { queues: queueCount, tokensThisMonth, locations: locationCount, services: serviceCount, members: memberCount },
+      usage: {
+        queues: queueCount,
+        tokensToday,
+        tokensThisMonth,
+        locations: locationCount,
+        services: serviceCount,
+        members: memberCount,
+      },
       frozenCounts: { queues: frozenQueues, locations: frozenLocations, services: frozenServices, members: frozenMembers },
       trialPermanentlyUsed,
       isFeatureEnabled: (key: keyof PlanFeatures) => Boolean(features[key] && canAccess),

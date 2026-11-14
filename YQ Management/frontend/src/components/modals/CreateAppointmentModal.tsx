@@ -180,7 +180,7 @@ export function CreateAppointmentModal({ isOpen, onClose }: CreateAppointmentMod
         type="tokens"
         isOpen={isOpen}
         onClose={onClose}
-        usage={plan.usage.tokensThisMonth}
+        usage={plan.usage.tokensToday}
         limit={plan.limits.maxTokens}
         planName={plan.planName}
       />
