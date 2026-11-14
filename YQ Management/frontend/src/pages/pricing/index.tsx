@@ -213,6 +213,7 @@ export default function PricingPage({ plans }: PricingProps) {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
           {displayPlans.map((plan, index) => {
             const isPopular = plan.name.toLowerCase().includes('growth');
+            const isGrowth = isPopular;
             const isEnterprise = plan.name.toLowerCase().includes('enterprise');
             const isBasic = plan.name.toLowerCase().includes('basic');
             const isPlus = plan.name.toLowerCase().includes('plus');

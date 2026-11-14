@@ -2005,9 +2005,9 @@ export default function ServiceDeskToday() {
               </div>
               <button
                 onClick={() => setIsScannerOpen(true)}
-                className="bg-surface-container hover:bg-surface-container-high dark:bg-zinc-800 dark:hover:bg-zinc-700 text-on-surface dark:text-zinc-200 px-3 py-1.5 rounded-lg text-body-sm font-semibold transition-colors flex items-center gap-1.5 border border-border dark:border-zinc-700 cursor-pointer shadow-xs"
+                className="bg-card hover:bg-zinc-100 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-foreground dark:text-zinc-200 px-3 py-1.5 rounded-lg text-body-sm font-semibold transition-colors flex items-center gap-1.5 border border-border dark:border-zinc-700 cursor-pointer shadow-xs"
               >
-                <ScanLine className="w-[18px] h-[18px] text-on-surface-variant dark:text-zinc-400" /> Scan QR
+                <ScanLine className="w-[18px] h-[18px] text-zinc-500 dark:text-zinc-400" /> Scan QR
               </button>
               <button
                 onClick={() => setIsVisitModalOpen(true)}

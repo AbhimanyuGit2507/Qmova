@@ -23,6 +23,7 @@ interface Tenant {
 interface StaffData {
   id: string; name: string; title?: string; color?: string;
   status: string; services: Service[]; location?: Location;
+  locationId?: string | null;
   tenant: Tenant;
   sessionToken?: string;
 }

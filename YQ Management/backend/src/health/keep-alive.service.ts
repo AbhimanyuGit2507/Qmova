@@ -63,16 +63,10 @@ export class KeepAliveService {
   }
 
   private pingBackend() {
-    const backendUrl = process.env.BACKEND_URL;
-    if (!backendUrl) {
-      this.logger.warn('BACKEND_URL not defined — skipping backend ping');
-      return;
-    }
+    const port = process.env.PORT || 3000;
+    const pingUrl = `http://127.0.0.1:${port}/health`;
 
-    const pingUrl = `${backendUrl.replace(/\/$/, '')}/health`;
-    const client = pingUrl.startsWith('https') ? https : http;
-
-    const req = client.get(pingUrl, (res) => {
+    const req = http.get(pingUrl, (res) => {
       if (res.statusCode === 200) {
         this.backendFailures = 0;
         this.logger.log(
@@ -93,10 +87,10 @@ export class KeepAliveService {
       );
     });
 
-    req.setTimeout(15000, () => {
+    req.setTimeout(10000, () => {
       this.backendFailures++;
       this.logger.error(
-        `[KeepAlive] Backend ping TIMED OUT after 15s (failures: ${this.backendFailures})`,
+        `[KeepAlive] Backend ping TIMED OUT after 10s (failures: ${this.backendFailures})`,
       );
       req.destroy();
     });

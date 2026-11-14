@@ -130,7 +130,10 @@ function CalendarPicker({
 }) {
   const { data: calendars = [], isLoading, error } = useQuery<GoogleCalendarItem[]>({
     queryKey: ['google-calendars', integrationId],
-    queryFn: () => fetchApi(`/integrations/google/calendars/${integrationId}`),
+    queryFn: async (): Promise<GoogleCalendarItem[]> => {
+      const res = await fetchApi(`/integrations/google/calendars/${integrationId}`);
+      return Array.isArray(res) ? res : [];
+    },
     enabled: !!integrationId,
     retry: false,
     staleTime: 5 * 60 * 1000,

@@ -36,7 +36,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     } as any;
 
     this.client = new Redis(redisOptions);
-    this.subscriber = new Redis(redisOptions);
+    this.subscriber = new Redis({
+      ...redisOptions,
+      enableOfflineQueue: true,
+    });
   }
 
   onModuleInit() {
@@ -55,16 +58,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     this.subscriber.on('connect', () =>
       this.logger.log('Redis subscriber connected'),
     );
-
-    // Subscribe to public visit updates channel
-    this.subscriber.subscribe('qmova:public:visit:update', (err) => {
-      if (err) {
-        this.logger.error(
-          `Failed to subscribe to qmova:public:visit:update: ${err}`,
-        );
-      } else {
-        this.logger.log('Subscribed to qmova:public:visit:update channel');
-      }
+    this.subscriber.on('ready', () => {
+      this.logger.log('Redis subscriber ready');
+      this.subscriber.subscribe('qmova:public:visit:update', (err) => {
+        if (err) {
+          this.logger.error(
+            `Failed to subscribe to qmova:public:visit:update: ${err}`,
+          );
+        } else {
+          this.logger.log('Subscribed to qmova:public:visit:update channel');
+        }
+      });
     });
 
     this.subscriber.on('message', (channel, message) => {

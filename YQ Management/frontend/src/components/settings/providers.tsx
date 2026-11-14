@@ -16,6 +16,7 @@ import type { Staff } from '@yq/shared';
 type Provider = Staff & {
   services?: { id: string; name: string }[];
   location?: { id: string; name: string };
+  deskToken?: string | null;
 };
 
 function ProviderAvatar({ name, color }: { name: string; color?: string | null }) {
