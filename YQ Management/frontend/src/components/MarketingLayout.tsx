@@ -18,19 +18,45 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+interface FAQItem {
+  question: string;
+  answer: string;
+}
+
+interface BreadcrumbItem {
+  name: string;
+  url: string;
+}
+
 interface MarketingLayoutProps {
   children: React.ReactNode;
   title?: string;
   description?: string;
+  keywords?: string[] | string;
+  breadcrumbs?: BreadcrumbItem[];
+  faq?: FAQItem[];
 }
 
-export default function MarketingLayout({ children, title, description }: MarketingLayoutProps) {
+export default function MarketingLayout({ 
+  children, 
+  title, 
+  description,
+  keywords,
+  breadcrumbs,
+  faq
+}: MarketingLayoutProps) {
   const { user, loading } = useAuth();
   const [mobileMenuOpen, setMobileMenuOpen] = React.useState(false);
 
   return (
     <div className={`min-h-screen bg-black text-zinc-50 ${geistSans.className} font-sans flex flex-col`}>
-      <SEO title={title} description={description} />
+      <SEO 
+        title={title} 
+        description={description} 
+        keywords={keywords} 
+        breadcrumbs={breadcrumbs} 
+        faq={faq} 
+      />
       
       {/* Navigation */}
       <nav className="fixed top-0 left-0 right-0 z-50 border-b border-zinc-800 bg-black">

@@ -1,22 +1,51 @@
 import Footer from "../../components/Footer";
 import React from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import SEO from '../../components/SEO';
 import { useAuth } from '../../components/AuthContext';
 import { Logo } from '../../components/Logo';
 import { motion } from 'framer-motion';
-import { Activity, CalendarDays, MessageSquare, Bell, Scan, Ticket, Star } from 'lucide-react';
+import { 
+  Activity, 
+  CalendarDays, 
+  MessageSquare, 
+  Bell, 
+  Scan, 
+  Ticket, 
+  Star,
+  Clock,
+  Zap,
+  DollarSign,
+  ArrowRight,
+  Sparkles,
+  CheckCircle2
+} from 'lucide-react';
 
 export default function FeaturesPage() {
   const { user } = useAuth();
   
   return (
     <div className="dark bg-[#09090b] min-h-screen font-body-md text-white antialiased overflow-x-hidden selection:bg-sky-500/30">
-      <Head>
-        <title>Qmova | Features</title>
-        <meta name="description" content="Explore the comprehensive feature set of the Qmova waiting room management platform." />
-        <style dangerouslySetInnerHTML={{__html: `body { background-color: #09090b !important; }`}} />
-      </Head>
+      <SEO 
+        title="QMova Features | Cloud Queue Management, Virtual Waiting Room & TV Display"
+        description="Explore QMova's low-cost, zero-hardware queue features: WhatsApp queue tickets, contactless QR check-in, real-time TV lobby displays, custom booking pages, and multi-counter service desk. 3-minute setup."
+        keywords={[
+          "queue management software features",
+          "virtual waiting room features",
+          "whatsapp queue tickets",
+          "contactless qr code check in",
+          "smart lobby tv display",
+          "ai queue voice announcements",
+          "appointment scheduling software",
+          "walk-in queue management",
+          "low cost queue system",
+          "zero hardware queue kiosk"
+        ]}
+        breadcrumbs={[
+          { name: 'Home', url: '/' },
+          { name: 'Features', url: '/features' }
+        ]}
+      />
       
       {/* Navigation */}
       <nav className="fixed top-0 w-full z-50 glass-ui h-header-h flex items-center justify-between px-gutter border-b border-white/5 backdrop-blur-xl bg-black/20">
@@ -51,6 +80,22 @@ export default function FeaturesPage() {
         <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[800px] h-[400px] bg-sky-500/10 blur-[120px] rounded-full z-0 pointer-events-none mix-blend-screen" />
         
         <div className="max-w-4xl mx-auto text-center z-10 space-y-6 flex flex-col items-center relative">
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex flex-wrap items-center justify-center gap-2.5 mb-1"
+          >
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <Clock className="w-3.5 h-3.5" /> 3-Minute Cloud Setup
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <Zap className="w-3.5 h-3.5" /> Zero Hardware Required
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <DollarSign className="w-3.5 h-3.5" /> Up to 80% Lower Cost
+            </span>
+          </motion.div>
+
           <motion.h1 
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
@@ -58,7 +103,7 @@ export default function FeaturesPage() {
             className="text-5xl md:text-7xl font-headline-lg font-extrabold tracking-tight text-white drop-shadow-2xl"
           >
             Powerful features. <br className="hidden md:block"/>
-            <span className="bg-gradient-to-r from-sky-400 via-indigo-400 to-sky-400 bg-clip-text text-transparent bg-[length:200%_auto] animate-gradient">Effortless management.</span>
+            <span className="bg-gradient-to-r from-sky-400 via-indigo-400 to-sky-400 bg-clip-text text-transparent bg-[length:200%_auto] animate-gradient">Zero hardware required.</span>
           </motion.h1>
 
           <motion.p 
@@ -67,8 +112,28 @@ export default function FeaturesPage() {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="font-body-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed text-lg"
           >
-            Discover how Qmova's digital tools help you eliminate wait times, maximize daily bookings, and deliver a premium experience to your customers.
+            Everything you need to eliminate wait times and empty your waiting room—without buying expensive kiosks, ticket printers, or paying technician fees. Runs seamlessly on phones, tablets, and smart TVs in under 3 minutes.
           </motion.p>
+
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.6, delay: 0.2 }}
+            className="flex flex-col sm:flex-row items-center gap-4 pt-2"
+          >
+            <Link
+              href="/register"
+              className="h-12 px-8 rounded-full bg-sky-500 text-white font-bold hover:bg-sky-400 transition-all shadow-[0_0_25px_rgba(14,165,233,0.35)] flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
+            >
+              Start 14-Day Free Trial <ArrowRight className="w-4 h-4" />
+            </Link>
+            <Link
+              href="/pricing"
+              className="h-12 px-6 rounded-full bg-white/5 text-zinc-300 font-semibold hover:bg-white/10 hover:text-white transition-all border border-white/10 flex items-center justify-center gap-2"
+            >
+              View Affordable Pricing
+            </Link>
+          </motion.div>
         </div>
       </section>
 
@@ -349,15 +414,33 @@ export default function FeaturesPage() {
       </section>
 
       {/* CTA */}
-      <section className="py-24 px-gutter border-t border-white/5 relative bg-black/40">
-        <div className="max-w-4xl mx-auto text-center space-y-8">
-          <h2 className="text-4xl font-bold text-white">Ready to upgrade your customer flow?</h2>
-          <p className="text-zinc-400 text-lg">Join thousands of businesses streamlining their operations with Qmova.</p>
-          <div className="flex justify-center">
-            <Link href="/register" className="px-8 py-4 rounded-xl bg-white text-black font-bold hover:scale-105 transition-transform shadow-lg">
-              Start your free trial
+      <section className="py-24 px-gutter border-t border-white/5 relative bg-black/40 overflow-hidden">
+        <div className="absolute inset-0 bg-sky-500/5 blur-[100px] pointer-events-none" />
+        <div className="max-w-4xl mx-auto text-center space-y-6 relative z-10">
+          <div className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+            <Sparkles className="w-3.5 h-3.5" /> 3-Minute Cloud Setup
+          </div>
+          <h2 className="text-4xl md:text-5xl font-extrabold text-white tracking-tight">
+            Ready to upgrade your customer flow?
+          </h2>
+          <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+            Join hundreds of clinics, salons, and retail venues saving up to 80% with zero hardware kiosks.
+          </p>
+          <div className="flex flex-col sm:flex-row justify-center items-center gap-4 pt-2">
+            <Link 
+              href="/register" 
+              className="h-12 px-8 rounded-full bg-sky-500 hover:bg-sky-400 text-white font-bold transition-all shadow-[0_0_25px_rgba(14,165,233,0.35)] flex items-center justify-center gap-2 hover:scale-105 active:scale-95"
+            >
+              Start 14-Day Free Trial
+            </Link>
+            <Link 
+              href="/pricing" 
+              className="h-12 px-6 rounded-full bg-white/5 text-zinc-300 font-semibold hover:bg-white/10 hover:text-white transition-all border border-white/10 flex items-center justify-center"
+            >
+              See All Plans & Pricing
             </Link>
           </div>
+          <p className="text-xs text-zinc-500">No credit card required • Instant setup on your own devices • Cancel anytime</p>
         </div>
       </section>
 

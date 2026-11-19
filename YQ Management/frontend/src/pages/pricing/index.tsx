@@ -1,11 +1,24 @@
 import Footer from "../../components/Footer";
 import React from 'react';
-import Head from 'next/head';
 import Link from 'next/link';
+import SEO from '../../components/SEO';
 import { useAuth } from '../../components/AuthContext';
 import { Logo } from '../../components/Logo';
 import { motion } from 'framer-motion';
-import { CheckCircle2, Sparkles, Building2, Store, Users2, ShieldCheck, ArrowRight } from 'lucide-react';
+import { 
+  CheckCircle2, 
+  Sparkles, 
+  Building2, 
+  Store, 
+  Users2, 
+  ShieldCheck, 
+  ArrowRight,
+  Clock,
+  Zap,
+  DollarSign,
+  HelpCircle,
+  XCircle
+} from 'lucide-react';
 import { GetServerSideProps } from 'next';
 
 interface Plan {
@@ -31,6 +44,33 @@ interface Plan {
 interface PricingProps {
   plans: Plan[];
 }
+
+const pricingFaqs = [
+  { 
+    question: 'How does the 14-day free trial work?', 
+    answer: 'Every new account starts on a full 14-day trial that mirrors the Growth (Busy Venue) plan. It gives you 1 Location, full access to AI voice announcements and WhatsApp features, and a hard cap of 50 tickets per day (700 total for the trial) with no credit card required.' 
+  },
+  { 
+    question: 'Why does QMova cost up to 80% less than legacy queue systems?', 
+    answer: 'Legacy queue systems charge $3,000–$8,000 for proprietary touch kiosks, plus expensive thermal ticket rolls, technician installation visits, and multi-year lock-in contracts. QMova is 100% cloud-based: your customers use their own phones via QR & WhatsApp, your staff use any tablet or laptop, and your waiting room uses any standard Smart TV. Zero hardware markups, zero hidden maintenance fees.' 
+  },
+  { 
+    question: 'Are there any setup fees or hidden hardware costs?', 
+    answer: 'Zero setup fees and zero hardware requirements. You can be fully operational in under 3 minutes using your existing phones, laptops, and smart TVs.' 
+  },
+  { 
+    question: 'Can I change my plan later?', 
+    answer: 'Yes, you can upgrade or downgrade your plan at any time in your dashboard billing settings. Changes take effect immediately with automated prorated billing.' 
+  },
+  { 
+    question: 'Do you offer annual discounts?', 
+    answer: 'Yes! Choosing annual billing saves you 17% across all plans.' 
+  },
+  { 
+    question: 'What happens if I reach my daily ticket limit?', 
+    answer: 'You will receive immediate dashboard notifications as you approach your daily limit. If you consistently handle higher volume, upgrading takes just one click.' 
+  }
+];
 
 export default function PricingPage({ plans }: PricingProps) {
   const { user } = useAuth();
@@ -90,11 +130,27 @@ export default function PricingPage({ plans }: PricingProps) {
   
   return (
     <div className="dark bg-[#09090b] min-h-screen font-body-md text-white antialiased overflow-x-hidden selection:bg-sky-500/30">
-      <Head>
-        <title>Qmova | Pricing & Plans</title>
-        <meta name="description" content="Transparent pricing for smart queue management. 14-day free trial on all plans." />
-        <style dangerouslySetInnerHTML={{__html: `body { background-color: #09090b !important; }`}} />
-      </Head>
+      <SEO 
+        title="QMova Pricing | Low-Cost Cloud Queue Management | 14-Day Free Trial"
+        description="Affordable, predictable pricing for queue management. Save up to 80% vs legacy hardware kiosks. 14-day free trial on all plans, no credit card required."
+        keywords={[
+          "queue management software pricing",
+          "affordable queue system",
+          "low cost waiting room software",
+          "free queue management software",
+          "virtual queue system cost",
+          "waitwhile pricing alternative",
+          "qminder pricing alternative",
+          "qmatic alternative pricing"
+        ]}
+        breadcrumbs={[
+          { name: 'Home', url: '/' },
+          { name: 'Pricing', url: '/pricing' }
+        ]}
+        price="0"
+        currency="ZAR"
+        faq={pricingFaqs}
+      />
       
       {/* Navigation */}
       <nav className="fixed top-0 w-full z-50 glass-ui h-header-h flex items-center justify-between px-gutter border-b border-white/5 backdrop-blur-xl bg-black/20">
@@ -132,9 +188,17 @@ export default function PricingPage({ plans }: PricingProps) {
           <motion.div
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-sky-500/10 border border-sky-500/20 text-sky-400 text-xs font-semibold uppercase tracking-wider"
+            className="flex flex-wrap items-center justify-center gap-2.5 mb-1"
           >
-            <Sparkles className="w-3.5 h-3.5" /> 14-Day Free Trial Included
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-sky-500/10 text-sky-400 border border-sky-500/20">
+              <Clock className="w-3.5 h-3.5" /> 3-Minute Cloud Setup
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              <Zap className="w-3.5 h-3.5" /> Zero Hardware Required
+            </span>
+            <span className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full text-xs font-semibold bg-purple-500/10 text-purple-400 border border-purple-500/20">
+              <DollarSign className="w-3.5 h-3.5" /> Save 80% vs Kiosks
+            </span>
           </motion.div>
 
           <motion.h1 
@@ -143,7 +207,7 @@ export default function PricingPage({ plans }: PricingProps) {
             transition={{ duration: 0.6 }}
             className="text-4xl sm:text-5xl md:text-6xl font-headline-lg font-extrabold tracking-tight text-white drop-shadow-2xl"
           >
-            Predictable Plans for Modern Venues
+            Low-Cost, Predictable Queue Management
           </motion.h1>
 
           <motion.p 
@@ -152,7 +216,7 @@ export default function PricingPage({ plans }: PricingProps) {
             transition={{ duration: 0.6, delay: 0.1 }}
             className="font-body-lg text-zinc-400 max-w-2xl mx-auto leading-relaxed text-base sm:text-lg"
           >
-            Choose the right capacity for your venue. Start with a 14-day free trial on Growth features. No credit card required.
+            Affordable plans with zero expensive hardware, no technician fees, and no long-term contracts. Start with a full 14-day free trial on Growth features.
           </motion.p>
 
           <motion.div 
@@ -450,36 +514,48 @@ export default function PricingPage({ plans }: PricingProps) {
         </div>
       </section>
 
+      {/* Hardware Savings Callout */}
+      <section className="px-gutter pb-16 relative z-10">
+        <div className="max-w-7xl mx-auto rounded-3xl bg-gradient-to-b from-white/[0.04] to-transparent border border-white/10 p-8 sm:p-10 relative overflow-hidden">
+          <div className="flex flex-col lg:flex-row items-center justify-between gap-8">
+            <div className="max-w-2xl space-y-3">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+                <DollarSign className="w-3.5 h-3.5" /> Stop Overpaying for Hardware
+              </span>
+              <h3 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
+                Save $3,500+ per venue compared to legacy kiosk vendors
+              </h3>
+              <p className="text-zinc-400 text-sm sm:text-base leading-relaxed">
+                Legacy systems like Qmatic, Qminder, and Waitwhile charge thousands for custom touchscreen kiosks, proprietary printers, and technician setup fees. QMova operates 100% in the cloud on existing hardware—your visitors use their smartphones via QR code and WhatsApp, your staff use iPads or laptops, and your lobby uses any standard Smart TV.
+              </p>
+            </div>
+            <div className="shrink-0 flex flex-col sm:flex-row gap-4 w-full sm:w-auto">
+              <Link
+                href="/register"
+                className="h-12 px-8 rounded-2xl bg-sky-500 hover:bg-sky-400 text-white font-bold transition-all shadow-[0_0_25px_rgba(14,165,233,0.35)] flex items-center justify-center gap-2 hover:scale-105 active:scale-95 text-sm"
+              >
+                Start Free 14-Day Trial
+              </Link>
+              <Link
+                href="/book-demo"
+                className="h-12 px-6 rounded-2xl bg-white/5 text-zinc-300 font-semibold hover:bg-white/10 hover:text-white transition-all border border-white/10 flex items-center justify-center text-sm"
+              >
+                Calculate Your Savings
+              </Link>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* FAQs */}
       <section className="py-24 px-gutter border-t border-white/5 relative">
         <div className="max-w-3xl mx-auto">
           <h2 className="text-3xl font-bold text-white text-center mb-12">Frequently Asked Questions</h2>
           <div className="space-y-6">
-            {[
-              { 
-                q: 'How does the 14-day free trial work?', 
-                a: 'Every new account starts on a full 14-day trial that mirrors the Growth (Busy Venue) plan. It gives you 1 Location, full access to AI voice announcements and WhatsApp features, and a hard cap of 50 tickets per day (700 total for the trial) with no credit card required.' 
-              },
-              { 
-                q: 'Can I change my plan later?', 
-                a: 'Yes, you can upgrade or downgrade your plan at any time in your dashboard billing settings. Changes take effect immediately with automated prorated billing.' 
-              },
-              { 
-                q: 'Are there any setup fees?', 
-                a: 'No setup fees whatsoever. You only pay the flat rate for the plan you choose.' 
-              },
-              { 
-                q: 'Do you offer annual discounts?', 
-                a: 'Yes! Choosing annual billing saves you 17% across all plans.' 
-              },
-              { 
-                q: 'What happens if I reach my daily ticket limit?', 
-                a: 'You will receive immediate dashboard notifications as you approach your daily limit. If you consistently handle higher volume, upgrading takes just one click.' 
-              }
-            ].map((faq, i) => (
+            {pricingFaqs.map((faq, i) => (
               <div key={i} className="bg-[#0f1219] border border-white/5 rounded-2xl p-6">
-                <h4 className="text-base font-semibold text-white mb-2">{faq.q}</h4>
-                <p className="text-zinc-400 text-sm leading-relaxed">{faq.a}</p>
+                <h4 className="text-base font-semibold text-white mb-2">{faq.question}</h4>
+                <p className="text-zinc-400 text-sm leading-relaxed">{faq.answer}</p>
               </div>
             ))}
           </div>

@@ -21,6 +21,26 @@
     <priority>0.8</priority>
   </url>
   <url>
+    <loc>https://qmova.yqbuddy.com/for/clinics</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://qmova.yqbuddy.com/for/salons</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://qmova.yqbuddy.com/for/banks</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
+    <loc>https://qmova.yqbuddy.com/for/repair-shops</loc>
+    <changefreq>weekly</changefreq>
+    <priority>0.85</priority>
+  </url>
+  <url>
     <loc>https://qmova.yqbuddy.com/about</loc>
     <changefreq>monthly</changefreq>
     <priority>0.7</priority>
