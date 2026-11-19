@@ -4,6 +4,7 @@ import Head from 'next/head';
 import Link from 'next/link';
 import Image from 'next/image';
 
+import SEO from '../components/SEO';
 import { useAuth } from '../components/AuthContext';
 import { Logo } from '../components/Logo';
 import { motion } from 'framer-motion';
@@ -14,9 +15,11 @@ export default function LandingPage() {
 
   return (
     <div className="dark bg-[#09090b] min-h-screen font-sans text-white antialiased overflow-x-hidden selection:bg-sky-500/30">
+      <SEO 
+        title="Qmova | Empty Your Waiting Room | Intelligent Queue & Appointment Platform"
+        description="The easiest way to manage appointments and walk-ins without the waiting room chaos. Used by healthcare clinics, salons, retail, and enterprises worldwide."
+      />
       <Head>
-        <title>Qmova | Empty your waiting room</title>
-        <meta name="description" content="The easiest way to manage appointments and walk-ins without the waiting room chaos." />
         <style dangerouslySetInnerHTML={{ __html: `body { background-color: #09090b !important; }` }} />
       </Head>
 

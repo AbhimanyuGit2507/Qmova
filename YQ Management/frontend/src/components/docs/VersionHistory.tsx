@@ -10,12 +10,15 @@ interface VersionHistoryProps {
   updates: VersionUpdate[];
 }
 
-export default function VersionHistory({ updates }: VersionHistoryProps) {
+export default function VersionHistory({ updates = [] }: { updates?: VersionUpdate[] }) {
+  const list = Array.isArray(updates) ? updates : [];
+  if (list.length === 0) return null;
+
   return (
     <div className="my-8">
       <h3 className="text-lg font-semibold text-white mb-4">Version History</h3>
       <div className="space-y-4 border-l border-white/10 ml-3">
-        {updates.map((update, idx) => (
+        {list.map((update, idx) => (
           <div key={idx} className="relative pl-6">
             <div className="absolute w-2 h-2 bg-indigo-500 rounded-full left-[-4.5px] top-2" />
             <div className="flex items-center gap-3 mb-1">

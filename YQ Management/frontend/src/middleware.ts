@@ -17,11 +17,11 @@ export const config = {
      * - _next/static (static files)
      * - _next/image (image optimization files)
      * - favicon.ico (favicon file)
-     * - manifest.json, robots.txt, sw.js, workbox-* (PWA & SEO files)
+     * - manifest.json, robots.txt, sitemap.xml, sw.js, workbox-* (PWA & SEO files)
      * - images, svg, icons (public files)
      * - all .png, .jpg, .jpeg, .svg files
      */
-    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|robots\\.txt|sw\\.js|workbox-.*|images|svg|icons|.*\\.(?:png|jpg|jpeg|svg|gif|webp)$).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico|manifest.json|robots\\.txt|sitemap\\.xml|sw\\.js|workbox-.*|images|svg|icons|.*\\.(?:png|jpg|jpeg|svg|gif|webp)$).*)',
   ],
 };
 

@@ -1,5 +1,11 @@
 User-agent: *
 Allow: /
 
+# Disallow private dashboards and admin panels from public indexing
+Disallow: /dashboard/
+Disallow: /super-admin/
+Disallow: /api/
+
 # Sitemaps
+Sitemap: https://qmova.yqbuddy.com/sitemap.xml
 Sitemap: https://qmova.com/sitemap.xml

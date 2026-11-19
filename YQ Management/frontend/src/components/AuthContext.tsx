@@ -113,9 +113,15 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     }
   };
 
+  const pathname = router.pathname || '';
+  const isProtectedRoute = 
+    pathname.startsWith('/dashboard') || 
+    pathname.startsWith('/super-admin') || 
+    pathname.startsWith('/onboarding');
+
   return (
     <AuthContext.Provider value={{ user, loading, logout, refetch }}>
-      {loading ? (
+      {loading && isProtectedRoute ? (
         <div className="min-h-screen flex items-center justify-center bg-black">
           <div className="w-8 h-8 border-4 border-indigo-500/30 border-t-indigo-500 rounded-full animate-spin"></div>
         </div>

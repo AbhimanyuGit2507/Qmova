@@ -64,11 +64,12 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
   if (!isOpen || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-zinc-950/40 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl w-full max-w-md overflow-hidden shadow-2xl">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20">
+    <div className="fixed inset-0 bg-zinc-950/40 dark:bg-black/80 backdrop-blur-md z-[100] flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl w-full max-w-md max-h-[90vh] flex flex-col overflow-hidden shadow-2xl my-auto">
+        <div className="flex justify-between items-center p-5 sm:p-6 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20 shrink-0">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">Add Customer</h2>
           <button 
+            type="button"
             onClick={handleClose}
             className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full transition-colors"
           >
@@ -76,7 +77,8 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-4">
           <div>
             <label className="block text-xs font-semibold text-gray-700 dark:text-zinc-300 mb-1.5 uppercase tracking-wider">
               Full Name <span className="text-red-500">*</span>
@@ -152,8 +154,9 @@ export function CreateCustomerModal({ isOpen, onClose, onSuccess }: CreateCustom
               placeholder="john@example.com"
             />
           </div>
+          </div>
 
-          <div className="pt-4 flex justify-end gap-3 border-t border-gray-200 dark:border-white/10">
+          <div className="shrink-0 p-4 sm:p-5 flex justify-end gap-3 border-t border-gray-200 dark:border-white/10 bg-gray-50/70 dark:bg-black/20">
             <button 
               type="button"
               onClick={handleClose}

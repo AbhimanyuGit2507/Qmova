@@ -51,11 +51,12 @@ export function CreateResourceModal({ isOpen, onClose, locationId }: CreateResou
   if (!isOpen || typeof document === 'undefined') return null;
 
   return createPortal(
-    <div className="fixed inset-0 bg-zinc-950/40 dark:bg-black/80 backdrop-blur-md z-[90] flex items-center justify-center p-4 animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl w-full max-w-lg overflow-hidden shadow-2xl">
-        <div className="flex justify-between items-center p-6 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20">
+    <div className="fixed inset-0 bg-zinc-950/40 dark:bg-black/80 backdrop-blur-md z-[90] flex items-center justify-center p-3 sm:p-4 overflow-y-auto animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-zinc-900 border border-gray-200 dark:border-white/10 rounded-3xl w-full max-w-lg max-h-[90vh] flex flex-col overflow-hidden shadow-2xl my-auto">
+        <div className="flex justify-between items-center p-5 sm:p-6 border-b border-gray-200 dark:border-white/10 bg-gray-50 dark:bg-black/20 shrink-0">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white">New Resource</h2>
           <button 
+            type="button"
             onClick={handleClose}
             className="p-2 hover:bg-gray-200 dark:hover:bg-white/10 rounded-full transition-colors"
           >
@@ -63,58 +64,60 @@ export function CreateResourceModal({ isOpen, onClose, locationId }: CreateResou
           </button>
         </div>
         
-        <form onSubmit={handleSubmit} className="p-6 space-y-5">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Resource Name <span className="text-red-500">*</span></label>
-            <input 
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
-              placeholder="e.g., Massage Room 1, MRI Machine"
-              required
-            />
+        <form onSubmit={handleSubmit} className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          <div className="flex-1 overflow-y-auto p-5 sm:p-6 space-y-5">
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Resource Name <span className="text-red-500">*</span></label>
+              <input 
+                type="text"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all"
+                placeholder="e.g., Massage Room 1, MRI Machine"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Resource Type</label>
+              <select 
+                value={type}
+                onChange={(e) => setType(e.target.value)}
+                className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
+              >
+                <option value="ROOM">Room</option>
+                <option value="EQUIPMENT">Equipment</option>
+                <option value="VEHICLE">Vehicle</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Status</label>
+              <select 
+                value={status}
+                onChange={(e) => setStatus(e.target.value)}
+                className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
+              >
+                <option value="ACTIVE">Active</option>
+                <option value="MAINTENANCE">Maintenance</option>
+                <option value="INACTIVE">Inactive</option>
+              </select>
+            </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Resource Type</label>
-            <select 
-              value={type}
-              onChange={(e) => setType(e.target.value)}
-              className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-            >
-              <option value="ROOM">Room</option>
-              <option value="EQUIPMENT">Equipment</option>
-              <option value="VEHICLE">Vehicle</option>
-              <option value="OTHER">Other</option>
-            </select>
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-zinc-300 mb-2">Status</label>
-            <select 
-              value={status}
-              onChange={(e) => setStatus(e.target.value)}
-              className="w-full bg-white dark:bg-black/50 border border-gray-200 dark:border-white/10 rounded-xl px-4 py-3 text-gray-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 transition-all appearance-none"
-            >
-              <option value="ACTIVE">Active</option>
-              <option value="MAINTENANCE">Maintenance</option>
-              <option value="INACTIVE">Inactive</option>
-            </select>
-          </div>
-
-          <div className="pt-4 flex justify-end gap-3 border-t border-gray-200 dark:border-white/10">
+          <div className="shrink-0 p-4 sm:p-5 flex justify-end gap-3 border-t border-gray-200 dark:border-white/10 bg-gray-50/70 dark:bg-black/20">
             <button 
               type="button"
               onClick={handleClose}
-              className="px-5 py-2.5 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl font-medium transition-colors"
+              className="px-5 py-2.5 text-gray-600 dark:text-zinc-400 hover:bg-gray-100 dark:hover:bg-white/5 rounded-xl font-medium transition-colors text-sm"
             >
               Cancel
             </button>
             <button 
               type="submit"
               disabled={createMutation.isPending || !name}
-              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)] disabled:opacity-50"
+              className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-medium transition-colors shadow-[0_0_15px_rgba(79,70,229,0.3)] disabled:opacity-50 text-sm"
             >
               {createMutation.isPending && <Loader2 className="w-4 h-4 animate-spin" />}
               {createMutation.isPending ? 'Creating...' : 'Create Resource'}
